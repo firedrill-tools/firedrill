@@ -73,7 +73,7 @@ function renderMarkdown(entries: readonly RegistryRecord[]): string {
 
   if (entries.length === 0) {
     lines.push("No reusable Tool packs are cataloged yet.", "");
-    return `${lines.join("\n")}\n`;
+    return `${lines.join("\n").trimEnd()}\n`;
   }
 
   for (const record of entries) {
@@ -101,7 +101,7 @@ function renderMarkdown(entries: readonly RegistryRecord[]): string {
     );
   }
 
-  return `${lines.join("\n")}\n`;
+  return `${lines.join("\n").trimEnd()}\n`;
 }
 
 for (const entry of readdirSync(packsRoot, { withFileTypes: true }).sort((left, right) =>
