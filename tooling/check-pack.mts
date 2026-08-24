@@ -258,7 +258,7 @@ try {
       'if (process.exitCode !== 1) process.stdout.write("packed consumer passed\\n");',
     ].join("\n"),
   );
-  run("pnpm", ["install", "--offline"], consumer);
+  run("pnpm", ["install", "--prefer-offline", "--no-frozen-lockfile"], consumer);
 
   const installedCli = join(consumer, "node_modules", ".bin", "firedrill");
   const initializedTemplate = join(temporary, "initialized-template");
@@ -338,7 +338,7 @@ try {
       2,
     )}\n`,
   );
-  run("pnpm", ["install", "--offline"], installedPackProject);
+  run("pnpm", ["install", "--prefer-offline", "--no-frozen-lockfile"], installedPackProject);
   const installedPackCli = join(installedPackProject, "node_modules", ".bin", "firedrill");
   mkdirSync(join(installedPackProject, "world"), { recursive: true });
   writeFileSync(
