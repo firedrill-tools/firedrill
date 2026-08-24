@@ -1,0 +1,23 @@
+schemaVersion: 1
+id: changes-resource
+title: Change one resource through the starter agent
+tags: [smoke]
+targetId: starter-agent
+actorId: operator
+scenarioId: baseline
+task:
+  instruction: Set the record to the requested value.
+  input: { value: 7 }
+assertions:
+  - id: operation-called-once
+    kind: operation.count
+    operation: { packageId: resource-store, operationId: records.set }
+    outcomes: [ok]
+    comparison: { operator: equals, value: 1 }
+  - id: value-changed
+    kind: state.value
+    packageId: resource-store
+    namespace: records
+    rowId: primary
+    path: [value]
+    comparison: { operator: equals, value: 7 }

@@ -1,0 +1,46 @@
+{
+  "name": "@firedrill/sdk",
+  "version": "0.0.0",
+  "description": "Repository-level TypeScript API for running Firedrill drills locally",
+  "license": "Apache-2.0",
+  "engines": {
+    "node": ">=20.19"
+  },
+  "type": "module",
+  "sideEffects": false,
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
+  "firedrill": {
+    "layer": "adapter"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json && cp ../../LICENSE dist/LICENSE && cp ../../NOTICE dist/NOTICE",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@firedrill/compiler": "workspace:*",
+    "@firedrill/contracts": "workspace:*",
+    "@firedrill/drills": "workspace:*",
+    "@firedrill/reporters": "workspace:*",
+    "@firedrill/world-build": "workspace:*",
+    "@firedrill/world-kernel": "workspace:*"
+  },
+  "devDependencies": {
+    "typescript": "5.9.3",
+    "vitest": "3.2.7"
+  }
+}

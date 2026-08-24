@@ -1,0 +1,47 @@
+{
+  "name": "@firedrill/cli",
+  "version": "0.0.0",
+  "description": "Local command-line interface for the Firedrill framework",
+  "license": "Apache-2.0",
+  "engines": {
+    "node": ">=20.19"
+  },
+  "type": "module",
+  "sideEffects": false,
+  "bin": {
+    "firedrill": "./dist/bin.js"
+  },
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
+  "firedrill": {
+    "layer": "app"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json && tsx scripts/copy-assets.mts && cp ../../LICENSE dist/LICENSE && cp ../../NOTICE dist/NOTICE && chmod +x dist/bin.js",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@firedrill/compiler": "workspace:*",
+    "@firedrill/contracts": "workspace:*",
+    "@firedrill/sdk": "workspace:*",
+    "@firedrill/world-build": "workspace:*"
+  },
+  "devDependencies": {
+    "typescript": "5.9.3",
+    "vitest": "3.2.7"
+  }
+}

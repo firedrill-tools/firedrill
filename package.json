@@ -1,0 +1,43 @@
+{
+  "name": "firedrill",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Open-source stateful testing framework for action-taking AI agents",
+  "license": "Apache-2.0",
+  "type": "module",
+  "packageManager": "pnpm@9.15.4",
+  "engines": {
+    "node": ">=20.19",
+    "pnpm": ">=9.15 <11"
+  },
+  "scripts": {
+    "format": "biome format --write .",
+    "format:check": "biome format .",
+    "lint": "biome lint .",
+    "boundaries": "tsx tooling/check-boundaries.mts",
+    "genericity": "tsx tooling/check-genericity.mts",
+    "public:check": "tsx tooling/check-public-tree.mts",
+    "typecheck": "pnpm -r --if-present typecheck",
+    "test": "pnpm -r --if-present test",
+    "build": "pnpm -r --if-present build",
+    "schema:check": "tsx tooling/check-authoring-schemas.mts",
+    "registry:write": "tsx tooling/generate-registry.mts",
+    "registry:check": "tsx tooling/generate-registry.mts --check",
+    "skill:check": "tsx tooling/check-skill.mts",
+    "quickstart:check": "tsx tooling/check-quickstart.mts",
+    "pack:artifacts": "tsx tooling/pack-public.mts",
+    "pack:check": "tsx tooling/check-pack.mts",
+    "release:prepare": "tsx tooling/prepare-release.mts",
+    "check": "pnpm format:check && pnpm lint && pnpm boundaries && pnpm genericity && pnpm public:check && pnpm build && pnpm schema:check && pnpm registry:check && pnpm skill:check && pnpm typecheck && pnpm test && pnpm quickstart:check && pnpm pack:check"
+  },
+  "devDependencies": {
+    "@arethetypeswrong/cli": "0.18.5",
+    "@biomejs/biome": "2.5.9",
+    "@types/node": "26.2.0",
+    "publint": "0.3.24",
+    "tar": "7.5.22",
+    "tsx": "4.23.12",
+    "typescript": "5.9.3",
+    "vitest": "3.2.7"
+  }
+}

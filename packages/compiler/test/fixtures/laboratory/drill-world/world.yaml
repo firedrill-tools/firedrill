@@ -1,0 +1,17 @@
+schemaVersion: 1
+id: laboratory-processing
+seed: "99"
+actors:
+  - id: technician
+    grants:
+      - packageId: sample-tracker
+        operationId: samples.process
+      - packageId: sample-tracker
+        operationId: samples.read
+state:
+  - action: upsert
+    packageId: sample-tracker
+    namespace: samples
+    rowId: specimen-a
+    value:
+      status: queued

@@ -1,0 +1,25 @@
+schemaVersion: 1
+id: reserve-slot
+targetId: booking-agent
+actorId: scheduler
+scenarioId: busy-morning
+task:
+  instruction: Reserve the morning slot for the customer.
+assertions:
+  - id: reserved-once
+    kind: operation.count
+    operation:
+      packageId: reservations
+      operationId: slots.reserve
+    comparison:
+      operator: equals
+      value: 1
+  - id: slot-unavailable
+    kind: state.value
+    packageId: reservations
+    namespace: slots
+    rowId: morning
+    path: [available]
+    comparison:
+      operator: equals
+      value: false

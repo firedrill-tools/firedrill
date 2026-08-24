@@ -1,0 +1,7 @@
+schemaVersion: 1
+target:
+  id: facility-agent
+  kind: external
+  bindings:
+    - mcp
+  timeoutMs: 30000

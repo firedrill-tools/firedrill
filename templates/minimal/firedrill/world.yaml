@@ -1,0 +1,8 @@
+schemaVersion: 1
+id: starter-world
+title: Local starter world
+actors:
+  - id: operator
+    grants:
+      - packageId: resource-store
+        operationId: records.set

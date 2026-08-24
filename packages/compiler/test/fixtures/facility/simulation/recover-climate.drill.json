@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "id": "recover-climate",
+  "targetId": "facility-agent",
+  "actorId": "operator",
+  "scenarioId": "unresponsive-controller",
+  "task": { "instruction": "Try to set a safe greenhouse temperature." },
+  "assertions": [
+    {
+      "id": "timeout-observed",
+      "kind": "operation.count",
+      "operation": { "packageId": "climate-control", "operationId": "temperature.set" },
+      "outcomes": ["tool_error"],
+      "comparison": { "operator": "equals", "value": 1 }
+    }
+  ]
+}

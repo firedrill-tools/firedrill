@@ -1,0 +1,56 @@
+schemaVersion: 1
+module: ./reservations.ts
+manifest:
+  schemaVersion: 1
+  id: reservations
+  version: 1.0.0
+  engine: ">=0.1.0 <0.2.0"
+  capabilities:
+    - state.write
+    - event.emit
+    - state.read
+  state:
+    - namespace: slots
+      schema:
+        type: object
+        required: [available]
+        properties:
+          available:
+            type: boolean
+          reservedBy:
+            type: string
+        additionalProperties: false
+  operations:
+    - id: slots.reserve
+      inputSchema:
+        type: object
+        required: [slotId, customerId]
+        properties:
+          slotId:
+            type: string
+          customerId:
+            type: string
+        additionalProperties: false
+      outputSchema:
+        type: object
+        required: [slotId, reserved]
+        properties:
+          slotId:
+            type: string
+          reserved:
+            type: boolean
+        additionalProperties: false
+      declaredErrors: [OCCUPIED]
+      idempotency: required
+      fidelity: stateful
+  events:
+    - id: slot.reserved
+      payloadSchema:
+        type: object
+        required: [slotId, customerId]
+        properties:
+          slotId:
+            type: string
+          customerId:
+            type: string
+        additionalProperties: false

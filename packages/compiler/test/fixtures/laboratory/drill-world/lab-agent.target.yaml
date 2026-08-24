@@ -1,0 +1,8 @@
+schemaVersion: 1
+target:
+  id: lab-agent
+  kind: external
+  bindings:
+    - http
+    - mcp
+  timeoutMs: 30000

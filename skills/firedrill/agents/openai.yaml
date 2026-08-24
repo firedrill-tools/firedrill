@@ -1,0 +1,4 @@
+interface:
+  display_name: "Firedrill"
+  short_description: "Build and run agent drills from a repository"
+  default_prompt: "Use $firedrill to define a synthetic world, connect this agent, and run its first drills."

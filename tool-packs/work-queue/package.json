@@ -1,0 +1,51 @@
+{
+  "name": "@firedrill/tool-work-queue",
+  "version": "0.1.0",
+  "description": "Reference stateful work-queue Tool pack for Firedrill",
+  "keywords": [
+    "ai-agent",
+    "firedrill",
+    "testing",
+    "tool-pack",
+    "work-queue"
+  ],
+  "maintainers": [
+    {
+      "name": "Firedrill contributors"
+    }
+  ],
+  "license": "Apache-2.0",
+  "engines": {
+    "node": ">=20.19"
+  },
+  "type": "module",
+  "sideEffects": false,
+  "exports": {
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "dist",
+    "work-queue.tool.yaml",
+    "README.md"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
+  "firedrill": {
+    "layer": "tool-pack",
+    "tool": "work-queue.tool.yaml",
+    "lifecycle": "active",
+    "conformance": "work-queue-conformance"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json && cp ../../LICENSE dist/LICENSE && cp ../../NOTICE dist/NOTICE",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "node ../../packages/cli/dist/bin.js tool test work-queue --root ."
+  },
+  "dependencies": {
+    "@firedrill/tool-sdk": "workspace:*"
+  },
+  "devDependencies": {
+    "typescript": "5.9.3"
+  }
+}

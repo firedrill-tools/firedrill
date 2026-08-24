@@ -1,0 +1,39 @@
+{
+  "schemaVersion": 1,
+  "packages": [
+    {
+      "packageName": "@firedrill/tool-work-queue",
+      "packageVersion": "0.1.0",
+      "description": "Reference stateful work-queue Tool pack for Firedrill",
+      "license": "Apache-2.0",
+      "lifecycle": "active",
+      "maintainers": ["Firedrill contributors"],
+      "keywords": ["ai-agent", "firedrill", "testing", "tool-pack", "work-queue"],
+      "conformanceSuite": "work-queue-conformance",
+      "tool": {
+        "id": "work-queue",
+        "version": "0.1.0",
+        "engine": ">=0.1.0 <0.2.0",
+        "capabilities": ["event.emit", "state.read", "state.write"],
+        "state": ["items"],
+        "operations": [
+          {
+            "id": "items.claim",
+            "fidelity": "stateful"
+          },
+          {
+            "id": "items.complete",
+            "fidelity": "behavioral"
+          },
+          {
+            "id": "items.list",
+            "fidelity": "stateful"
+          }
+        ],
+        "events": ["item.completed"],
+        "faults": [],
+        "subscriptions": []
+      }
+    }
+  ]
+}

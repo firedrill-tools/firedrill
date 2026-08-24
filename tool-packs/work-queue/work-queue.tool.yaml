@@ -1,0 +1,94 @@
+schemaVersion: 1
+module: ./dist/behavior.js
+manifest:
+  schemaVersion: 1
+  id: work-queue
+  version: 0.1.0
+  engine: ">=0.1.0 <0.2.0"
+  capabilities: [state.read, state.write, event.emit]
+  state:
+    - namespace: items
+      description: Work items visible to the agent.
+      schema:
+        type: object
+        required: [title, status]
+        properties:
+          title: { type: string }
+          status: { type: string, enum: [available, claimed, completed] }
+          claimedBy: { type: string }
+          result: { type: string }
+        additionalProperties: false
+  operations:
+    - id: items.list
+      description: List work items, optionally filtered by status.
+      inputSchema:
+        type: object
+        properties:
+          status: { type: string, enum: [available, claimed, completed] }
+          limit: { type: integer, minimum: 1, maximum: 100 }
+        additionalProperties: false
+      outputSchema:
+        type: object
+        required: [items]
+        properties:
+          items:
+            type: array
+            items:
+              type: object
+              required: [id, title, status]
+              properties:
+                id: { type: string }
+                title: { type: string }
+                status: { type: string, enum: [available, claimed, completed] }
+                claimedBy: { type: string }
+                result: { type: string }
+              additionalProperties: false
+        additionalProperties: false
+      idempotency: none
+      fidelity: stateful
+    - id: items.claim
+      description: Assign one existing work item to the calling actor.
+      inputSchema:
+        type: object
+        required: [id]
+        properties:
+          id: { type: string }
+        additionalProperties: false
+      outputSchema:
+        type: object
+        required: [id, status, claimedBy]
+        properties:
+          id: { type: string }
+          status: { type: string, const: claimed }
+          claimedBy: { type: string }
+        additionalProperties: false
+      declaredErrors: [NOT_FOUND]
+      idempotency: required
+      fidelity: stateful
+    - id: items.complete
+      description: Complete one existing work item and emit its completion event.
+      inputSchema:
+        type: object
+        required: [id]
+        properties:
+          id: { type: string }
+          result: { type: string }
+        additionalProperties: false
+      outputSchema:
+        type: object
+        required: [id, status]
+        properties:
+          id: { type: string }
+          status: { type: string, const: completed }
+        additionalProperties: false
+      declaredErrors: [NOT_FOUND]
+      idempotency: required
+      fidelity: behavioral
+  events:
+    - id: item.completed
+      payloadSchema:
+        type: object
+        required: [id]
+        properties:
+          id: { type: string }
+        additionalProperties: false

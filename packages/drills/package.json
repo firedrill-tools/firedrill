@@ -1,0 +1,53 @@
+{
+  "name": "@firedrill/drills",
+  "version": "0.0.0",
+  "description": "Local drill lifecycle and target orchestration for Firedrill",
+  "license": "Apache-2.0",
+  "engines": {
+    "node": ">=20.19"
+  },
+  "type": "module",
+  "sideEffects": false,
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
+  "firedrill": {
+    "layer": "adapter",
+    "dynamicImports": [
+      "src/targets.ts"
+    ]
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json && cp ../../LICENSE dist/LICENSE && cp ../../NOTICE dist/NOTICE",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@firedrill/assertions": "workspace:*",
+    "@firedrill/contracts": "workspace:*",
+    "@firedrill/protocol-http": "workspace:*",
+    "@firedrill/protocol-mcp": "workspace:*",
+    "@firedrill/world-build": "workspace:*",
+    "@firedrill/world-ir": "workspace:*",
+    "@firedrill/world-kernel": "workspace:*",
+    "@firedrill/world-store-sqlite": "workspace:*",
+    "tsx": "4.23.12"
+  },
+  "devDependencies": {
+    "@firedrill/tool-sdk": "workspace:*",
+    "typescript": "5.9.3",
+    "vitest": "3.2.7"
+  }
+}

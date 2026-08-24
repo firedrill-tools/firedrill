@@ -1,0 +1,444 @@
+import { spawnSync } from "node:child_process";
+import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join, resolve } from "node:path";
+import { packPublicPackages } from "./public-packages.mts";
+
+const root = resolve(import.meta.dirname, "..");
+const temporary = mkdtempSync(join(tmpdir(), "firedrill-pack-"));
+
+function run(command: string, arguments_: string[], cwd: string): void {
+  const result = spawnSync(command, arguments_, { cwd, encoding: "utf8", stdio: "pipe" });
+  if (result.status !== 0) {
+    throw new Error(`${command} ${arguments_.join(" ")} failed\n${result.stdout}\n${result.stderr}`);
+  }
+}
+
+function filesUnder(directory: string): string[] {
+  const files: string[] = [];
+  const visit = (current: string) => {
+    for (const entry of readdirSync(current, { withFileTypes: true })) {
+      const path = join(current, entry.name);
+      if (entry.isDirectory()) visit(path);
+      else files.push(path);
+    }
+  };
+  visit(directory);
+  return files;
+}
+
+function assertSameTree(expectedRoot: string, actualRoot: string, label: string): void {
+  const relativeFiles = (root: string) =>
+    filesUnder(root)
+      .map((file) => file.slice(root.length + 1))
+      .sort();
+  const expectedFiles = relativeFiles(expectedRoot);
+  const actualFiles = relativeFiles(actualRoot);
+  if (JSON.stringify(actualFiles) !== JSON.stringify(expectedFiles)) {
+    throw new Error(
+      `${label} file set differs from its canonical source\nexpected: ${expectedFiles.join(", ")}\nactual: ${actualFiles.join(", ")}`,
+    );
+  }
+  for (const relativeFile of expectedFiles) {
+    const expected = readFileSync(join(expectedRoot, relativeFile));
+    const actual = readFileSync(join(actualRoot, relativeFile));
+    if (!actual.equals(expected)) {
+      throw new Error(`${label} differs from its canonical source: ${relativeFile}`);
+    }
+  }
+}
+
+function inspectArchive(archivePath: string, name: string): void {
+  const packedManifest = spawnSync("tar", ["-xOf", archivePath, "package/package.json"], {
+    encoding: "utf8",
+    stdio: "pipe",
+  });
+  if (packedManifest.status !== 0) throw new Error(packedManifest.stderr);
+  const manifestText = packedManifest.stdout;
+  if (manifestText.includes("firedrill-platform") || manifestText.includes("/Users/")) {
+    throw new Error(`${name} packed manifest leaks a private repository or local absolute path`);
+  }
+  const packageManifest = JSON.parse(manifestText) as {
+    private?: boolean;
+    license?: string;
+    sideEffects?: boolean;
+    engines?: { node?: string };
+    publishConfig?: { access?: string };
+  };
+  if (packageManifest.private === true) throw new Error(`${name} is marked private`);
+  if (packageManifest.license !== "Apache-2.0") throw new Error(`${name} has the wrong license`);
+  if (packageManifest.sideEffects !== false) throw new Error(`${name} must declare sideEffects: false`);
+  if (packageManifest.engines?.node !== ">=20.19") throw new Error(`${name} has no supported Node range`);
+  if (packageManifest.publishConfig?.access !== "public") throw new Error(`${name} is not public-scoped`);
+  if (manifestText.includes("workspace:")) throw new Error(`${name} retains a workspace dependency`);
+
+  const unpacked = join(temporary, `unpacked-${name.replaceAll("/", "-")}`);
+  mkdirSync(unpacked);
+  run("tar", ["-xzf", archivePath, "-C", unpacked], temporary);
+  const packedFiles = filesUnder(unpacked);
+  const license = packedFiles.find((file) => file.endsWith("/dist/LICENSE"));
+  if (!license || !readFileSync(license, "utf8").includes("Apache License")) {
+    throw new Error(`${name} does not contain the Apache-2.0 license text`);
+  }
+  const notice = packedFiles.find((file) => file.endsWith("/dist/NOTICE"));
+  if (!notice || !readFileSync(notice, "utf8").includes("Firedrill contributors")) {
+    throw new Error(`${name} does not contain NOTICE`);
+  }
+  for (const file of packedFiles) {
+    const text = readFileSync(file, "utf8");
+    if (text.includes("firedrill-platform") || text.includes("/Users/")) {
+      throw new Error(`${name} leaks a private repository or local path: ${file}`);
+    }
+  }
+}
+
+try {
+  const publishable = packPublicPackages({ repositoryRoot: root, outputDirectory: temporary });
+  const reproduced = packPublicPackages({
+    repositoryRoot: root,
+    outputDirectory: join(temporary, "reproduced"),
+  });
+  if (
+    JSON.stringify(
+      publishable.map(({ name, version, archive, sha256 }) => ({ name, version, archive, sha256 })),
+    ) !==
+    JSON.stringify(
+      reproduced.map(({ name, version, archive, sha256 }) => ({ name, version, archive, sha256 })),
+    )
+  ) {
+    throw new Error("public package archives are not byte-for-byte reproducible");
+  }
+  const archives = new Map(publishable.map((package_) => [package_.name, join(temporary, package_.archive)]));
+  const publint = join(root, "node_modules", ".bin", "publint");
+  const typesWrong = join(root, "node_modules", ".bin", "attw");
+  for (const package_ of publishable) {
+    const archive = join(temporary, package_.archive);
+    inspectArchive(archive, package_.name);
+    run(publint, [archive, "--strict"], root);
+    run(typesWrong, [archive, "--profile", "esm-only", "--quiet"], root);
+  }
+
+  const consumer = join(temporary, "consumer");
+  mkdirSync(consumer);
+  writeFileSync(
+    join(consumer, "package.json"),
+    `${JSON.stringify(
+      {
+        name: "firedrill-pack-consumer",
+        private: true,
+        type: "module",
+        dependencies: {
+          ...Object.fromEntries([...archives].map(([name, archivePath]) => [name, `file:${archivePath}`])),
+          "@modelcontextprotocol/client": "2.0.0",
+        },
+        pnpm: {
+          overrides: Object.fromEntries(
+            [...archives].map(([name, archivePath]) => [name, `file:${archivePath}`]),
+          ),
+        },
+      },
+      null,
+      2,
+    )}\n`,
+  );
+  writeFileSync(
+    join(consumer, "index.mjs"),
+    [
+      'import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";',
+      'import { spawnSync } from "node:child_process";',
+      'import { tmpdir } from "node:os";',
+      'import { join } from "node:path";',
+      'import { evaluateAssertions } from "@firedrill/assertions";',
+      'import { compileWorld } from "@firedrill/compiler";',
+      'import { createDrillWorld } from "@firedrill/drills";',
+      'import { startHttpWorldBinding } from "@firedrill/protocol-http";',
+      'import { mcpToolName, startMcpWorldBinding } from "@firedrill/protocol-mcp";',
+      'import { runDrills, verifyReport } from "@firedrill/sdk";',
+      'import { defineTool } from "@firedrill/tool-sdk";',
+      'import { loadWorldBuild } from "@firedrill/world-build";',
+      'import { SqliteWorldStore } from "@firedrill/world-store-sqlite";',
+      'import { WorldKernel } from "@firedrill/world-kernel";',
+      'import { Client, StreamableHTTPClientTransport } from "@modelcontextprotocol/client";',
+      'const directory = mkdtempSync(join(tmpdir(), "firedrill-packed-consumer-"));',
+      "const tool = defineTool({",
+      '  manifest: { schemaVersion: 1, id: "counter", version: "1.0.0", engine: ">=0.1.0 <0.2.0",',
+      '    capabilities: ["state.read", "state.write"], state: [{ namespace: "values", schema: { type: "object" } }], operations: [',
+      '      { id: "value.increment", inputSchema: { type: "object", required: ["amount"], properties: { amount: { type: "integer" } }, additionalProperties: false }, outputSchema: { type: "object", required: ["value"], properties: { value: { type: "integer" } }, additionalProperties: false }, idempotency: "required", fidelity: "stateful" },',
+      '      { id: "value.read", inputSchema: { type: "object", additionalProperties: false }, outputSchema: { type: "object", required: ["value"], properties: { value: { type: "integer" } }, additionalProperties: false }, idempotency: "none", fidelity: "stateful" }',
+      "    ] },",
+      "  operations: {",
+      '    "value.increment": (input, context) => { const value = Number(context.state.get("values", "main")?.value ?? 0) + Number(input.amount); context.state.put("values", "main", { value }); return { value }; },',
+      '    "value.read": (_input, context) => context.state.get("values", "main") ?? { value: 0 }',
+      "  }",
+      "});",
+      'const store = SqliteWorldStore.create({ filePath: join(directory, "world.sqlite"), worldInstanceId: "world_packed01", buildHash: "sha256:" + "a".repeat(64), packageLockHash: "sha256:" + "b".repeat(64), seed: "7", virtualTimeUs: 0, correlationId: "corr_create01", actors: [{ bindingId: "actor_packed01", actorId: "developer", grants: [{ packageId: "counter", operationId: "value.increment" }, { packageId: "counter", operationId: "value.read" }] }] });',
+      "try {",
+      '  const kernel = new WorldKernel({ store, packageLockHash: "sha256:" + "b".repeat(64), tools: [tool] });',
+      '  const changed = kernel.invoke({ schemaVersion: 1, callId: "call_packed01", correlationId: "corr_packed01", operation: { packageId: "counter", operationId: "value.increment" }, actorBindingId: "actor_packed01", arguments: { amount: 3 }, idempotencyKey: "increment-1" });',
+      '  const read = kernel.invoke({ schemaVersion: 1, callId: "call_packed02", correlationId: "corr_packed02", operation: { packageId: "counter", operationId: "value.read" }, actorBindingId: "actor_packed01", arguments: {} });',
+      '  if (changed.outcome.status !== "ok" || read.outcome.status !== "ok" || read.outcome.value.value !== 3 || store.readEvidence().length < 3) process.exitCode = 1;',
+      "} finally { store.close(); rmSync(directory, { force: true, recursive: true }); }",
+      'const repository = mkdtempSync(join(tmpdir(), "firedrill-packed-source-"));',
+      "try {",
+      '  mkdirSync(join(repository, "world"), { recursive: true });',
+      '  writeFileSync(join(repository, "firedrill.json"), JSON.stringify({ schemaVersion: 1, sourceRoot: "world", world: "world.json" }));',
+      '  writeFileSync(join(repository, "world", "world.json"), JSON.stringify({ schemaVersion: 1, id: "packed-world", seed: "8", actors: [{ id: "operator", grants: [{ packageId: "packed-tool", operationId: "records.put" }] }, { id: "reviewer", grants: [{ packageId: "packed-tool", operationId: "records.put" }] }], state: [{ action: "upsert", packageId: "packed-tool", namespace: "records", rowId: "one", value: { count: 0 } }] }));',
+      '  writeFileSync(join(repository, "world", "packed.tool.json"), JSON.stringify({ schemaVersion: 1, module: "./packed-tool.js", manifest: { schemaVersion: 1, id: "packed-tool", version: "1.0.0", engine: ">=0.1.0 <0.2.0", capabilities: ["clock.read", "clock.schedule", "event.emit", "state.read", "state.write"], state: [{ namespace: "records", schema: { type: "object", required: ["count"], properties: { count: { type: "integer" } }, additionalProperties: false } }], operations: [{ id: "records.put", inputSchema: { type: "object", required: ["count"], properties: { count: { type: "integer" } }, additionalProperties: false }, outputSchema: { type: "object", required: ["count"], properties: { count: { type: "integer" } }, additionalProperties: false }, idempotency: "required", fidelity: "stateful" }], events: [{ id: "record.changed", payloadSchema: { type: "object", required: ["count"], properties: { count: { type: "integer" } }, additionalProperties: false } }, { id: "record.check", payloadSchema: { type: "object", required: ["count"], properties: { count: { type: "integer" } }, additionalProperties: false } }] } }));',
+      '  writeFileSync(join(repository, "world", "packed-tool.js"), `export default { operations: { "records.put": (input, context) => { const value = { count: Number(input.count) }; context.state.put("records", "one", value); context.events.emit("record.changed", value); context.events.scheduleAt("record.check", value, context.clock.nowUs() + 7200000000); return value; } } };`);',
+      '  writeFileSync(join(repository, "world", "audit.tool.json"), JSON.stringify({ schemaVersion: 1, module: "./audit-tool.js", manifest: { schemaVersion: 1, id: "audit-tool", version: "1.0.0", engine: ">=0.1.0 <0.2.0", capabilities: ["state.read", "state.write"], state: [{ namespace: "checks", schema: { type: "object", required: ["count"], properties: { count: { type: "integer" } }, additionalProperties: false } }, { namespace: "entries", schema: { type: "object", required: ["count"], properties: { count: { type: "integer" } }, additionalProperties: false } }], operations: [{ id: "entries.read", inputSchema: { type: "object", additionalProperties: false }, outputSchema: { type: "object", required: ["count"], properties: { count: { type: "integer" } }, additionalProperties: false }, idempotency: "none", fidelity: "stateful" }], subscriptions: [{ id: "capture-record-change", event: { packageId: "packed-tool", eventId: "record.changed" } }, { id: "capture-record-check", event: { packageId: "packed-tool", eventId: "record.check" } }] } }));',
+      '  writeFileSync(join(repository, "world", "audit-tool.js"), `export default { operations: { "entries.read": (_input, context) => context.state.get("entries", "latest") ?? { count: 0 } }, subscriptions: { "capture-record-change": (payload, context) => context.state.put("entries", "latest", { count: Number(payload.count) }), "capture-record-check": (payload, context) => context.state.put("checks", "check-" + String(payload.count), { count: Number(payload.count) }) } };`);',
+      '  writeFileSync(join(repository, "world", "default.scenario.json"), JSON.stringify({ schemaVersion: 1, id: "default-state" }));',
+      '  writeFileSync(join(repository, "world", "consumer.target.json"), JSON.stringify({ schemaVersion: 1, target: { id: "consumer-agent", kind: "external", bindings: ["mcp"], timeoutMs: 30000 } }));',
+      '  writeFileSync(join(repository, "world", "put-record.drill.json"), JSON.stringify({ schemaVersion: 1, id: "put-record", targetId: "consumer-agent", actorId: "operator", scenarioId: "default-state", task: { instruction: "Set the record count." }, assertions: [{ id: "record-updated", kind: "state.value", packageId: "packed-tool", namespace: "records", rowId: "one", path: ["count"], comparison: { operator: "equals", value: 9 } }, { id: "audit-updated", kind: "state.value", packageId: "audit-tool", namespace: "entries", rowId: "latest", path: ["count"], comparison: { operator: "equals", value: 9 } }] }));',
+      '  writeFileSync(join(repository, "world", "timed-workload.drill.json"), JSON.stringify({ schemaVersion: 1, id: "timed-workload", targetId: "consumer-agent", scenarioId: "default-state", timeline: { horizonUs: 21600000000, maxEvents: 10, stopOnInvariantFailure: true, interactions: [{ id: "initial-update", afterStartUs: 0, actorId: "operator", task: { instruction: "Set the first value.", input: { count: 1 } } }, { id: "review-update", afterStartUs: 14400000000, actorId: "reviewer", task: { instruction: "Set the reviewed value.", input: { count: 2 } } }], invariants: [{ id: "checks-bounded", kind: "state.count", packageId: "audit-tool", namespace: "checks", comparison: { operator: "less_than_or_equal", value: 2 } }] }, assertions: [{ id: "final-value", kind: "state.value", packageId: "packed-tool", namespace: "records", rowId: "one", path: ["count"], comparison: { operator: "equals", value: 2 } }, { id: "two-checks", kind: "state.count", packageId: "audit-tool", namespace: "checks", comparison: { operator: "equals", value: 2 } }, { id: "two-agent-actions", kind: "operation.count", operation: { packageId: "packed-tool", operationId: "records.put" }, comparison: { operator: "equals", value: 2 } }] }));',
+      '  writeFileSync(join(repository, "world", "timed-failure.drill.json"), JSON.stringify({ schemaVersion: 1, id: "timed-failure", targetId: "consumer-agent", scenarioId: "default-state", timeline: { horizonUs: 21600000000, maxEvents: 10, stopOnInvariantFailure: true, interactions: [{ id: "initial-update", afterStartUs: 0, actorId: "operator", task: { instruction: "Set the first value.", input: { count: 1 } } }, { id: "blocked-follow-up", afterStartUs: 14400000000, actorId: "reviewer", task: { instruction: "This must not run after the invariant fails.", input: { count: 2 } } }], invariants: [{ id: "no-check-fired", kind: "state.count", packageId: "audit-tool", namespace: "checks", comparison: { operator: "equals", value: 0 } }] }, assertions: [{ id: "one-agent-action", kind: "operation.count", operation: { packageId: "packed-tool", operationId: "records.put" }, comparison: { operator: "equals", value: 1 } }] }));',
+      '  writeFileSync(join(repository, "world", "command.target.json"), JSON.stringify({ schemaVersion: 1, target: { id: "command-agent", kind: "command", bindings: ["http"], executable: "node", arguments: ["agent.mjs"], workingDirectory: ".", timeoutMs: 30000 } }));',
+      '  writeFileSync(join(repository, "world", "cli-put-record.drill.json"), JSON.stringify({ schemaVersion: 1, id: "cli-put-record", targetId: "command-agent", actorId: "operator", scenarioId: "default-state", task: { instruction: "Set the record count from the CLI." }, assertions: [{ id: "cli-record-updated", kind: "state.value", packageId: "packed-tool", namespace: "records", rowId: "one", path: ["count"], comparison: { operator: "equals", value: 6 } }, { id: "cli-audit-updated", kind: "state.value", packageId: "audit-tool", namespace: "entries", rowId: "latest", path: ["count"], comparison: { operator: "equals", value: 6 } }] }));',
+      '  writeFileSync(join(repository, "agent.mjs"), `let input = ""; for await (const chunk of process.stdin) input += chunk; JSON.parse(input); const response = await fetch(process.env.FIREDRILL_HTTP_URL + "/v1/operations/packed-tool/records.put", { method: "POST", headers: { authorization: "Bearer " + process.env.FIREDRILL_HTTP_TOKEN, "content-type": "application/json" }, body: JSON.stringify({ arguments: { count: 6 }, idempotencyKey: "cli-put-6" }) }); const result = await response.json(); if (!response.ok) { process.stderr.write(JSON.stringify(result)); process.exit(1); } process.stdout.write(JSON.stringify({ status: result.outcome.status }));`);',
+      '  const cli = spawnSync(join(process.cwd(), "node_modules", ".bin", "firedrill"), ["validate", "--json", "--root", repository], { encoding: "utf8" });',
+      '  if (cli.status !== 0 || JSON.parse(cli.stdout).status !== "success") throw new Error("packed CLI failed: " + cli.stdout + cli.stderr);',
+      '  const cliRun = spawnSync(join(process.cwd(), "node_modules", ".bin", "firedrill"), ["run", "cli-put-record", "--json", "--root", repository], { encoding: "utf8", timeout: 30000 });',
+      "  const cliRunOutput = cliRun.stdout ? JSON.parse(cliRun.stdout) : null;",
+      '  if (cliRun.status !== 0 || cliRunOutput?.verdict !== "passed" || !existsSync(cliRunOutput.drills?.[0]?.trials?.[0]?.htmlReport)) throw new Error("packed CLI run failed: " + cliRun.stdout + cliRun.stderr);',
+      '  const cliReportDirectory = cliRunOutput.drills?.[0]?.trials?.[0]?.reportDirectory; if (!cliReportDirectory) throw new Error("packed CLI returned no report directory");',
+      '  const cliVerify = spawnSync(join(process.cwd(), "node_modules", ".bin", "firedrill"), ["report", "verify", cliReportDirectory, "--json"], { encoding: "utf8" });',
+      '  if (cliVerify.status !== 0 || JSON.parse(cliVerify.stdout).status !== "verified") throw new Error("packed CLI report verification failed: " + cliVerify.stdout + cliVerify.stderr);',
+      '  const invalidCli = spawnSync(join(process.cwd(), "node_modules", ".bin", "firedrill"), ["--not-an-option", "--json"], { encoding: "utf8" });',
+      '  if (invalidCli.status !== 2 || invalidCli.stderr !== "" || JSON.parse(invalidCli.stdout).code !== "framework.INVALID_ARGUMENT") throw new Error("packed CLI JSON usage failure is unstable: " + invalidCli.stdout + invalidCli.stderr);',
+      "  const compiled = await compileWorld({ repositoryRoot: repository });",
+      '  if (compiled.status !== "success" || compiled.build.buildDirectory === undefined) throw new Error("packed compiler failed: " + JSON.stringify(compiled.diagnostics));',
+      "  const loaded = await loadWorldBuild(compiled.build.buildDirectory);",
+      '  if (loaded.status !== "success") throw new Error("packed loader failed: " + JSON.stringify(loaded.diagnostics));',
+      '  const local = createDrillWorld({ build: loaded.build, drillId: "put-record", filePath: join(repository, "world.sqlite"), worldInstanceId: "world_packed02", correlationId: "corr_create02" });',
+      "  try {",
+      '    const localActor = local.materialized.actors.find((actor) => actor.actorId === "operator"); if (!localActor) throw new Error("packed actor missing");',
+      '    const localClient = local.clients.get("operator"); if (!localClient) throw new Error("packed client missing");',
+      '    const result = local.kernel.invoke({ schemaVersion: 1, callId: "call_packed03", correlationId: "corr_packed03", operation: { packageId: "packed-tool", operationId: "records.put" }, actorBindingId: localActor.bindingId, arguments: { count: 9 }, idempotencyKey: "put-9" });',
+      '    if (result.outcome.status !== "ok" || local.store.readState("packed-tool", "records", "one")?.value.count !== 9 || local.store.readState("audit-tool", "entries", "latest")?.value.count !== 9) process.exitCode = 1;',
+      "    const assertions = evaluateAssertions({ assertions: local.materialized.drill.assertions, state: local.store, evidence: local.store.readEvidence() });",
+      '    if (assertions.length !== 2 || assertions.some((assertion) => assertion.status !== "passed" || assertion.actual !== 9)) process.exitCode = 1;',
+      "    const manifests = loaded.build.tools.map((item) => item.manifest);",
+      '    const http = await startHttpWorldBinding({ client: localClient, tools: manifests, token: "packed-http-token-000001" });',
+      "    try {",
+      '      const response = await fetch(http.baseUrl + "/v1/operations/packed-tool/records.put", { method: "POST", headers: { authorization: "Bearer " + http.token, "content-type": "application/json" }, body: JSON.stringify({ arguments: { count: 10 }, idempotencyKey: "put-10" }) });',
+      "      const body = await response.json();",
+      "      if (!response.ok || body.outcome?.value?.count !== 10) process.exitCode = 1;",
+      "    } finally { await http.close(); }",
+      '    const mcpBinding = await startMcpWorldBinding({ client: localClient, tools: manifests, token: "packed-mcp-token-0000001" });',
+      '    const mcp = new Client({ name: "packed-consumer", version: "1.0.0" }, { versionNegotiation: { mode: "auto" } });',
+      "    try {",
+      "      await mcp.connect(new StreamableHTTPClientTransport(new URL(mcpBinding.url), { authProvider: { token: async () => mcpBinding.token } }));",
+      '      const called = await mcp.callTool({ name: mcpToolName("packed-tool", "records.put"), arguments: { count: 11 }, _meta: { "dev.firedrill/idempotency-key": "put-11" } });',
+      '      if (called.isError || called.structuredContent?.count !== 11 || local.store.readState("packed-tool", "records", "one")?.value.count !== 11) process.exitCode = 1;',
+      "    } finally { await mcp.close(); await mcpBinding.close(); }",
+      "  } finally { local.store.close(); }",
+      "  const drill = await runDrills({",
+      '    root: repository, drill: "put-record", runDirectory: "runs", reportDirectory: "report",',
+      "    agent: async ({ binding }) => {",
+      '      const runnerMcp = new Client({ name: "packed-runner", version: "1.0.0" }, { versionNegotiation: { mode: "auto" } });',
+      "      await runnerMcp.connect(new StreamableHTTPClientTransport(new URL(binding.environment.FIREDRILL_MCP_URL), { authProvider: { token: async () => binding.environment.FIREDRILL_MCP_TOKEN } }));",
+      "      try {",
+      '        const result = await runnerMcp.callTool({ name: mcpToolName("packed-tool", "records.put"), arguments: { count: 9 }, _meta: { "dev.firedrill/idempotency-key": "runner-put-9" } });',
+      "        return { isError: result.isError ?? false, output: result.structuredContent ?? null };",
+      "      } finally { await runnerMcp.close(); }",
+      "    }",
+      "  });",
+      '  if (drill.verdict !== "passed" || drill.drills[0]?.trials.length !== 1) process.exitCode = 1;',
+      '  const trial = drill.drills[0]?.trials[0]; if (!trial) throw new Error("packed SDK returned no trial");',
+      "  if (!existsSync(trial.worldFilePath) || !existsSync(trial.report.files.html) || !existsSync(trial.report.files.json) || !existsSync(trial.report.files.junit) || trial.report.manifest.reproduction.buildHash !== loaded.build.manifest.buildHash || trial.evidence.length === 0) process.exitCode = 1;",
+      "  const verifiedReport = verifyReport({ report: trial.report.directory }); if (verifiedReport.manifest.runId !== trial.result.identity.runId) process.exitCode = 1;",
+      '  const runWorkload = () => runDrills({ root: repository, drill: "timed-workload", runDirectory: "workload-runs", reportDirectory: "workload-reports", seed: "55", agent: async ({ interactionId, task, binding }) => { const count = Number(task.input?.count); const runnerMcp = new Client({ name: "packed-workload-" + interactionId, version: "1.0.0" }, { versionNegotiation: { mode: "auto" } }); await runnerMcp.connect(new StreamableHTTPClientTransport(new URL(binding.environment.FIREDRILL_MCP_URL), { authProvider: { token: async () => binding.environment.FIREDRILL_MCP_TOKEN } })); try { const result = await runnerMcp.callTool({ name: mcpToolName("packed-tool", "records.put"), arguments: { count }, _meta: { "dev.firedrill/idempotency-key": "workload-" + interactionId } }); return { isError: result.isError ?? false, output: result.structuredContent ?? null }; } finally { await runnerMcp.close(); } } });',
+      "  const workloadFirst = await runWorkload(); const workloadSecond = await runWorkload();",
+      '  const firstWorkloadTrial = workloadFirst.drills[0]?.trials[0]; const secondWorkloadTrial = workloadSecond.drills[0]?.trials[0]; if (!firstWorkloadTrial || !secondWorkloadTrial) throw new Error("packed workload returned no trial");',
+      '  if (workloadFirst.verdict !== "passed" || firstWorkloadTrial.result.status !== "sealed" || secondWorkloadTrial.result.status !== "sealed" || firstWorkloadTrial.result.interactions.length !== 2 || firstWorkloadTrial.result.finishedAtVirtualUs !== 21600000000 || firstWorkloadTrial.result.checkpoints.filter((checkpoint) => checkpoint.kind === "after_event").length !== 2 || firstWorkloadTrial.result.trajectoryHash !== secondWorkloadTrial.result.trajectoryHash || !existsSync(firstWorkloadTrial.report.files.html)) process.exitCode = 1;',
+      '  const runFailure = () => runDrills({ root: repository, drill: "timed-failure", runDirectory: "failure-runs", reportDirectory: "failure-reports", seed: "55", agent: async ({ interactionId, task, binding }) => { const count = Number(task.input?.count); const runnerMcp = new Client({ name: "packed-failure-" + interactionId, version: "1.0.0" }, { versionNegotiation: { mode: "auto" } }); await runnerMcp.connect(new StreamableHTTPClientTransport(new URL(binding.environment.FIREDRILL_MCP_URL), { authProvider: { token: async () => binding.environment.FIREDRILL_MCP_TOKEN } })); try { const result = await runnerMcp.callTool({ name: mcpToolName("packed-tool", "records.put"), arguments: { count }, _meta: { "dev.firedrill/idempotency-key": "failure-" + interactionId } }); return { isError: result.isError ?? false }; } finally { await runnerMcp.close(); } } });',
+      '  const failureFirst = await runFailure(); const failureSecond = await runFailure(); const firstFailureTrial = failureFirst.drills[0]?.trials[0]; const secondFailureTrial = failureSecond.drills[0]?.trials[0]; if (!firstFailureTrial || !secondFailureTrial) throw new Error("packed failing workload returned no trial");',
+      '  if (failureFirst.verdict !== "failed" || firstFailureTrial.result.status !== "sealed" || secondFailureTrial.result.status !== "sealed" || firstFailureTrial.result.interactions.length !== 1 || firstFailureTrial.result.finishedAtVirtualUs !== 7200000000 || !firstFailureTrial.result.checkpoints.some((checkpoint) => checkpoint.kind === "after_event" && checkpoint.verdict === "failed") || firstFailureTrial.result.trajectoryHash !== secondFailureTrial.result.trajectoryHash || !existsSync(firstFailureTrial.report.files.html)) process.exitCode = 1;',
+      "} finally { rmSync(repository, { force: true, recursive: true }); }",
+      'if (process.exitCode !== 1) process.stdout.write("packed consumer passed\\n");',
+    ].join("\n"),
+  );
+  run("pnpm", ["install", "--offline"], consumer);
+
+  const installedCli = join(consumer, "node_modules", ".bin", "firedrill");
+  const initializedTemplate = join(temporary, "initialized-template");
+  mkdirSync(initializedTemplate);
+  run(installedCli, ["init", "--path", "template", "--json"], initializedTemplate);
+  run(installedCli, ["validate", "--json"], initializedTemplate);
+  run(installedCli, ["run", "changes-resource", "--json"], initializedTemplate);
+  run(installedCli, ["tool", "inspect", "resource-store", "--json"], initializedTemplate);
+  run(installedCli, ["tool", "validate", "resource-store", "--json"], initializedTemplate);
+  run(installedCli, ["tool", "test", "resource-store", "--json"], initializedTemplate);
+  run(
+    installedCli,
+    ["tool", "contribute", "resource-store", "--accept-apache-2.0", "--json"],
+    initializedTemplate,
+  );
+
+  const initializedSkill = join(temporary, "initialized-skill");
+  mkdirSync(initializedSkill);
+  run(installedCli, ["init", "--path", "coding-agent", "--json"], initializedSkill);
+  assertSameTree(
+    join(root, "skills", "firedrill"),
+    join(initializedSkill, ".agents", "skills", "firedrill"),
+    "installed coding-agent skill",
+  );
+
+  const pythonAgentProject = join(temporary, "python-agent-detection");
+  mkdirSync(pythonAgentProject);
+  writeFileSync(
+    join(pythonAgentProject, "pyproject.toml"),
+    '[project]\nname = "sample-agent"\nversion = "0.0.0"\ndependencies = ["anthropic==1.0.0", "mcp>=1.0"]\n',
+  );
+  writeFileSync(
+    join(pythonAgentProject, "agent.py"),
+    "from anthropic import Anthropic\nfrom mcp import ClientSession\n",
+  );
+  const pythonInspection = spawnSync(installedCli, ["init", "--json"], {
+    cwd: pythonAgentProject,
+    encoding: "utf8",
+    stdio: "pipe",
+  });
+  const pythonInspectionResult = pythonInspection.stdout ? JSON.parse(pythonInspection.stdout) : null;
+  if (
+    pythonInspection.status !== 0 ||
+    !pythonInspectionResult?.detection?.languages?.includes("python") ||
+    !pythonInspectionResult?.detection?.agentLibraries?.includes("anthropic") ||
+    !pythonInspectionResult?.detection?.agentLibraries?.includes("mcp") ||
+    !pythonInspectionResult?.detection?.candidateAgentFiles?.includes("agent.py")
+  ) {
+    throw new Error(
+      `packed CLI failed to discover a Python agent repository\n${pythonInspection.stdout}\n${pythonInspection.stderr}`,
+    );
+  }
+
+  // Prove an installed Tool pack works in a minimal consumer. Installing every
+  // framework package directly would accidentally hoist implementation
+  // dependencies and hide a non-portable compiled artifact.
+  const installedPackProject = join(temporary, "installed-pack-consumer");
+  mkdirSync(installedPackProject);
+  writeFileSync(
+    join(installedPackProject, "package.json"),
+    `${JSON.stringify(
+      {
+        name: "firedrill-installed-pack-consumer",
+        private: true,
+        type: "module",
+        dependencies: {
+          "@firedrill/cli": `file:${archives.get("@firedrill/cli")}`,
+          "@firedrill/tool-work-queue": `file:${archives.get("@firedrill/tool-work-queue")}`,
+        },
+        pnpm: {
+          overrides: Object.fromEntries(
+            [...archives].map(([name, archivePath]) => [name, `file:${archivePath}`]),
+          ),
+        },
+      },
+      null,
+      2,
+    )}\n`,
+  );
+  run("pnpm", ["install", "--offline"], installedPackProject);
+  const installedPackCli = join(installedPackProject, "node_modules", ".bin", "firedrill");
+  mkdirSync(join(installedPackProject, "world"), { recursive: true });
+  writeFileSync(
+    join(installedPackProject, "firedrill.json"),
+    `${JSON.stringify({ schemaVersion: 1, sourceRoot: "world", world: "world.json", toolPackages: ["@firedrill/tool-work-queue"] })}\n`,
+  );
+  writeFileSync(
+    join(installedPackProject, "world", "world.json"),
+    `${JSON.stringify({
+      schemaVersion: 1,
+      id: "installed-pack-world",
+      actors: [
+        {
+          id: "worker",
+          grants: [
+            { packageId: "work-queue", operationId: "items.claim" },
+            { packageId: "work-queue", operationId: "items.complete" },
+          ],
+        },
+      ],
+    })}\n`,
+  );
+  writeFileSync(
+    join(installedPackProject, "world", "baseline.scenario.json"),
+    `${JSON.stringify({ schemaVersion: 1, id: "baseline", state: [{ action: "upsert", packageId: "work-queue", namespace: "items", rowId: "item-1", value: { title: "Prove installed behavior", status: "available" } }] })}\n`,
+  );
+  writeFileSync(
+    join(installedPackProject, "world", "agent.target.json"),
+    `${JSON.stringify({ schemaVersion: 1, target: { id: "installed-pack-agent", kind: "command", bindings: ["http"], executable: "node", arguments: ["agent.mjs"], workingDirectory: ".", timeoutMs: 5000 } })}\n`,
+  );
+  writeFileSync(
+    join(installedPackProject, "world", "complete.drill.json"),
+    `${JSON.stringify({
+      schemaVersion: 1,
+      id: "complete-installed-item",
+      targetId: "installed-pack-agent",
+      actorId: "worker",
+      scenarioId: "baseline",
+      task: { instruction: "Claim and complete item-1." },
+      assertions: [
+        {
+          id: "item-completed",
+          kind: "state.value",
+          packageId: "work-queue",
+          namespace: "items",
+          rowId: "item-1",
+          path: ["status"],
+          comparison: { operator: "equals", value: "completed" },
+        },
+        {
+          id: "completion-emitted",
+          kind: "event.count",
+          event: { packageId: "work-queue", eventId: "item.completed" },
+          phase: "emitted",
+          comparison: { operator: "equals", value: 1 },
+        },
+      ],
+    })}\n`,
+  );
+  writeFileSync(
+    join(installedPackProject, "agent.mjs"),
+    `let input = ""; for await (const chunk of process.stdin) input += chunk; JSON.parse(input); const call = async (operation, arguments_, idempotencyKey) => { const response = await fetch(process.env.FIREDRILL_HTTP_URL + "/v1/operations/work-queue/" + operation, { method: "POST", headers: { authorization: "Bearer " + process.env.FIREDRILL_HTTP_TOKEN, "content-type": "application/json" }, body: JSON.stringify({ arguments: arguments_, idempotencyKey }) }); const body = await response.json(); if (!response.ok || body.outcome?.status !== "ok") throw new Error(JSON.stringify(body)); }; await call("items.claim", { id: "item-1" }, "claim-item-1"); await call("items.complete", { id: "item-1", result: "done" }, "complete-item-1"); process.stdout.write(JSON.stringify({ completed: true }));\n`,
+  );
+  const packInspect = spawnSync(installedPackCli, ["tool", "inspect", "work-queue", "--json"], {
+    cwd: installedPackProject,
+    encoding: "utf8",
+    stdio: "pipe",
+  });
+  const packInspection = packInspect.stdout ? JSON.parse(packInspect.stdout) : null;
+  if (
+    packInspect.status !== 0 ||
+    packInspection?.tool?.origin?.kind !== "npm" ||
+    packInspection?.tool?.origin?.packageName !== "@firedrill/tool-work-queue"
+  ) {
+    throw new Error(`installed Tool pack inspection failed\n${packInspect.stdout}\n${packInspect.stderr}`);
+  }
+  run(installedPackCli, ["validate", "--json"], installedPackProject);
+  run(installedPackCli, ["tool", "validate", "work-queue", "--json"], installedPackProject);
+  run(installedPackCli, ["run", "complete-installed-item", "--json"], installedPackProject);
+  const refusedContribution = spawnSync(
+    installedPackCli,
+    ["tool", "contribute", "work-queue", "--accept-apache-2.0", "--json"],
+    { cwd: installedPackProject, encoding: "utf8", stdio: "pipe" },
+  );
+  const refusedContributionResult = refusedContribution.stdout
+    ? JSON.parse(refusedContribution.stdout)
+    : null;
+  if (
+    refusedContribution.status !== 2 ||
+    refusedContributionResult?.code !== "framework.TOOL_CONTRIBUTION_SOURCE_REQUIRED"
+  ) {
+    throw new Error(
+      `installed Tool pack contribution was not refused safely\n${refusedContribution.stdout}\n${refusedContribution.stderr}`,
+    );
+  }
+
+  run("node", ["index.mjs"], consumer);
+  process.stdout.write(`packed consumer check passed for ${publishable.length} package(s)\n`);
+} finally {
+  if (temporary.startsWith(`${tmpdir()}/firedrill-pack-`)) {
+    rmSync(temporary, { force: true, recursive: true });
+  }
+}

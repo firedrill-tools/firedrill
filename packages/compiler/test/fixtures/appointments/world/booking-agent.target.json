@@ -1,0 +1,9 @@
+{
+  "schemaVersion": 1,
+  "target": {
+    "id": "booking-agent",
+    "kind": "external",
+    "bindings": ["http"],
+    "timeoutMs": 30000
+  }
+}

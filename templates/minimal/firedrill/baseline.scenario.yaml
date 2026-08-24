@@ -1,0 +1,8 @@
+schemaVersion: 1
+id: baseline
+state:
+  - action: upsert
+    packageId: resource-store
+    namespace: records
+    rowId: primary
+    value: { value: 0 }

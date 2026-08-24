@@ -1,0 +1,18 @@
+schemaVersion: 1
+id: appointment-scheduler
+title: Appointment scheduler
+seed: "41"
+actors:
+  - id: scheduler
+    attributes:
+      region: west
+    grants:
+      - packageId: reservations
+        operationId: slots.reserve
+state:
+  - action: upsert
+    packageId: reservations
+    namespace: slots
+    rowId: morning
+    value:
+      available: true

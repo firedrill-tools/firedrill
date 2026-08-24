@@ -1,0 +1,22 @@
+schemaVersion: 1
+id: set-record
+title: Set the requested value once
+targetId: local-agent
+actorId: agent
+scenarioId: empty
+task:
+  instruction: Set the record to the requested value.
+  input: { value: 7 }
+assertions:
+  - id: record-set-once
+    kind: operation.count
+    operation: { packageId: workspace, operationId: records.set }
+    outcomes: [ok]
+    comparison: { operator: equals, value: 1 }
+  - id: record-has-requested-value
+    kind: state.value
+    packageId: workspace
+    namespace: records
+    rowId: primary
+    path: [value]
+    comparison: { operator: equals, value: 7 }

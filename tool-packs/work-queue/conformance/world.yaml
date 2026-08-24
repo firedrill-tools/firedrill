@@ -1,0 +1,8 @@
+schemaVersion: 1
+id: work-queue-conformance-world
+actors:
+  - id: worker
+    grants:
+      - { packageId: work-queue, operationId: items.list }
+      - { packageId: work-queue, operationId: items.claim }
+      - { packageId: work-queue, operationId: items.complete }

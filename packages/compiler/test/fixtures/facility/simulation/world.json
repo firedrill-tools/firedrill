@@ -1,0 +1,24 @@
+{
+  "schemaVersion": 1,
+  "id": "facility-automation",
+  "seed": "72",
+  "virtualTimeUs": 500,
+  "actors": [
+    {
+      "id": "operator",
+      "grants": [
+        { "packageId": "climate-control", "operationId": "temperature.set" },
+        { "packageId": "climate-control", "operationId": "temperature.read" }
+      ]
+    }
+  ],
+  "state": [
+    {
+      "action": "upsert",
+      "packageId": "climate-control",
+      "namespace": "rooms",
+      "rowId": "greenhouse",
+      "value": { "celsius": 21 }
+    }
+  ]
+}

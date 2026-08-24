@@ -1,0 +1,74 @@
+{
+  "schemaVersion": 1,
+  "module": "./climate.ts",
+  "manifest": {
+    "schemaVersion": 1,
+    "id": "climate-control",
+    "version": "2.1.0",
+    "engine": ">=0.1.0 <0.2.0",
+    "capabilities": ["state.read", "state.write"],
+    "state": [
+      {
+        "namespace": "rooms",
+        "schema": {
+          "type": "object",
+          "required": ["celsius"],
+          "properties": { "celsius": { "type": "number" } },
+          "additionalProperties": false
+        }
+      }
+    ],
+    "operations": [
+      {
+        "id": "temperature.read",
+        "inputSchema": {
+          "type": "object",
+          "required": ["roomId"],
+          "properties": { "roomId": { "type": "string" } },
+          "additionalProperties": false
+        },
+        "outputSchema": {
+          "type": "object",
+          "required": ["celsius"],
+          "properties": { "celsius": { "type": "number" } },
+          "additionalProperties": false
+        },
+        "idempotency": "none",
+        "fidelity": "stateful"
+      },
+      {
+        "id": "temperature.set",
+        "inputSchema": {
+          "type": "object",
+          "required": ["roomId", "celsius"],
+          "properties": {
+            "roomId": { "type": "string" },
+            "celsius": { "type": "number" }
+          },
+          "additionalProperties": false
+        },
+        "outputSchema": {
+          "type": "object",
+          "required": ["celsius"],
+          "properties": { "celsius": { "type": "number" } },
+          "additionalProperties": false
+        },
+        "declaredErrors": ["CONTROLLER_TIMEOUT"],
+        "idempotency": "optional",
+        "fidelity": "behavioral"
+      }
+    ],
+    "faults": [
+      {
+        "id": "controller-timeout",
+        "appliesTo": ["temperature.set"],
+        "timing": "before",
+        "error": {
+          "code": "CONTROLLER_TIMEOUT",
+          "message": "the controller did not respond",
+          "retryable": true
+        }
+      }
+    ]
+  }
+}

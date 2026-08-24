@@ -1,0 +1,5 @@
+{
+  "schemaVersion": 1,
+  "id": "unresponsive-controller",
+  "faults": [{ "packageId": "climate-control", "faultId": "controller-timeout" }]
+}

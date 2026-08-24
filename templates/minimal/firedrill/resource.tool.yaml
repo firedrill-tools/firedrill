@@ -1,0 +1,32 @@
+schemaVersion: 1
+module: ./resource.mjs
+manifest:
+  schemaVersion: 1
+  id: resource-store
+  version: 1.0.0
+  engine: ">=0.1.0 <0.2.0"
+  capabilities: [state.read, state.write]
+  state:
+    - namespace: records
+      schema:
+        type: object
+        required: [value]
+        properties:
+          value: { type: integer }
+        additionalProperties: false
+  operations:
+    - id: records.set
+      inputSchema:
+        type: object
+        required: [value]
+        properties:
+          value: { type: integer }
+        additionalProperties: false
+      outputSchema:
+        type: object
+        required: [value]
+        properties:
+          value: { type: integer }
+        additionalProperties: false
+      idempotency: required
+      fidelity: stateful

@@ -1,0 +1,42 @@
+{
+  "name": "@firedrill/reporters",
+  "version": "0.0.0",
+  "description": "Local terminal, JSON, JUnit, and self-contained HTML reports for Firedrill",
+  "license": "Apache-2.0",
+  "engines": {
+    "node": ">=20.19"
+  },
+  "type": "module",
+  "sideEffects": false,
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
+  "firedrill": {
+    "layer": "adapter"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json && cp ../../LICENSE dist/LICENSE && cp ../../NOTICE dist/NOTICE",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@firedrill/contracts": "workspace:*",
+    "@firedrill/world-ir": "workspace:*"
+  },
+  "devDependencies": {
+    "typescript": "5.9.3",
+    "vitest": "3.2.7"
+  }
+}

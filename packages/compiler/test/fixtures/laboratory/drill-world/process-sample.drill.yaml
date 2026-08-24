@@ -1,0 +1,17 @@
+schemaVersion: 1
+id: process-sample
+targetId: lab-agent
+actorId: technician
+scenarioId: queued-sample
+task:
+  instruction: Process the queued specimen.
+assertions:
+  - id: specimen-processed
+    kind: state.value
+    packageId: sample-tracker
+    namespace: samples
+    rowId: specimen-a
+    path: [status]
+    comparison:
+      operator: equals
+      value: processed

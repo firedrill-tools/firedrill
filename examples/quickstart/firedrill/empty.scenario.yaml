@@ -1,0 +1,8 @@
+schemaVersion: 1
+id: empty
+state:
+  - action: upsert
+    packageId: workspace
+    namespace: records
+    rowId: primary
+    value: { value: 0 }
