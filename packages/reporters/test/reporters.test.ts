@@ -213,7 +213,8 @@ describe("local evidence reporters", () => {
     expect(html).not.toContain("<script>alert('unsafe')</script>");
     expect(html).not.toContain("built-in-secret-1234");
     expect(html).not.toContain("declared-secret-5678");
-    expect(html).toContain(`--build-hash ${HASH}`);
+    expect(html).toContain(`firedrill run generic-agent-behavior --seed 41 --trials 1`);
+    expect(html).not.toContain(`--build-hash ${HASH}`);
     expect(renderJsonReport(input)).not.toContain("built-in-secret-1234");
     expect(renderJunitReport(input)).not.toContain("declared-secret-5678");
     expect(html).not.toContain("https://");
@@ -255,6 +256,43 @@ describe("local evidence reporters", () => {
     expect(terminal).toContain("actual   1");
   });
 
+  it("emits CI-safe JUnit with durations, error counts, stderr, and valid XML characters", () => {
+    const entries = evidence();
+    const original = run(entries);
+    if (original.status !== "sealed") throw new Error("fixture must be sealed");
+    const interactions = original.interactions.map((interaction) => ({
+      ...interaction,
+      finishedAtVirtualUs: 1_500_500,
+      targetResult: {
+        ...interaction.targetResult,
+        attachments: [
+          {
+            kind: "process.stderr",
+            text: "\u001b[31mwarning\u0000 from target",
+            truncated: false,
+          },
+        ],
+      },
+    }));
+    const result = RunResultSchema.parse({
+      ...original,
+      finishedAtVirtualUs: 1_500_500,
+      interactions,
+      trajectoryHash: trajectoryHash({ interactions, checkpoints: original.checkpoints, evidence: entries }),
+    });
+
+    const junit = renderJunitReport({ result, evidence: entries });
+    expect(junit).toContain('errors="0"');
+    expect(junit).toContain('time="1.5"');
+    expect(junit).toContain("<system-err>�[31mwarning� from target</system-err>");
+    expect(
+      [...junit].some((character) => {
+        const point = character.codePointAt(0) ?? 0;
+        return point < 0x20 && point !== 0x09 && point !== 0x0a && point !== 0x0d;
+      }),
+    ).toBe(false);
+  });
+
   it("writes an atomic, hash-addressed bundle and refuses replacement", () => {
     const root = temporaryDirectory();
     const entries = evidence();
@@ -273,7 +311,7 @@ describe("local evidence reporters", () => {
     ]);
     expect(written.manifest.artifacts).toHaveLength(6);
     expect(written.manifest.redaction).toMatchObject({
-      policy: "safe_fields_v1",
+      policy: "safe_fields_v2",
       applied: true,
     });
     expect(written.manifest.redaction.replacements).toBeGreaterThan(0);
@@ -284,6 +322,9 @@ describe("local evidence reporters", () => {
       seed: "41",
     });
     expect(written.manifest.trajectoryHash).toBe(input.result.trajectoryHash);
+    expect(written.manifest.projectedRunResultHash).toBe(
+      semanticHash(JSON.parse(readFileSync(written.files.run, "utf8"))),
+    );
     expect(JSON.parse(readFileSync(written.files.manifest, "utf8"))).toEqual(written.manifest);
     for (const file of readdirSync(destination)) {
       const body = readFileSync(join(destination, file), "utf8");
@@ -295,6 +336,47 @@ describe("local evidence reporters", () => {
       result: { identity: { drillId: "generic-agent-behavior" } },
     });
     expect(() => writeLocalReport(input, destination)).toThrow(/refusing to overwrite/);
+  });
+
+  it("redacts payload secrets without rewriting structural verdicts or statuses", () => {
+    const root = temporaryDirectory();
+    const entries = evidence();
+    const original = run(entries);
+    if (original.status !== "sealed") throw new Error("fixture must be sealed");
+    const interactions = original.interactions.map((interaction) => ({
+      ...interaction,
+      targetResult: {
+        ...interaction.targetResult,
+        output: { sessionToken: "passed", forwarded: "long-secret-value" },
+      },
+    }));
+    const secretEntries = entries.map((entry, index) =>
+      index === 0 && entry.kind === "lifecycle"
+        ? { ...entry, details: { ...entry.details, sessionToken: "passed", apiToken: "long-secret-value" } }
+        : entry,
+    );
+    const result = RunResultSchema.parse({
+      ...original,
+      interactions,
+      evidenceHash: semanticHash(secretEntries),
+      trajectoryHash: trajectoryHash({
+        interactions,
+        checkpoints: original.checkpoints,
+        evidence: secretEntries,
+      }),
+    });
+    const destination = join(root, "structural-values");
+    const written = writeLocalReport({ result, evidence: secretEntries }, destination);
+    const projected = JSON.parse(readFileSync(written.files.run, "utf8")) as {
+      verdict: string;
+      interactions: Array<{ targetResult: { output: Record<string, string> } }>;
+    };
+    expect(projected.verdict).toBe("passed");
+    expect(projected.interactions[0]?.targetResult.output).toEqual({
+      sessionToken: "[REDACTED]",
+      forwarded: "[REDACTED]",
+    });
+    expect(() => verifyLocalReport(destination)).not.toThrow();
   });
 
   it("rejects tampered artifacts, extra files, and symbolic links", () => {

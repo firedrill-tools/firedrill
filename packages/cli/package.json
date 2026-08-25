@@ -30,18 +30,37 @@
     "layer": "app"
   },
   "scripts": {
-    "build": "tsc -p tsconfig.build.json && tsx scripts/copy-assets.mts && cp ../../LICENSE dist/LICENSE && cp ../../NOTICE dist/NOTICE && chmod +x dist/bin.js",
+    "build": "tsx ../../tooling/package-files.mts clean && tsc -p tsconfig.build.json && tsx scripts/copy-assets.mts && tsx ../../tooling/package-files.mts finalize --bin dist/bin.js",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "vitest run"
   },
   "dependencies": {
     "@firedrill/compiler": "workspace:*",
     "@firedrill/contracts": "workspace:*",
+    "@firedrill/protocol-cli": "workspace:*",
     "@firedrill/sdk": "workspace:*",
     "@firedrill/world-build": "workspace:*"
   },
+  "peerDependencies": {
+    "@firedrill/agent": "workspace:*"
+  },
+  "peerDependenciesMeta": {
+    "@firedrill/agent": {
+      "optional": true
+    }
+  },
   "devDependencies": {
+    "@firedrill/agent": "workspace:*",
     "typescript": "5.9.3",
     "vitest": "3.2.7"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/firedrill-tools/firedrill.git",
+    "directory": "packages/cli"
+  },
+  "homepage": "https://firedrill.tools",
+  "bugs": {
+    "url": "https://github.com/firedrill-tools/firedrill/issues"
   }
 }

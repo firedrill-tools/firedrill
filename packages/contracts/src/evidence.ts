@@ -2,6 +2,7 @@ import { z } from "zod";
 import { AssertionResultSchema } from "./assertions.js";
 import {
   ActorBindingIdSchema,
+  ActorIdSchema,
   CorrelationIdSchema,
   EventRefSchema,
   OperationRefSchema,
@@ -15,7 +16,11 @@ import {
   WorldInstanceIdSchema,
 } from "./identifiers.js";
 import { JsonObjectSchema } from "./json.js";
-import { OperationInvocationSchema, OperationOutcomeSchema } from "./operation.js";
+import {
+  OperationIdempotencyDispositionSchema,
+  OperationInvocationSchema,
+  OperationOutcomeSchema,
+} from "./operation.js";
 
 const EvidenceBaseSchema = z.object({
   schemaVersion: z.literal(1),
@@ -31,8 +36,9 @@ const EvidenceBaseSchema = z.object({
 export const OperationEvidenceSchema = EvidenceBaseSchema.extend({
   kind: z.literal("operation"),
   invocation: OperationInvocationSchema,
+  actorId: ActorIdSchema.optional(),
   outcome: OperationOutcomeSchema,
-  idempotency: z.enum(["not_requested", "recorded", "replayed", "not_recorded"]),
+  idempotency: OperationIdempotencyDispositionSchema,
   replayedFromSequence: z.number().int().positive().safe().optional(),
 }).passthrough();
 

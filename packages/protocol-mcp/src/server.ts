@@ -1,8 +1,8 @@
 import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
 import type { IncomingMessage, Server, ServerResponse } from "node:http";
 import { createServer } from "node:http";
-import type { JsonObject, OperationContract, ToolPackageManifest } from "@firedrill/contracts";
-import { JsonObjectSchema } from "@firedrill/contracts";
+import type { JsonObject, JsonValue, OperationContract, ToolPackageManifest } from "@firedrill/contracts";
+import { JsonObjectSchema, JsonValueSchema } from "@firedrill/contracts";
 import type { BoundWorldClient } from "@firedrill/world-kernel";
 import {
   localhostHostValidation,
@@ -98,7 +98,7 @@ function callOptions(
   return {};
 }
 
-function toolResult(value: JsonObject): CallToolResult {
+function toolResult(value: JsonValue): CallToolResult {
   return {
     content: [{ type: "text", text: JSON.stringify(value) }],
     structuredContent: value,
@@ -125,6 +125,7 @@ function buildServer(
       {
         ...(item.operation.description === undefined ? {} : { description: item.operation.description }),
         inputSchema: fromJsonSchema(item.operation.inputSchema),
+        outputSchema: fromJsonSchema(item.operation.outputSchema),
       },
       (argumentsInput, context) => {
         try {
@@ -135,7 +136,7 @@ function buildServer(
             callOptions(item.operation, context, bindingScope),
           );
           if (result.outcome.status === "ok") {
-            return toolResult(JsonObjectSchema.parse(result.outcome.value));
+            return toolResult(JsonValueSchema.parse(result.outcome.value));
           }
           return toolError(
             JsonObjectSchema.parse({
@@ -315,8 +316,14 @@ export async function startMcpWorldBinding(options: StartMcpWorldBindingOptions)
     async close() {
       if (closed) return;
       closed = true;
-      await closeServer(server);
-      await handler.close();
+      try {
+        // Closing the MCP handler terminates active Streamable HTTP/SSE
+        // sessions. The TCP server can then drain instead of waiting forever
+        // on a client-held stream.
+        await handler.close();
+      } finally {
+        await closeServer(server);
+      }
     },
   };
 }

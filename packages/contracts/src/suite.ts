@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { StableIdSchema } from "./identifiers.js";
+import { compareStableStrings } from "./json.js";
 
 export const DrillShardSchema = z
   .object({
@@ -40,7 +41,7 @@ export const DrillSuiteDefinitionSchema = z
             message: `duplicate ${key === "drills" ? "drill" : "tag"} ${value}`,
           });
         }
-        if (index > 0 && (values[index - 1] ?? "").localeCompare(value) >= 0) {
+        if (index > 0 && compareStableStrings(values[index - 1] ?? "", value) >= 0) {
           context.addIssue({
             code: "custom",
             path: [key, index],

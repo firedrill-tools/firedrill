@@ -21,7 +21,7 @@ export const ReportArtifactSchema = z
 
 export const ReportRedactionSchema = z
   .object({
-    policy: z.literal("safe_fields_v1"),
+    policy: z.literal("safe_fields_v2"),
     applied: z.boolean(),
     replacements: z.number().int().nonnegative().safe(),
   })
@@ -61,10 +61,15 @@ export const EvidenceBundleManifestSchema = z
     schemaVersion: z.literal(1),
     runId: RunIdSchema,
     complete: z.boolean(),
+    /** Hashes of the unredacted runtime values. They link the report to the sealed run. */
     runResultHash: Sha256Schema,
     evidenceHash: Sha256Schema,
     stateHash: Sha256Schema.optional(),
     trajectoryHash: Sha256Schema.optional(),
+    /** Hashes of the redacted values actually carried by this portable bundle. */
+    projectedRunResultHash: Sha256Schema,
+    projectedEvidenceHash: Sha256Schema,
+    projectedTrajectoryHash: Sha256Schema.optional(),
     redaction: ReportRedactionSchema,
     reproduction: ReproductionDescriptorSchema,
     artifacts: z.array(ReportArtifactSchema).min(1),
@@ -81,6 +86,13 @@ export const EvidenceBundleManifestSchema = z
         });
       }
       paths.add(artifact.path);
+    }
+    if ((manifest.trajectoryHash === undefined) !== (manifest.projectedTrajectoryHash === undefined)) {
+      context.addIssue({
+        code: "custom",
+        path: ["projectedTrajectoryHash"],
+        message: "source and projected trajectory hashes must be present together",
+      });
     }
   });
 

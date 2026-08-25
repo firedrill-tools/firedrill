@@ -1,6 +1,6 @@
 ---
 name: firedrill
-description: Set up, author, validate, run, reproduce, or debug Firedrill synthetic worlds and agent drills in a software repository. Use when an agent must inspect an AI agent's real tool boundary, model deterministic Tool behavior and state, connect the existing agent through direct/HTTP/MCP/command/module seams, write *.drill.yaml tests or suites, iterate on Firedrill diagnostics, and produce local evidence reports.
+description: Set up, author, validate, run, reproduce, or debug Firedrill synthetic worlds and agent drills in a software repository. Use when an agent must inspect an AI agent's real tool boundary, model deterministic Tool behavior and state, connect the existing agent through direct/HTTP/MCP/CLI/command/module seams, write *.drill.yaml tests or suites, iterate on Firedrill diagnostics, and produce local evidence reports.
 ---
 
 # Build and run agent drills
@@ -38,10 +38,10 @@ Do not assume an agent framework, protocol, vendor, or domain. A Tool represents
 
 Select the target that matches how the agent already runs:
 
-- `command`: start an existing CLI, worker, or app process; use HTTP or MCP bindings.
-- `module`: call a repository module; use direct, HTTP, or MCP bindings.
-- `http`: invoke an already-running loopback endpoint; use HTTP or MCP world bindings.
-- `external`: let the caller's test code invoke the agent through `runDrills()`; use direct, HTTP, or MCP bindings.
+- `command`: start an existing CLI, worker, or app process; use HTTP, MCP, or CLI bindings.
+- `module`: call a repository module; use direct, HTTP, MCP, or CLI bindings.
+- `http`: invoke an already-running loopback endpoint; use HTTP, MCP, or CLI world bindings.
+- `external`: let the caller's test code invoke the agent through `runDrills()`; use direct, HTTP, MCP, or CLI bindings.
 
 Read [references/bindings.md](references/bindings.md) before wiring the seam. Never give an out-of-process target a direct binding. Never point a local HTTP target outside loopback unless the user explicitly authorizes the credential exposure.
 
@@ -96,10 +96,10 @@ Run the representative drill normally. Temporarily make one deterministic assert
 
 Finish with `firedrill format --check --json` and `firedrill validate --json` again so temporary failure edits or later source additions cannot leave the repository non-canonical or invalid.
 
-Use the report's exact build hash and seed to reproduce world inputs:
+Restore repository source that compiles to the report's displayed build hash, then use its recorded seed to reproduce world inputs:
 
 ```sh
-firedrill run <drill-id> --build-hash <sha256:...> --seed <seed> --trials 1
+firedrill run <drill-id> --seed <seed> --trials 1
 ```
 
 Use `firedrill compare <baseline-report> <candidate-report>` only after checking its compatibility grade. Never call a descriptive-only or incompatible delta a regression.

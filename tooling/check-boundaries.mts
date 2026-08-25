@@ -48,13 +48,33 @@ for (const group of roots) {
 
 const byName = new Map(packages.map((item) => [item.name, item]));
 const violations: string[] = [];
-const forbiddenCoreImports = [
+const forbiddenOssImports = [
+  "@anthropic-ai/sdk",
   "@firedrill/platform",
   "@google-cloud/",
   "@workos-inc/",
   "firebase-admin",
   "@octokit/app",
 ];
+const claudeAgentSdk = "@anthropic-ai/claude-agent-sdk";
+const claudeAgentOwner = "@firedrill/agent";
+
+function isForbiddenOssImport(specifier: string): boolean {
+  return (
+    specifier.includes("firedrill-platform") ||
+    forbiddenOssImports.some((prefix) => specifier.startsWith(prefix))
+  );
+}
+
+for (const canary of ["@firedrill/platform", "@firedrill/platform/control", "firedrill-platform"]) {
+  if (!isForbiddenOssImport(canary)) throw new Error(`hosted import canary was not rejected: ${canary}`);
+}
+if (!isForbiddenOssImport("@anthropic-ai/sdk")) {
+  throw new Error("direct Anthropic client SDK canary was not rejected");
+}
+if (isForbiddenOssImport(claudeAgentSdk)) {
+  throw new Error("Claude Agent SDK must remain available to its dedicated package");
+}
 const allowedWorkspaceLayers: Record<Layer, ReadonlySet<Layer>> = {
   core: new Set(["core"]),
   adapter: new Set(["core", "adapter"]),
@@ -132,8 +152,11 @@ for (const owner of packages) {
     ...((owner.manifest.devDependencies as Record<string, string> | undefined) ?? {}),
   };
   for (const dependency of Object.keys(allDependencies)) {
-    if (owner.layer === "core" && forbiddenCoreImports.some((prefix) => dependency.startsWith(prefix))) {
-      violations.push(`${owner.name}: forbidden core dependency ${dependency}`);
+    if (isForbiddenOssImport(dependency)) {
+      violations.push(`${owner.name}: forbidden OSS dependency ${dependency}`);
+    }
+    if (dependency === claudeAgentSdk && owner.name !== claudeAgentOwner) {
+      violations.push(`${owner.name}: only ${claudeAgentOwner} may depend on ${claudeAgentSdk}`);
     }
     const target = byName.get(dependency);
     if (target && !allowedWorkspaceLayers[owner.layer].has(target.layer)) {
@@ -157,10 +180,11 @@ for (const owner of packages) {
         continue;
       }
       const specifier = imported.specifier;
-      if (specifier.includes("firedrill-platform"))
-        violations.push(`${label}: private repository import ${specifier}`);
-      if (owner.layer === "core" && forbiddenCoreImports.some((prefix) => specifier.startsWith(prefix))) {
-        violations.push(`${label}: forbidden core import ${specifier}`);
+      if (isForbiddenOssImport(specifier)) {
+        violations.push(`${label}: forbidden OSS import ${specifier}`);
+      }
+      if (specifier === claudeAgentSdk && owner.name !== claudeAgentOwner) {
+        violations.push(`${label}: only ${claudeAgentOwner} may import ${claudeAgentSdk}`);
       }
       const target = workspacePackage(specifier);
       if (target && !allowedWorkspaceLayers[owner.layer].has(target.layer)) {

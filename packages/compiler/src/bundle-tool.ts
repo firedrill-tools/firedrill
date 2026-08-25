@@ -3,7 +3,7 @@ import { existsSync, readFileSync, realpathSync } from "node:fs";
 import { createRequire } from "node:module";
 import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { build, type Plugin } from "esbuild";
-import { Sha256Schema, SourcePathSchema } from "@firedrill/contracts";
+import { Sha256Schema, SourcePathSchema, compareStableStrings } from "@firedrill/contracts";
 import type { Diagnostic, ToolPackageManifest } from "@firedrill/contracts";
 import { semanticHash, sha256Text } from "@firedrill/world-ir";
 import type { BundledTool } from "./types.js";
@@ -150,7 +150,7 @@ export async function bundleTool(input: {
           source: input.source,
         },
         bytes: output.contents,
-        sourcePaths: [...new Set(sourcePaths)].sort((left, right) => left.localeCompare(right)),
+        sourcePaths: [...new Set(sourcePaths)].sort(compareStableStrings),
       },
     };
   } catch (error) {

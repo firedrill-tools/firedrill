@@ -1,5 +1,6 @@
 import { readFileSync } from "node:fs";
 import { join, resolve } from "node:path";
+import { compareStableStrings } from "./stable-order.mts";
 
 interface JsonSchema {
   readonly required?: readonly string[];
@@ -21,7 +22,7 @@ const expectedRequired: Readonly<Record<string, readonly string[]>> = {
 
 for (const [fileName, expected] of Object.entries(expectedRequired)) {
   const schema = JSON.parse(readFileSync(join(schemaRoot, fileName), "utf8")) as JsonSchema;
-  const required = [...(schema.required ?? [])].sort((left, right) => left.localeCompare(right));
+  const required = [...(schema.required ?? [])].sort(compareStableStrings);
   if (JSON.stringify(required) !== JSON.stringify(expected)) {
     throw new Error(
       `${fileName} requires ${required.join(", ") || "nothing"}; authored input should require ${expected.join(", ")}`,
@@ -39,7 +40,7 @@ if (!Array.isArray(project.properties?.toolPackages?.default)) {
 
 const tool = JSON.parse(readFileSync(join(schemaRoot, "tool-source.json"), "utf8")) as JsonSchema;
 const manifestRequired = [...(tool.properties?.manifest?.required ?? [])].sort((left, right) =>
-  left.localeCompare(right),
+  compareStableStrings(left, right),
 );
 const expectedManifestRequired = ["capabilities", "engine", "id", "operations", "schemaVersion", "version"];
 if (JSON.stringify(manifestRequired) !== JSON.stringify(expectedManifestRequired)) {

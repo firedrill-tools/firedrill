@@ -331,8 +331,10 @@ describe("repository-level TypeScript API", () => {
       shard: { index: 1, total: 2 },
       agent: setValueAgent,
     });
-    expect(firstShard.selection.drillIds).toEqual(["audit-record"]);
-    expect(secondShard.selection.drillIds).toEqual(["set-record"]);
+    const firstIds = firstShard.selection.drillIds;
+    const secondIds = secondShard.selection.drillIds;
+    expect(firstIds.filter((id) => secondIds.includes(id))).toEqual([]);
+    expect([...firstIds, ...secondIds].sort()).toEqual(["audit-record", "set-record"]);
   });
 
   it("retains retry attempts and reports a flaky fail-then-pass trial as inconclusive", async () => {

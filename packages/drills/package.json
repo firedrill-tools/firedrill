@@ -30,13 +30,14 @@
     ]
   },
   "scripts": {
-    "build": "tsc -p tsconfig.build.json && cp ../../LICENSE dist/LICENSE && cp ../../NOTICE dist/NOTICE",
+    "build": "tsx ../../tooling/package-files.mts clean && tsc -p tsconfig.build.json && tsx ../../tooling/package-files.mts finalize",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "vitest run"
   },
   "dependencies": {
     "@firedrill/assertions": "workspace:*",
     "@firedrill/contracts": "workspace:*",
+    "@firedrill/protocol-cli": "workspace:*",
     "@firedrill/protocol-http": "workspace:*",
     "@firedrill/protocol-mcp": "workspace:*",
     "@firedrill/world-build": "workspace:*",
@@ -47,7 +48,17 @@
   },
   "devDependencies": {
     "@firedrill/tool-sdk": "workspace:*",
+    "@modelcontextprotocol/client": "2.0.0",
     "typescript": "5.9.3",
     "vitest": "3.2.7"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/firedrill-tools/firedrill.git",
+    "directory": "packages/drills"
+  },
+  "homepage": "https://firedrill.tools",
+  "bugs": {
+    "url": "https://github.com/firedrill-tools/firedrill/issues"
   }
 }

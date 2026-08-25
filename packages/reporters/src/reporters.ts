@@ -213,24 +213,39 @@ function redactReportValues(
   const secrets = new Set<string>();
   collectSensitiveStrings(result, names, secrets);
   collectSensitiveStrings(evidence, names, secrets);
-  const embeddedSecrets = [...secrets]
-    .filter((secret) => secret.length >= 4)
+  const propagatedSecrets = [...secrets]
+    .filter((secret) => secret.length >= 8)
     .sort((a, b) => b.length - a.length);
   let replacements = 0;
 
-  const visit = (value: unknown, key?: string): unknown => {
-    if (key !== undefined && sensitiveKey(key, names)) {
+  const payloadKeys = new Set([
+    "actual",
+    "after",
+    "arguments",
+    "before",
+    "details",
+    "expected",
+    "input",
+    "output",
+    "payload",
+    "value",
+  ]);
+  const textKeys = new Set(["description", "instruction", "message", "note", "reason", "text"]);
+
+  const visit = (value: unknown, key?: string, insidePayload = false): unknown => {
+    const payload = insidePayload || (key !== undefined && payloadKeys.has(key));
+    if (payload && key !== undefined && sensitiveKey(key, names)) {
       replacements += 1;
       return "[REDACTED]";
     }
     if (typeof value === "string") {
-      if (secrets.has(value)) {
+      if (payload && propagatedSecrets.includes(value)) {
         replacements += 1;
         return "[REDACTED]";
       }
-      if (key !== undefined && ["description", "instruction", "message", "note", "reason"].includes(key)) {
+      if (key !== undefined && textKeys.has(key)) {
         let redacted = value;
-        for (const secret of embeddedSecrets) {
+        for (const secret of propagatedSecrets) {
           const count = redacted.split(secret).length - 1;
           if (count > 0) {
             replacements += count;
@@ -241,10 +256,10 @@ function redactReportValues(
       }
       return value;
     }
-    if (Array.isArray(value)) return value.map((item) => visit(item));
+    if (Array.isArray(value)) return value.map((item) => visit(item, undefined, payload));
     if (!objectValue(value)) return value;
     return Object.fromEntries(
-      Object.entries(value).map(([childKey, item]) => [childKey, visit(item, childKey)]),
+      Object.entries(value).map(([childKey, item]) => [childKey, visit(item, childKey, payload)]),
     );
   };
 
@@ -252,7 +267,7 @@ function redactReportValues(
     result: visit(result) as RunResult,
     evidence: visit(evidence) as readonly EvidenceEntry[],
     summary: {
-      policy: "safe_fields_v1",
+      policy: "safe_fields_v2",
       applied: replacements > 0,
       replacements,
     },
@@ -315,7 +330,7 @@ function terminalValue(value: unknown): string {
 }
 
 function reproductionCommand(result: RunResult): string {
-  return `firedrill run ${result.identity.drillId} --build-hash ${result.identity.buildHash} --seed ${result.identity.seed} --trials 1`;
+  return `firedrill run ${result.identity.drillId} --seed ${result.identity.seed} --trials 1`;
 }
 
 function terminalReport({ result, evidence }: CheckedLocalReport): string {
@@ -389,8 +404,24 @@ function jsonReport(input: CheckedLocalReport): string {
   return `${JSON.stringify({ schemaVersion: 1, run: input.result, evidence: input.evidence }, null, 2)}\n`;
 }
 
+function validXmlText(value: unknown): string {
+  let result = "";
+  for (const character of String(value)) {
+    const codePoint = character.codePointAt(0) ?? 0;
+    const valid =
+      codePoint === 0x09 ||
+      codePoint === 0x0a ||
+      codePoint === 0x0d ||
+      (codePoint >= 0x20 && codePoint <= 0xd7ff) ||
+      (codePoint >= 0xe000 && codePoint <= 0xfffd) ||
+      (codePoint >= 0x10000 && codePoint <= 0x10ffff);
+    result += valid && codePoint !== 0xfffe && codePoint !== 0xffff ? character : "�";
+  }
+  return result;
+}
+
 function xml(value: unknown): string {
-  return String(value)
+  return validXmlText(value)
     .replaceAll("&", "&amp;")
     .replaceAll('"', "&quot;")
     .replaceAll("'", "&apos;")
@@ -407,7 +438,21 @@ function assertionCase(assertion: AssertionResult): string {
     : assertion.status === "passed"
       ? ""
       : `<system-out>${xml(`Non-gating ${assertion.status}: ${assertion.message}`)}</system-out>`;
-  return `<testcase name="${xml(assertion.assertionId)}" classname="firedrill.assertion">${body}</testcase>`;
+  return `<testcase name="${xml(assertion.assertionId)}" classname="firedrill.assertion" time="0">${body}</testcase>`;
+}
+
+function junitSeconds(startedAtVirtualUs: number, finishedAtVirtualUs: number): string {
+  return ((finishedAtVirtualUs - startedAtVirtualUs) / 1_000_000)
+    .toFixed(6)
+    .replace(/0+$/, "")
+    .replace(/\.$/, "");
+}
+
+function targetStderr(attachments: readonly Record<string, unknown>[]): string | undefined {
+  const messages = attachments.flatMap((attachment) =>
+    attachment.kind === "process.stderr" && typeof attachment.text === "string" ? [attachment.text] : [],
+  );
+  return messages.length === 0 ? undefined : messages.join("\n");
 }
 
 function junitReport({ result }: CheckedLocalReport): string {
@@ -423,32 +468,38 @@ function junitReport({ result }: CheckedLocalReport): string {
   ).length;
   const runnerFailed = result.status === "runner_failed";
   const cancelled = result.status === "cancelled";
-  const failures = assertionFailures + interactionFailures + (runnerFailed ? 1 : 0);
+  const failures = assertionFailures;
+  const errors = interactionFailures + (runnerFailed ? 1 : 0);
   const skipped =
     result.interactions.filter((interaction) => interaction.targetResult.status === "cancelled").length +
     (cancelled && result.interactions.length === 0 ? 1 : 0);
   const runnerCase = runnerFailed
-    ? `<testcase name="drill runner" classname="firedrill.runner"><failure message="${xml(
-        result.error.message,
-      )}" type="${xml(result.error.code)}" /></testcase>`
+    ? `<testcase name="drill runner" classname="firedrill.runner" time="${junitSeconds(
+        result.startedAtVirtualUs,
+        result.finishedAtVirtualUs,
+      )}"><error message="${xml(result.error.message)}" type="${xml(result.error.code)}" /></testcase>`
     : cancelled && result.interactions.length === 0
-      ? `<testcase name="drill runner" classname="firedrill.runner"><skipped message="${xml(
-          result.reason,
-        )}" /></testcase>`
+      ? `<testcase name="drill runner" classname="firedrill.runner" time="${junitSeconds(
+          result.startedAtVirtualUs,
+          result.finishedAtVirtualUs,
+        )}"><skipped message="${xml(result.reason)}" /></testcase>`
       : undefined;
   const interactionCases = result.interactions.map((interaction) => {
     const name = `interaction ${interaction.interactionId}`;
+    const time = junitSeconds(interaction.startedAtVirtualUs, interaction.finishedAtVirtualUs);
+    const stderr = targetStderr(interaction.targetResult.attachments);
+    const diagnostics = stderr === undefined ? "" : `<system-err>${xml(stderr)}</system-err>`;
     if (interaction.targetResult.status === "completed") {
-      return `<testcase name="${xml(name)}" classname="firedrill.target" />`;
+      return `<testcase name="${xml(name)}" classname="firedrill.target" time="${time}">${diagnostics}</testcase>`;
     }
     if (interaction.targetResult.status === "cancelled") {
-      return `<testcase name="${xml(name)}" classname="firedrill.target"><skipped message="${xml(
+      return `<testcase name="${xml(name)}" classname="firedrill.target" time="${time}"><skipped message="${xml(
         interaction.targetResult.error?.message ?? "cancelled",
-      )}" /></testcase>`;
+      )}" />${diagnostics}</testcase>`;
     }
-    return `<testcase name="${xml(name)}" classname="firedrill.target"><failure message="${xml(
+    return `<testcase name="${xml(name)}" classname="firedrill.target" time="${time}"><error message="${xml(
       interaction.targetResult.error?.message ?? interaction.targetResult.status,
-    )}" type="${xml(interaction.targetResult.error?.code ?? interaction.targetResult.status)}" /></testcase>`;
+    )}" type="${xml(interaction.targetResult.error?.code ?? interaction.targetResult.status)}" />${diagnostics}</testcase>`;
   });
   const tests = interactionCases.length + assertionCases.length + (runnerCase === undefined ? 0 : 1);
   const properties = [
@@ -460,10 +511,11 @@ function junitReport({ result }: CheckedLocalReport): string {
     `<property name="firedrill.scheduledEvents.processed" value="${result.budgetUsage.scheduledEvents.processed}" />`,
     `<property name="firedrill.scheduledEvents.limit" value="${result.budgetUsage.scheduledEvents.limit}" />`,
   ];
+  const duration = junitSeconds(result.startedAtVirtualUs, result.finishedAtVirtualUs);
   return [
     '<?xml version="1.0" encoding="UTF-8"?>',
-    `<testsuites tests="${tests}" failures="${failures}" skipped="${skipped}">`,
-    `  <testsuite name="${xml(result.identity.drillId)}" tests="${tests}" failures="${failures}" skipped="${skipped}">`,
+    `<testsuites tests="${tests}" failures="${failures}" errors="${errors}" skipped="${skipped}" time="${duration}">`,
+    `  <testsuite name="${xml(result.identity.drillId)}" tests="${tests}" failures="${failures}" errors="${errors}" skipped="${skipped}" time="${duration}">`,
     `    <properties>${properties.join("")}</properties>`,
     ...(runnerCase === undefined ? [] : [`    ${runnerCase}`]),
     ...interactionCases.map((testCase) => `    ${testCase}`),
@@ -542,7 +594,19 @@ function interactionRows(result: RunResult): string {
     .map((interaction) => {
       const error = interaction.targetResult.error;
       const output = interaction.targetResult.output;
-      return `<tr><td class="mono">${html(interaction.interactionId)}</td><td>${html(interaction.actorId)}</td><td class="mono">${interaction.scheduledAtVirtualUs}</td><td><strong>${html(interaction.targetResult.status)}</strong>${error === undefined ? "" : `<p class="meta">${html(`${error.code}: ${error.message}`)}</p>`}${output === undefined ? "" : `<details><summary>Output</summary><pre>${json(output)}</pre></details>`}</td><td><p>${html(interaction.task.instruction)}</p>${interaction.task.input === undefined ? "" : `<details><summary>Input</summary><pre>${json(interaction.task.input)}</pre></details>`}</td></tr>`;
+      const attachments = interaction.targetResult.attachments
+        .map((attachment) => {
+          const label =
+            typeof attachment.kind === "string"
+              ? attachment.kind.replaceAll(".", " ")
+              : typeof attachment.name === "string"
+                ? attachment.name
+                : "Attachment";
+          const body = typeof attachment.text === "string" ? html(attachment.text) : json(attachment);
+          return `<details><summary>${html(label)}</summary><pre>${body}</pre></details>`;
+        })
+        .join("");
+      return `<tr><td class="mono">${html(interaction.interactionId)}</td><td>${html(interaction.actorId)}</td><td class="mono">${interaction.scheduledAtVirtualUs}</td><td><strong>${html(interaction.targetResult.status)}</strong>${error === undefined ? "" : `<p class="meta">${html(`${error.code}: ${error.message}`)}</p>`}${output === undefined ? "" : `<details><summary>Output</summary><pre>${json(output)}</pre></details>`}${attachments}</td><td><p>${html(interaction.task.instruction)}</p>${interaction.task.input === undefined ? "" : `<details><summary>Input</summary><pre>${json(interaction.task.input)}</pre></details>`}</td></tr>`;
     })
     .join("")}</tbody></table>`;
 }
@@ -645,6 +709,17 @@ export function writeLocalReport(rawInput: LocalReportInput, outputDirectory: st
     evidenceHash: input.sourceEvidenceHash,
     ...(input.result.status === "sealed"
       ? { stateHash: input.result.stateHash, trajectoryHash: input.result.trajectoryHash }
+      : {}),
+    projectedRunResultHash: semanticHash(input.result),
+    projectedEvidenceHash: semanticHash(input.evidence),
+    ...(input.result.status === "sealed"
+      ? {
+          projectedTrajectoryHash: trajectoryHash({
+            interactions: input.result.interactions,
+            checkpoints: input.result.checkpoints,
+            evidence: input.evidence,
+          }),
+        }
       : {}),
     redaction: input.redaction,
     reproduction: {
@@ -916,12 +991,22 @@ export function verifyLocalReport(outputDirectory: string): VerifiedLocalReport 
   }
 
   if (
+    semanticHash(result) !== manifest.projectedRunResultHash ||
+    semanticHash(evidence) !== manifest.projectedEvidenceHash ||
+    (result.status === "sealed" &&
+      trajectoryHash({ interactions: result.interactions, checkpoints: result.checkpoints, evidence }) !==
+        manifest.projectedTrajectoryHash)
+  ) {
+    throw new LocalReportVerificationError(
+      "reporter.SOURCE_HASH_MISMATCH",
+      "report content does not match its projected semantic hashes",
+    );
+  }
+  if (
     !manifest.redaction.applied &&
-    (semanticHash(result) !== manifest.runResultHash ||
-      semanticHash(evidence) !== manifest.evidenceHash ||
-      (result.status === "sealed" &&
-        trajectoryHash({ interactions: result.interactions, checkpoints: result.checkpoints, evidence }) !==
-          manifest.trajectoryHash))
+    (manifest.projectedRunResultHash !== manifest.runResultHash ||
+      manifest.projectedEvidenceHash !== manifest.evidenceHash ||
+      (result.status === "sealed" && manifest.projectedTrajectoryHash !== manifest.trajectoryHash))
   ) {
     throw new LocalReportVerificationError(
       "reporter.SOURCE_HASH_MISMATCH",

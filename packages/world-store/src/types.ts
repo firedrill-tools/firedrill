@@ -78,6 +78,7 @@ export type EvidenceDraft =
   | {
       readonly kind: "operation";
       readonly invocation: OperationInvocation;
+      readonly actorId?: ActorId;
       readonly outcome: OperationOutcome;
       readonly idempotency: "not_requested" | "recorded" | "replayed" | "not_recorded";
       readonly replayedFromSequence?: number;

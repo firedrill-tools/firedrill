@@ -1,3 +1,4 @@
 schemaVersion: 1
 id: resource-store-conformance
-drills: [changes-resource]
+drills:
+  - changes-resource

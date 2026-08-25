@@ -12,6 +12,7 @@ import {
   StableIdSchema,
   TargetDescriptorSchema,
   ToolPackageManifestSchema,
+  compareStableStrings,
 } from "@firedrill/contracts";
 import type {
   AssertionDefinition,
@@ -38,7 +39,7 @@ function duplicateOrOrderIssues(context: z.RefinementCtx, path: string, values: 
       });
     }
     seen.add(value);
-    if (index > 0 && (values[index - 1] ?? "").localeCompare(value) >= 0) {
+    if (index > 0 && compareStableStrings(values[index - 1] ?? "", value) >= 0) {
       context.addIssue({
         code: "custom",
         path: [path, index],
@@ -237,6 +238,9 @@ export const CanonicalWorldIrSchema = z
     const scenarios = new Map(world.scenarios.map((scenario) => [scenario.id, scenario]));
     const targets = new Set(world.targets.map((target) => target.id));
     for (const [drillIndex, drill] of world.drills.entries()) {
+      if (drill.inlineScenario !== undefined) {
+        validateScenario(drill.inlineScenario, indexes, ["drills", drillIndex, "inlineScenario"], context);
+      }
       if (!targets.has(drill.targetId)) {
         context.addIssue({
           code: "custom",

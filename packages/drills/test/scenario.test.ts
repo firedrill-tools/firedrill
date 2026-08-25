@@ -2,6 +2,7 @@ import { existsSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { FIREDRILL_ENGINE_VERSION } from "@firedrill/contracts";
+import { invokeCliWorldOperation } from "@firedrill/protocol-cli";
 import { defineTool } from "@firedrill/tool-sdk";
 import type { LoadedWorldBuild } from "@firedrill/world-build";
 import {
@@ -13,6 +14,7 @@ import {
 } from "@firedrill/world-ir";
 import type { BoundWorldClient } from "@firedrill/world-kernel";
 import { SqliteWorldStore } from "@firedrill/world-store-sqlite";
+import { Client, StreamableHTTPClientTransport } from "@modelcontextprotocol/client";
 import { afterEach, describe, expect, it } from "vitest";
 import {
   createDrillWorld,
@@ -462,6 +464,115 @@ describe("complete local drill trial", () => {
     } finally {
       retained.close();
     }
+  });
+
+  it("drives an MCP target through the real drill binding and official client", async () => {
+    const directory = temporaryDirectory();
+    const build = withWorldIr(loadedBuild(), (worldIr) => ({
+      ...worldIr,
+      targets: [{ id: "parcel-agent", kind: "external", bindings: ["mcp"], timeoutMs: 30_000 }],
+    }));
+    const execution = await runDrillTrial({
+      build,
+      drillId: "release-ready-parcel",
+      repositoryRoot: directory,
+      runDirectory: join(directory, "mcp-runs"),
+      externalHandler: async (invocation, context) => {
+        expect(context.world).toBeUndefined();
+        const endpoint = invocation.bindingEnvironment.FIREDRILL_MCP_URL;
+        const token = invocation.bindingEnvironment.FIREDRILL_MCP_TOKEN;
+        if (endpoint === undefined || token === undefined) throw new Error("MCP binding was not exposed");
+        const mcp = new Client({ name: "firedrill-drill-e2e", version: "1.0.0" });
+        try {
+          await mcp.connect(
+            new StreamableHTTPClientTransport(new URL(endpoint), {
+              authProvider: { token: async () => token },
+            }),
+          );
+          const result = await mcp.callTool({
+            name: "parcel-service.parcels.release",
+            arguments: { parcelId: "parcel-a" },
+            _meta: { "dev.firedrill/idempotency-key": "release-parcel-a" },
+          });
+          return { isError: result.isError === true, response: result.structuredContent ?? null };
+        } finally {
+          await mcp.close();
+        }
+      },
+    });
+
+    expect(execution.result).toMatchObject({
+      status: "sealed",
+      verdict: "passed",
+      bindingEvidence: "observed",
+      interactions: [
+        {
+          targetResult: {
+            status: "completed",
+            output: {
+              isError: true,
+              response: { status: "tool_error", error: { code: "tool.SCANNER_OFFLINE" } },
+            },
+          },
+        },
+      ],
+    });
+    expect(
+      execution.evidence.some(
+        (entry) =>
+          entry.kind === "operation" &&
+          entry.invocation.operation.operationId === "parcels.release" &&
+          entry.outcome.status === "tool_error",
+      ),
+    ).toBe(true);
+  });
+
+  it("drives a CLI-bound target through the real drill binding", async () => {
+    const directory = temporaryDirectory();
+    const build = withWorldIr(loadedBuild(), (worldIr) => ({
+      ...worldIr,
+      targets: [{ id: "parcel-agent", kind: "external", bindings: ["cli"], timeoutMs: 30_000 }],
+    }));
+    const execution = await runDrillTrial({
+      build,
+      drillId: "release-ready-parcel",
+      repositoryRoot: directory,
+      runDirectory: join(directory, "cli-runs"),
+      externalHandler: async (invocation, context) => {
+        expect(context.world).toBeUndefined();
+        const result = await invokeCliWorldOperation({
+          packageId: "parcel-service",
+          operationId: "parcels.release",
+          arguments: { parcelId: "parcel-a" },
+          idempotencyKey: "release-parcel-a",
+          environment: invocation.bindingEnvironment,
+          signal: context.signal,
+        });
+        return result.outcome;
+      },
+    });
+
+    expect(execution.result).toMatchObject({
+      status: "sealed",
+      verdict: "passed",
+      bindingEvidence: "observed",
+      interactions: [
+        {
+          targetResult: {
+            status: "completed",
+            output: { status: "tool_error", error: { code: "tool.SCANNER_OFFLINE" } },
+          },
+        },
+      ],
+    });
+    expect(
+      execution.evidence.some(
+        (entry) =>
+          entry.kind === "operation" &&
+          entry.invocation.operation.operationId === "parcels.release" &&
+          entry.outcome.status === "tool_error",
+      ),
+    ).toBe(true);
   });
 
   it("seals agent failures as failed drills and represents setup faults as runner failures", async () => {

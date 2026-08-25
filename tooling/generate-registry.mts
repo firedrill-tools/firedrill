@@ -2,6 +2,7 @@ import { spawnSync } from "node:child_process";
 import { mkdirSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { compileWorld } from "../packages/compiler/dist/index.js";
+import { compareStableStrings } from "./stable-order.mts";
 
 interface PackageManifest {
   readonly name: string;
@@ -105,7 +106,7 @@ function renderMarkdown(entries: readonly RegistryRecord[]): string {
 }
 
 for (const entry of readdirSync(packsRoot, { withFileTypes: true }).sort((left, right) =>
-  left.name.localeCompare(right.name),
+  compareStableStrings(left.name, right.name),
 )) {
   if (!entry.isDirectory()) continue;
   const directory = join(packsRoot, entry.name);
@@ -149,7 +150,7 @@ for (const entry of readdirSync(packsRoot, { withFileTypes: true }).sort((left, 
       license: package_.license,
       lifecycle: package_.firedrill.lifecycle,
       maintainers: (package_.maintainers ?? []).map((maintainer) => maintainer.name),
-      keywords: [...(package_.keywords ?? [])].sort((left, right) => left.localeCompare(right)),
+      keywords: [...(package_.keywords ?? [])].sort(compareStableStrings),
       conformanceSuite: package_.firedrill.conformance,
       tool: {
         id: tool.id,

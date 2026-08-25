@@ -4,6 +4,7 @@ import {
   InlineScenarioDefinitionSchema,
   ScenarioDefinitionSchema,
   ToolPackageManifestSchema,
+  compareStableStrings,
 } from "@firedrill/contracts";
 import type {
   ActorDefinitionSchema,
@@ -26,7 +27,7 @@ function normalizeActor(actor: ActorDefinition): ActorDefinition {
   return {
     ...actor,
     grants: [...actor.grants].sort((left, right) =>
-      operationReferenceKey(left).localeCompare(operationReferenceKey(right)),
+      compareStableStrings(operationReferenceKey(left), operationReferenceKey(right)),
     ),
   };
 }
@@ -35,10 +36,10 @@ function normalizeScenarioBody(body: InlineScenarioDefinition): InlineScenarioDe
   const faults = new Map(body.faults.map((fault) => [`${fault.packageId}\u0000${fault.faultId}`, fault]));
   return InlineScenarioDefinitionSchema.parse({
     ...body,
-    actors: body.actors.map(normalizeActor).sort((left, right) => left.id.localeCompare(right.id)),
+    actors: body.actors.map(normalizeActor).sort((left, right) => compareStableStrings(left.id, right.id)),
     faults: [...faults.values()].sort((left, right) => {
-      const packageOrder = left.packageId.localeCompare(right.packageId);
-      return packageOrder === 0 ? left.faultId.localeCompare(right.faultId) : packageOrder;
+      const packageOrder = compareStableStrings(left.packageId, right.packageId);
+      return packageOrder === 0 ? compareStableStrings(left.faultId, right.faultId) : packageOrder;
     }),
   });
 }
@@ -47,15 +48,15 @@ export function normalizeManifest(input: ToolPackageManifest): ToolPackageManife
   return ToolPackageManifestSchema.parse({
     ...input,
     capabilities: [...input.capabilities].sort(),
-    state: [...input.state].sort((left, right) => left.namespace.localeCompare(right.namespace)),
+    state: [...input.state].sort((left, right) => compareStableStrings(left.namespace, right.namespace)),
     operations: input.operations
       .map((operation) => ({ ...operation, declaredErrors: [...operation.declaredErrors].sort() }))
-      .sort((left, right) => left.id.localeCompare(right.id)),
-    events: [...input.events].sort((left, right) => left.id.localeCompare(right.id)),
+      .sort((left, right) => compareStableStrings(left.id, right.id)),
+    events: [...input.events].sort((left, right) => compareStableStrings(left.id, right.id)),
     faults: input.faults
       .map((fault) => ({ ...fault, appliesTo: [...fault.appliesTo].sort() }))
-      .sort((left, right) => left.id.localeCompare(right.id)),
-    subscriptions: [...input.subscriptions].sort((left, right) => left.id.localeCompare(right.id)),
+      .sort((left, right) => compareStableStrings(left.id, right.id)),
+    subscriptions: [...input.subscriptions].sort((left, right) => compareStableStrings(left.id, right.id)),
   });
 }
 

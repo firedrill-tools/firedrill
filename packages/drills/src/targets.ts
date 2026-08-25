@@ -18,6 +18,7 @@ import {
 } from "@firedrill/contracts";
 import type { BoundWorldClient } from "@firedrill/world-kernel";
 import { tsImport } from "tsx/esm/api";
+import { boundedDiagnosticMessage } from "./diagnostics.js";
 
 const MAX_INPUT_BYTES = 1024 * 1024;
 const MAX_OUTPUT_BYTES = 1024 * 1024;
@@ -52,23 +53,31 @@ export interface InvokeTargetOptions {
 class TargetExecutionError extends Error {
   readonly code: string;
   readonly details: JsonObject | undefined;
+  readonly attachments: readonly JsonObject[];
 
-  constructor(code: string, message: string, details?: JsonObject) {
+  constructor(code: string, message: string, details?: JsonObject, attachments: readonly JsonObject[] = []) {
     super(message);
     this.name = "TargetExecutionError";
     this.code = code;
     this.details = details;
+    this.attachments = attachments;
   }
 }
 
 class TargetTimeoutError extends Error {
+  readonly timeoutMs: number;
+  attachments: readonly JsonObject[] = [];
+
   constructor(timeoutMs: number) {
     super(`target did not complete within ${timeoutMs} ms`);
     this.name = "TargetTimeoutError";
+    this.timeoutMs = timeoutMs;
   }
 }
 
 class TargetCancelledError extends Error {
+  attachments: readonly JsonObject[] = [];
+
   constructor() {
     super("target execution was cancelled");
     this.name = "TargetCancelledError";
@@ -143,7 +152,7 @@ function failure(invocation: TargetInvocation, error: unknown): TargetResult {
     return TargetResultSchema.parse({
       schemaVersion: 1,
       status: "cancelled",
-      attachments: [],
+      attachments: error.attachments,
       error: errorEnvelope(invocation, "target.CANCELLED", error.message),
     });
   }
@@ -151,8 +160,11 @@ function failure(invocation: TargetInvocation, error: unknown): TargetResult {
     return TargetResultSchema.parse({
       schemaVersion: 1,
       status: "timed_out",
-      attachments: [],
-      error: errorEnvelope(invocation, "target.TIMEOUT", error.message),
+      attachments: error.attachments,
+      error: errorEnvelope(invocation, "target.TIMEOUT", error.message, {
+        timeoutMs: error.timeoutMs,
+        clock: "wall",
+      }),
     });
   }
   const executionError =
@@ -160,20 +172,30 @@ function failure(invocation: TargetInvocation, error: unknown): TargetResult {
       ? error
       : new TargetExecutionError(
           "target.EXECUTION_FAILED",
-          "target execution failed",
+          `target execution failed: ${boundedDiagnosticMessage(error, "unknown target error")}`,
           error instanceof Error ? { errorName: error.name } : undefined,
         );
   return TargetResultSchema.parse({
     schemaVersion: 1,
     status: "failed",
-    attachments: [],
+    attachments: executionError.attachments,
     error: errorEnvelope(invocation, executionError.code, executionError.message, executionError.details),
   });
 }
 
-function completed(invocation: TargetInvocation, output: unknown): TargetResult {
+interface TargetCompletion {
+  readonly output?: unknown;
+  readonly attachments: readonly JsonObject[];
+}
+
+function completed(invocation: TargetInvocation, completion: TargetCompletion): TargetResult {
+  const output = completion.output;
   if (output === undefined) {
-    return TargetResultSchema.parse({ schemaVersion: 1, status: "completed", attachments: [] });
+    return TargetResultSchema.parse({
+      schemaVersion: 1,
+      status: "completed",
+      attachments: completion.attachments,
+    });
   }
   let serialized: string | undefined;
   try {
@@ -213,7 +235,7 @@ function completed(invocation: TargetInvocation, output: unknown): TargetResult 
     schemaVersion: 1,
     status: "completed",
     output: parsed.data,
-    attachments: [],
+    attachments: completion.attachments,
   });
 }
 
@@ -346,8 +368,29 @@ function commandEnvironment(
 interface CommandOutput {
   readonly stdout: string;
   readonly stderr: string;
+  readonly stderrBytes: number;
+  readonly stderrTruncated: boolean;
   readonly exitCode: number | null;
   readonly signal: NodeJS.Signals | null;
+}
+
+function processStderrAttachment(input: {
+  readonly stderr: string;
+  readonly stderrBytes: number;
+  readonly stderrTruncated: boolean;
+}): readonly JsonObject[] {
+  if (input.stderr.length === 0 && !input.stderrTruncated) return [];
+  return [
+    {
+      schemaVersion: 1,
+      kind: "process.stderr",
+      mediaType: "text/plain; charset=utf-8",
+      text: input.stderr,
+      bytes: input.stderrBytes,
+      capturedBytes: Buffer.byteLength(input.stderr),
+      truncated: input.stderrTruncated,
+    },
+  ];
 }
 
 function executeCommand(input: {
@@ -377,6 +420,8 @@ function executeCommand(input: {
     const stderr: Buffer[] = [];
     let stdoutBytes = 0;
     let stderrBytes = 0;
+    let stderrCapturedBytes = 0;
+    let stderrTruncated = false;
     let settled = false;
     let forceKill: ReturnType<typeof setTimeout> | undefined;
 
@@ -391,25 +436,54 @@ function executeCommand(input: {
       child.kill("SIGKILL");
       rejectPromise(error);
     };
-    const append = (chunks: Buffer[], chunk: Buffer, stream: "stdout" | "stderr") => {
-      if (stream === "stdout") stdoutBytes += chunk.length;
-      else stderrBytes += chunk.length;
-      if (stdoutBytes > MAX_OUTPUT_BYTES || stderrBytes > MAX_OUTPUT_BYTES) {
-        fail(new TargetExecutionError("target.OUTPUT_TOO_LARGE", `${stream} exceeds 1 MiB`));
+    const appendStdout = (chunk: Buffer) => {
+      stdoutBytes += chunk.length;
+      if (stdoutBytes > MAX_OUTPUT_BYTES) {
+        fail(new TargetExecutionError("target.OUTPUT_TOO_LARGE", "stdout exceeds 1 MiB"));
         return;
       }
-      chunks.push(chunk);
+      stdout.push(chunk);
+    };
+    const appendStderr = (chunk: Buffer) => {
+      stderrBytes += chunk.length;
+      const remaining = MAX_OUTPUT_BYTES - stderrCapturedBytes;
+      if (remaining > 0) {
+        const captured = chunk.subarray(0, remaining);
+        stderr.push(captured);
+        stderrCapturedBytes += captured.length;
+      }
+      if (chunk.length > remaining) stderrTruncated = true;
     };
     const abort = () => {
+      const reason = input.signal.reason;
+      if (reason instanceof TargetTimeoutError || reason instanceof TargetCancelledError) {
+        reason.attachments = processStderrAttachment({
+          stderr: Buffer.concat(stderr).toString("utf8"),
+          stderrBytes,
+          stderrTruncated,
+        });
+      }
       child.kill("SIGTERM");
       forceKill = setTimeout(() => child.kill("SIGKILL"), 250);
       forceKill.unref();
     };
 
     input.signal.addEventListener("abort", abort, { once: true });
-    child.once("error", (error) => fail(error));
-    child.stdout.on("data", (chunk: Buffer) => append(stdout, chunk, "stdout"));
-    child.stderr.on("data", (chunk: Buffer) => append(stderr, chunk, "stderr"));
+    child.once("error", (error) => {
+      const filesystemCode = (error as NodeJS.ErrnoException).code;
+      fail(
+        new TargetExecutionError(
+          "target.COMMAND_START_FAILED",
+          `could not start target command ${input.descriptor.executable}: ${error.message}`,
+          {
+            executable: input.descriptor.executable,
+            ...(filesystemCode === undefined ? {} : { filesystemCode }),
+          },
+        ),
+      );
+    });
+    child.stdout.on("data", appendStdout);
+    child.stderr.on("data", appendStderr);
     child.stdin.on("error", (error) => {
       if ((error as NodeJS.ErrnoException).code !== "EPIPE") fail(error);
     });
@@ -420,6 +494,8 @@ function executeCommand(input: {
       resolvePromise({
         stdout: Buffer.concat(stdout).toString("utf8"),
         stderr: Buffer.concat(stderr).toString("utf8"),
+        stderrBytes,
+        stderrTruncated,
         exitCode,
         signal,
       });
@@ -433,7 +509,7 @@ async function invokeCommand(
   invocation: TargetInvocation,
   options: InvokeTargetOptions,
   signal: AbortSignal,
-): Promise<JsonValue | undefined> {
+): Promise<TargetCompletion> {
   const result = await executeCommand({
     descriptor,
     invocation,
@@ -441,22 +517,39 @@ async function invokeCommand(
     hostEnvironment: options.hostEnvironment ?? process.env,
     signal,
   });
+  const attachments = processStderrAttachment(result);
+  const stderrLines = result.stderr
+    .split(/\r?\n/u)
+    .map((line) => line.trim())
+    .filter((line) => line.length > 0);
+  const stderrSummary = stderrLines.at(-1)?.slice(0, 500);
   if (result.exitCode !== 0) {
     throw new TargetExecutionError(
       "target.COMMAND_FAILED",
-      `target command exited ${result.exitCode === null ? `after signal ${String(result.signal)}` : `with code ${result.exitCode}`}`,
-      { stderrAvailable: result.stderr.length > 0, stderrBytes: Buffer.byteLength(result.stderr) },
+      `target command ${descriptor.executable} exited ${result.exitCode === null ? `after signal ${String(result.signal)}` : `with code ${result.exitCode}`}${stderrSummary === undefined ? "" : `: ${stderrSummary}`}`,
+      {
+        executable: descriptor.executable,
+        stderrAvailable: result.stderr.length > 0,
+        stderrBytes: result.stderrBytes,
+        stderrTruncated: result.stderrTruncated,
+      },
+      attachments,
     );
   }
   const value = result.stdout.trim();
-  if (value.length === 0) return undefined;
+  if (value.length === 0) return { attachments };
   try {
-    return JSON.parse(value) as unknown as JsonValue;
+    return { output: JSON.parse(value) as unknown as JsonValue, attachments };
   } catch {
     throw new TargetExecutionError(
       "target.INVALID_OUTPUT",
       "target command stdout must contain one JSON value; write logs to stderr",
-      { stderrAvailable: result.stderr.length > 0, stderrBytes: Buffer.byteLength(result.stderr) },
+      {
+        stderrAvailable: result.stderr.length > 0,
+        stderrBytes: result.stderrBytes,
+        stderrTruncated: result.stderrTruncated,
+      },
+      attachments,
     );
   }
 }
@@ -581,18 +674,22 @@ export async function invokeTarget(options: InvokeTargetOptions): Promise<Target
   const descriptor = TargetDescriptorSchema.parse(options.descriptor);
   const invocation = TargetInvocationSchema.parse(options.invocation);
   try {
-    const output = await withinTimeout(
+    const completion = await withinTimeout(
       descriptor.timeoutMs,
       async (signal) => {
-        if (descriptor.kind === "module") return invokeModule(descriptor, invocation, options, signal);
+        if (descriptor.kind === "module") {
+          return { output: await invokeModule(descriptor, invocation, options, signal), attachments: [] };
+        }
         if (descriptor.kind === "command") return invokeCommand(descriptor, invocation, options, signal);
-        if (descriptor.kind === "http") return invokeHttp(descriptor, invocation, options, signal);
-        return invokeExternal(descriptor, invocation, options, signal);
+        if (descriptor.kind === "http") {
+          return { output: await invokeHttp(descriptor, invocation, options, signal), attachments: [] };
+        }
+        return { output: await invokeExternal(descriptor, invocation, options, signal), attachments: [] };
       },
       options.signal,
       () => options.worldClient?.revoke(),
     );
-    return completed(invocation, output);
+    return completed(invocation, completion);
   } catch (error) {
     return failure(invocation, error);
   } finally {

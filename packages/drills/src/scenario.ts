@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import { rmSync } from "node:fs";
 import {
   ActorBindingIdSchema,
+  compareStableStrings,
   CorrelationIdSchema,
   SeedSchema,
   StableIdSchema,
@@ -122,10 +123,10 @@ function finalState(
     }
   }
   return [...records.values()].sort((left, right) => {
-    const packageOrder = left.packageId.localeCompare(right.packageId);
+    const packageOrder = compareStableStrings(left.packageId, right.packageId);
     if (packageOrder !== 0) return packageOrder;
-    const namespaceOrder = left.namespace.localeCompare(right.namespace);
-    return namespaceOrder === 0 ? left.rowId.localeCompare(right.rowId) : namespaceOrder;
+    const namespaceOrder = compareStableStrings(left.namespace, right.namespace);
+    return namespaceOrder === 0 ? compareStableStrings(left.rowId, right.rowId) : namespaceOrder;
   });
 }
 

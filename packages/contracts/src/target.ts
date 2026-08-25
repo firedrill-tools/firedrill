@@ -19,20 +19,20 @@ const HttpTargetUrlSchema = z.url().refine((value) => ["http:", "https:"].includ
   message: "HTTP target URL must use http or https",
 });
 
-export const TargetBindingKindSchema = z.enum(["direct", "http", "mcp"]);
+export const TargetBindingKindSchema = z.enum(["direct", "http", "mcp", "cli"]);
 
 const InProcessBindingsSchema = z
   .array(TargetBindingKindSchema)
   .min(1)
-  .max(3)
+  .max(4)
   .refine((bindings) => new Set(bindings).size === bindings.length, {
     message: "target bindings must be unique",
   });
 
 const NetworkBindingsSchema = z
-  .array(z.enum(["http", "mcp"]))
+  .array(z.enum(["http", "mcp", "cli"]))
   .min(1)
-  .max(2)
+  .max(3)
   .refine((bindings) => new Set(bindings).size === bindings.length, {
     message: "target bindings must be unique",
   });

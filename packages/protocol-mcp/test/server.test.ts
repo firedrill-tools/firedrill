@@ -44,6 +44,24 @@ function world() {
           idempotency: "required",
           fidelity: "stateful",
         },
+        {
+          id: "scores.labels",
+          description: "List score labels",
+          inputSchema: { type: "object", additionalProperties: false },
+          outputSchema: { type: "array", items: { type: "string" } },
+          declaredErrors: [],
+          idempotency: "none",
+          fidelity: "contract",
+        },
+        {
+          id: "scores.total",
+          description: "Read the total score",
+          inputSchema: { type: "object", additionalProperties: false },
+          outputSchema: { type: "integer" },
+          declaredErrors: [],
+          idempotency: "none",
+          fidelity: "stateful",
+        },
       ],
     },
     operations: {
@@ -59,6 +77,8 @@ function world() {
         context.state.put("scores", "main", { score });
         return { score };
       },
+      "scores.labels": () => ["main", "bonus"],
+      "scores.total": (_input, context) => Number(context.state.get("scores", "main")?.score ?? 0),
     },
   });
   const store = SqliteWorldStore.create({
@@ -73,7 +93,11 @@ function world() {
       {
         bindingId: "actor_mcp000001",
         actorId: "operator",
-        grants: [{ packageId: "scoreboard", operationId: "scores.add" }],
+        grants: [
+          { packageId: "scoreboard", operationId: "scores.add" },
+          { packageId: "scoreboard", operationId: "scores.labels" },
+          { packageId: "scoreboard", operationId: "scores.total" },
+        ],
       },
     ],
   });
@@ -164,13 +188,11 @@ describe("MCP world binding", () => {
 
       const name = mcpToolName("scoreboard", "scores.add");
       const listed = await mcp.listTools();
-      expect(listed.tools).toMatchObject([
-        {
-          name,
-          description: "Add points to one score",
-          inputSchema: { type: "object", required: ["points"] },
-        },
-      ]);
+      expect(listed.tools.find((tool) => tool.name === name)).toMatchObject({
+        name,
+        description: "Add points to one score",
+        inputSchema: { type: "object", required: ["points"] },
+      });
 
       const params = {
         name,
@@ -183,6 +205,17 @@ describe("MCP world binding", () => {
       expect(first.structuredContent).toEqual({ score: 6 });
       expect(replay.structuredContent).toEqual({ score: 6 });
       expect(fixture.store.readState("scoreboard", "scores", "main")?.value).toEqual({ score: 6 });
+
+      const labels = await mcp.callTool({
+        name: mcpToolName("scoreboard", "scores.labels"),
+        arguments: {},
+      });
+      const total = await mcp.callTool({
+        name: mcpToolName("scoreboard", "scores.total"),
+        arguments: {},
+      });
+      expect(labels.structuredContent).toEqual(["main", "bonus"]);
+      expect(total.structuredContent).toBe(6);
 
       const failed = await mcp.callTool({ name, arguments: { points: -1 } });
       expect(failed.isError).toBe(true);
@@ -236,6 +269,37 @@ describe("MCP world binding", () => {
       expect(await postRaw(url, binding.token, oversized)).toBe(413);
       expect(fixture.client.callsIssued()).toBe(0);
     } finally {
+      await binding.close();
+      fixture.store.close();
+    }
+  });
+
+  it("closes while an MCP client still holds an active transport", async () => {
+    const fixture = world();
+    const binding = await startMcpWorldBinding({
+      client: fixture.client,
+      tools: [fixture.tool.manifest],
+      token: "test-mcp-token-000000004",
+    });
+    const mcp = new Client({ name: "active-close-test", version: "1.0.0" });
+    let timeout: ReturnType<typeof setTimeout> | undefined;
+    try {
+      await mcp.connect(
+        new StreamableHTTPClientTransport(new URL(binding.url), {
+          authProvider: { token: async () => binding.token },
+        }),
+      );
+      await expect(
+        Promise.race([
+          binding.close().then(() => "closed"),
+          new Promise<string>((resolve) => {
+            timeout = setTimeout(() => resolve("timed-out"), 1_000);
+          }),
+        ]),
+      ).resolves.toBe("closed");
+    } finally {
+      if (timeout !== undefined) clearTimeout(timeout);
+      await mcp.close().catch(() => undefined);
       await binding.close();
       fixture.store.close();
     }

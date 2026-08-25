@@ -127,6 +127,51 @@ describe("canonical world IR", () => {
     );
   });
 
+  it("validates inline scenarios against the same Tool graph as named scenarios", () => {
+    const inline = structuredClone(world) as Record<string, unknown>;
+    inline.scenarios = [];
+    inline.drills = [
+      {
+        ...world.drills[0],
+        scenarioId: undefined,
+        inlineScenario: {
+          virtualTimeUs: 0,
+          actors: [
+            {
+              id: "scheduler",
+              grants: [{ packageId: "reservations", operationId: "missing" }],
+            },
+          ],
+          state: [
+            {
+              action: "upsert",
+              packageId: "reservations",
+              namespace: "missing",
+              rowId: "one",
+              value: {},
+            },
+          ],
+          faults: [{ packageId: "reservations", faultId: "missing" }],
+          initialEvents: [
+            {
+              event: { packageId: "reservations", eventId: "missing" },
+              payload: {},
+              atUs: 0,
+              actorId: "scheduler",
+            },
+          ],
+        },
+      },
+    ];
+    const result = CanonicalWorldIrSchema.safeParse(inline);
+    expect(result.success).toBe(false);
+    const messages = result.error?.issues.map((issue) => issue.message).join("\n") ?? "";
+    expect(messages).toMatch(/unknown operation/);
+    expect(messages).toMatch(/unknown state namespace/);
+    expect(messages).toMatch(/unknown fault/);
+    expect(messages).toMatch(/unknown event/);
+  });
+
   it("requires canonical ordering rather than making array order part of identity by accident", () => {
     const extraTool = { ...tool, id: "audit", operations: [{ ...tool.operations[0], id: "entries.add" }] };
     const result = CanonicalWorldIrSchema.safeParse({ ...world, tools: [tool, extraTool] });

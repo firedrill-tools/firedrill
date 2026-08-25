@@ -269,16 +269,20 @@ export class SqliteWorldStore implements WorldStore {
     const parsedCorrelation = CorrelationIdSchema.parse(correlationId);
     const run = this.database.transaction(() => {
       const transaction = new SqliteWorldTransaction(this.database, parsedCorrelation);
-      const result = execute(transaction);
-      if (
-        typeof result === "object" &&
-        result !== null &&
-        "then" in result &&
-        typeof result.then === "function"
-      ) {
-        throw new TypeError("world transactions must be synchronous and deterministic");
+      try {
+        const result = execute(transaction);
+        if (
+          typeof result === "object" &&
+          result !== null &&
+          "then" in result &&
+          typeof result.then === "function"
+        ) {
+          throw new TypeError("world transactions must be synchronous and deterministic");
+        }
+        return transaction.finish(result.value, result.primary);
+      } finally {
+        transaction.revoke();
       }
-      return transaction.finish(result.value, result.primary);
     });
     return run.immediate();
   }

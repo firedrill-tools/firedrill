@@ -1,7 +1,7 @@
 import { join, resolve } from "node:path";
 import { compileWorld } from "@firedrill/compiler";
 import type { ToolSourceSet } from "@firedrill/compiler";
-import { PackageIdSchema } from "@firedrill/contracts";
+import { PackageIdSchema, compareStableStrings } from "@firedrill/contracts";
 import type {
   Diagnostic,
   EvidenceEntry,
@@ -371,7 +371,7 @@ function collectCoverage(
         entry.kind === "state_change" && entry.packageId === manifest.id ? [entry.namespace] : [],
       ),
     ),
-  ].sort((left, right) => left.localeCompare(right));
+  ].sort(compareStableStrings);
   return { operations, events, faults, subscriptions, changedStateNamespaces };
 }
 

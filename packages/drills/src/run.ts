@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { mkdirSync } from "node:fs";
 import { join, resolve } from "node:path";
-import { evaluateAssertions } from "@firedrill/assertions";
+import { AssertionEvidenceIndex, evaluateAssertions } from "@firedrill/assertions";
 import type {
   AssertionDefinition,
   AssertionResult,
@@ -29,6 +29,7 @@ import {
   TargetResultSchema,
   WorldInstanceIdSchema,
 } from "@firedrill/contracts";
+import { startCliWorldBinding } from "@firedrill/protocol-cli";
 import { startHttpWorldBinding } from "@firedrill/protocol-http";
 import { startMcpWorldBinding } from "@firedrill/protocol-mcp";
 import type { LoadedWorldBuild } from "@firedrill/world-build";
@@ -36,6 +37,7 @@ import { trajectoryHash } from "@firedrill/world-ir";
 import type { BoundWorldClient, WorldKernel } from "@firedrill/world-kernel";
 import type { SqliteWorldStore } from "@firedrill/world-store-sqlite";
 import { createDrillWorld, DrillSetupError } from "./scenario.js";
+import { boundedDiagnosticMessage } from "./diagnostics.js";
 import type { TargetHandler } from "./targets.js";
 import { invokeTarget } from "./targets.js";
 
@@ -150,21 +152,21 @@ function frameworkError(
 function runError(runId: RunId, error: unknown): ErrorEnvelope {
   if (error instanceof RunEnvelopeError) return error.envelope;
   if (error instanceof DrillSetupError) return frameworkError(runId, error.code, error.message);
+  const bounded = boundedDiagnosticMessage(error, "");
   return frameworkError(
     runId,
     "framework.RUNNER_FAILED",
-    "drill runner failed",
+    bounded.length === 0 ? "drill runner failed" : `drill runner failed: ${bounded}`,
     error instanceof Error ? { errorName: error.name } : undefined,
   );
 }
 
-function allEvidence(store: SqliteWorldStore): readonly EvidenceEntry[] {
-  const entries: EvidenceEntry[] = [];
-  let fromSequence = 1;
+function appendEvidence(store: SqliteWorldStore, index: AssertionEvidenceIndex): void {
+  let fromSequence = index.lastSequence() + 1;
   for (;;) {
     const page = store.readEvidence(fromSequence, 10_000);
-    entries.push(...page);
-    if (page.length < 10_000) return entries;
+    index.append(page);
+    if (page.length < 10_000) return;
     const last = page.at(-1);
     if (last === undefined || last.sequence < fromSequence) {
       throw new Error("evidence reader did not advance its pagination cursor");
@@ -198,7 +200,9 @@ async function worldBindings(
       const binding =
         kind === "http"
           ? await startHttpWorldBinding({ client, tools: build.worldIr.tools })
-          : await startMcpWorldBinding({ client, tools: build.worldIr.tools });
+          : kind === "mcp"
+            ? await startMcpWorldBinding({ client, tools: build.worldIr.tools })
+            : await startCliWorldBinding({ client, tools: build.worldIr.tools });
       bindings.push(binding);
       for (const [name, value] of Object.entries(binding.environment)) {
         if (environment[name] !== undefined && environment[name] !== value) {
@@ -240,6 +244,7 @@ function checkpointVerdict(results: readonly AssertionResult[]): CheckpointResul
 
 function recordCheckpoint(input: {
   readonly store: SqliteWorldStore;
+  readonly evidence: AssertionEvidenceIndex;
   readonly checkpointId: StableId;
   readonly kind: CheckpointResult["kind"];
   readonly assertions: readonly AssertionDefinition[];
@@ -247,13 +252,13 @@ function recordCheckpoint(input: {
   readonly correlationId: CorrelationId;
 }): CheckpointResult {
   if (input.assertions.length === 0) throw new TypeError("a checkpoint requires at least one assertion");
-  const before = allEvidence(input.store);
+  appendEvidence(input.store, input.evidence);
   const assertionResults = evaluateAssertions({
     assertions: input.assertions,
     state: input.store,
-    evidence: before,
+    evidence: input.evidence,
   });
-  const causeSequence = before.at(-1)?.sequence;
+  const causeSequence = input.evidence.lastSequence() || undefined;
   const [first, ...rest] = assertionResults;
   if (first === undefined) throw new TypeError("a checkpoint produced no assertion results");
   input.store.transact(input.correlationId, (transaction) => {
@@ -349,6 +354,7 @@ export async function runDrillTrial(options: RunDrillTrialOptions): Promise<Dril
   mkdirSync(runDirectory, { recursive: true });
   const worldFilePath = join(runDirectory, `${runId}.sqlite`);
   let store: SqliteWorldStore | undefined;
+  let evidenceIndex: AssertionEvidenceIndex | undefined;
   let kernel: WorldKernel | undefined;
   let bindings: readonly WorldBinding[] = [];
   let activeClient: BoundWorldClient | undefined;
@@ -394,6 +400,8 @@ export async function runDrillTrial(options: RunDrillTrialOptions): Promise<Dril
       },
     });
     store = world.store;
+    const runEvidence = new AssertionEvidenceIndex();
+    evidenceIndex = runEvidence;
     kernel = world.kernel;
     startedAtVirtualUs = store.metadata().virtualTimeUs;
     const horizonAt = startedAtVirtualUs + drill.timeline.horizonUs;
@@ -420,6 +428,7 @@ export async function runDrillTrial(options: RunDrillTrialOptions): Promise<Dril
       const assertions = kind === "final" ? drill.assertions : drill.timeline.invariants;
       const checkpoint = recordCheckpoint({
         store: world.store,
+        evidence: runEvidence,
         checkpointId,
         kind,
         assertions,
@@ -544,7 +553,8 @@ export async function runDrillTrial(options: RunDrillTrialOptions): Promise<Dril
       }
 
       if (targetResult.status === "cancelled" || options.signal?.aborted) {
-        const evidence = allEvidence(store);
+        appendEvidence(store, runEvidence);
+        const evidence = runEvidence.all();
         const range = evidenceRange(evidence);
         const result = RunResultSchema.parse({
           schemaVersion: 1,
@@ -606,7 +616,8 @@ export async function runDrillTrial(options: RunDrillTrialOptions): Promise<Dril
     const checkpointFailure = checkpoints.some((checkpoint) => checkpoint.verdict === "failed");
     const targetFailure = interactions.some((interaction) => interaction.targetResult.status !== "completed");
     const verdict = targetFailure || checkpointFailure ? "failed" : "passed";
-    const evidence = allEvidence(store);
+    appendEvidence(store, runEvidence);
+    const evidence = runEvidence.all();
     const range = evidenceRange(evidence);
     if (range === undefined) throw new Error("created world contains no evidence");
     const result = RunResultSchema.parse({
@@ -649,7 +660,8 @@ export async function runDrillTrial(options: RunDrillTrialOptions): Promise<Dril
     return { schemaVersion: 1, result, evidence, worldFilePath };
   } catch (error) {
     releaseActiveClient();
-    const evidence = store === undefined ? [] : allEvidence(store);
+    if (store !== undefined && evidenceIndex !== undefined) appendEvidence(store, evidenceIndex);
+    const evidence = evidenceIndex?.all() ?? [];
     const range = evidenceRange(evidence);
     const finishedAtVirtualUs = store?.metadata().virtualTimeUs ?? startedAtVirtualUs;
     const result = RunResultSchema.parse({

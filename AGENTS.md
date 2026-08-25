@@ -7,7 +7,7 @@ These instructions apply to coding agents and automated contributors working in 
 - This repository contains the complete local Apache-2.0 Firedrill framework.
 - It must build, test, pack, and run without an account, cloud service, or private codebase.
 - Keep hosted control-plane, identity, tenancy, billing, web-product, and cloud-provider implementation outside this repository.
-- Do not commit, push, publish, create releases, or change repository settings unless the repository owner explicitly requests that action.
+- Commit completed, coherent work locally with meaningful messages and a green repository gate. Do not push, publish, create releases, or change repository settings unless the repository owner explicitly requests that action.
 
 ## Public-code rules
 

@@ -2,7 +2,16 @@ import { existsSync, readFileSync, renameSync, unlinkSync, writeFileSync } from 
 import { extname, join } from "node:path";
 import { isDeepStrictEqual } from "node:util";
 import type { Diagnostic } from "@firedrill/contracts";
-import { parse as parseYaml, stringify as stringifyYaml } from "yaml";
+import {
+  isMap,
+  isNode,
+  isScalar,
+  isSeq,
+  parse as parseYaml,
+  parseDocument,
+  type Document,
+  type Node,
+} from "yaml";
 import type { z } from "zod";
 import { compileWorld } from "./compile.js";
 import { diagnostic, schemaDiagnostics, sortDiagnostics } from "./diagnostics.js";
@@ -81,7 +90,89 @@ function normalizedValue(kind: ResourceKind | "config", parsed: unknown): unknow
 
 function serialize(path: string, value: unknown): string {
   if (extname(path).toLowerCase() === ".json") return `${JSON.stringify(value, null, 2)}\n`;
-  return stringifyYaml(value, { indent: 2, lineWidth: 0 });
+  throw new TypeError("YAML serialization requires the authored document");
+}
+
+function mapKey(node: unknown): string | undefined {
+  if (isScalar(node) && typeof node.value === "string") return node.value;
+  return undefined;
+}
+
+function copyPresentation(source: Node, target: Node): Node {
+  if (source.commentBefore !== undefined) target.commentBefore = source.commentBefore;
+  if (source.comment !== undefined) target.comment = source.comment;
+  if (source.spaceBefore !== undefined) target.spaceBefore = source.spaceBefore;
+  return target;
+}
+
+function reconcileYamlNode(
+  document: Document,
+  node: Node | null,
+  desired: unknown,
+  authored: unknown,
+): Node | null {
+  if (isMap(node) && typeof desired === "object" && desired !== null && !Array.isArray(desired)) {
+    const desiredRecord = desired as Record<string, unknown>;
+    const authoredRecord =
+      typeof authored === "object" && authored !== null && !Array.isArray(authored)
+        ? (authored as Record<string, unknown>)
+        : {};
+    const pairs = new Map(
+      node.items.flatMap((pair) => {
+        const key = mapKey(pair.key);
+        return key === undefined ? [] : [[key, pair] as const];
+      }),
+    );
+    node.items = Object.keys(desiredRecord).map((key) => {
+      const pair = pairs.get(key);
+      if (pair === undefined) {
+        throw new TypeError(`formatted YAML is missing authored key ${key}`);
+      }
+      const current = isNode(pair.value) ? pair.value : null;
+      pair.value = reconcileYamlNode(document, current, desiredRecord[key], authoredRecord[key]);
+      return pair;
+    });
+    node.flow = false;
+    return node;
+  }
+
+  if (isSeq(node) && Array.isArray(desired) && Array.isArray(authored)) {
+    const candidates = node.items.map((item, index) => ({ item, value: authored[index], used: false }));
+    node.items = desired.map((value, index) => {
+      const peer = authoredArrayPeer(value, authored, index);
+      const selected = candidates.find((candidate) => !candidate.used && candidate.value === peer);
+      if (selected === undefined) {
+        throw new TypeError(`formatted YAML cannot match authored sequence item ${index + 1}`);
+      }
+      selected.used = true;
+      const current = isNode(selected.item) ? selected.item : null;
+      return reconcileYamlNode(document, current, value, peer);
+    });
+    node.flow = false;
+    return node;
+  }
+
+  if (isDeepStrictEqual(desired, authored)) return node;
+  const replacement = document.createNode(desired);
+  return node === null ? replacement : copyPresentation(node, replacement);
+}
+
+function serializeYamlWithComments(source: string, desired: unknown, authored: unknown): string {
+  const document = parseDocument(source, {
+    prettyErrors: false,
+    strict: true,
+    uniqueKeys: true,
+  });
+  if (document.errors.length > 0) {
+    throw new TypeError(document.errors[0]?.message ?? "invalid YAML");
+  }
+  document.contents = reconcileYamlNode(
+    document,
+    document.contents,
+    desired,
+    authored,
+  ) as typeof document.contents;
+  return document.toString({ indent: 2, lineWidth: 0 });
 }
 
 function parseSerialized(path: string, value: string): unknown {
@@ -114,8 +205,15 @@ function formatDocument(input: {
     return { status: "failed", diagnostics: schemaDiagnostics(parsed.document, validated.error.issues) };
   }
   const normalized = normalizedValue(input.kind, validated.data);
-  const next = serialize(input.path, retainAuthoredShape(normalized, parsed.document.value));
+  const authored = parsed.document.value;
+  const desired = retainAuthoredShape(normalized, authored);
+  const source = readFileSync(absolutePath, "utf8");
+  let next: string;
   try {
+    next =
+      extname(input.path).toLowerCase() === ".json"
+        ? serialize(input.path, desired)
+        : serializeYamlWithComments(source, desired, authored);
     const roundTrip = schemaFor(input.kind).safeParse(parseSerialized(input.path, next));
     if (!roundTrip.success || !isDeepStrictEqual(normalizedValue(input.kind, roundTrip.data), normalized)) {
       return {
@@ -143,7 +241,7 @@ function formatDocument(input: {
       ],
     };
   }
-  const changed = readFileSync(absolutePath, "utf8") !== next;
+  const changed = source !== next;
   if (changed && !input.check) {
     try {
       atomicWrite(absolutePath, next);

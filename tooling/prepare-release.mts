@@ -13,6 +13,7 @@ import {
 import { tmpdir } from "node:os";
 import { basename, join, relative, resolve, sep } from "node:path";
 import { discoverPublicPackages, packPublicPackages } from "./public-packages.mts";
+import { compareStableStrings } from "./stable-order.mts";
 
 const SYFT_VERSION = "1.51.0";
 const repositoryRoot = resolve(import.meta.dirname, "..");
@@ -298,7 +299,7 @@ if (!outputArgument) {
       })),
       { path: "packages/manifest.json", sha256: sha256(join(packagesDirectory, "manifest.json")) },
       ...sboms.map(({ path, sha256: digest }) => ({ path, sha256: digest })),
-    ].sort((left, right) => left.path.localeCompare(right.path));
+    ].sort((left, right) => compareStableStrings(left.path, right.path));
     writeFileSync(
       join(output, "SHA256SUMS"),
       `${checksums.map(({ path, sha256: digest }) => `${digest}  ${path}`).join("\n")}\n`,

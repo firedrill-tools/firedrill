@@ -26,4 +26,6 @@ Authenticated requests use `Authorization: Bearer <FIREDRILL_HTTP_TOKEN>`. An op
 
 Every operation response contains `schemaVersion`, `callId`, `correlationId`, and `outcome`. `outcome.status` is one of `ok`, `denied`, `tool_error`, `unsupported`, or `invalid`; successful values and structured failures use the same public operation contracts regardless of Tool domain.
 
+This is Firedrill's stable operation protocol. It does not claim wire compatibility with an arbitrary vendor REST API. When an existing agent uses a vendor-shaped client, adapt that client's base transport once at the composition seam or keep a small repository-owned adapter that translates its request into this operation envelope. Vendor behavior still belongs in the Tool, never in protocol core.
+
 The server binds to loopback, validates Host and Origin, requires the bearer token before tool discovery or dispatch, caps request bodies, and never exposes control-plane state, faults, time controls, assertions, or hidden world inspection to the agent.

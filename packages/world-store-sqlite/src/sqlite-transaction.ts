@@ -134,6 +134,7 @@ function removeCause(draft: InternalEvidenceDraft): Record<string, unknown> {
 
 export class SqliteWorldTransaction implements WorldTransaction {
   readonly primarySequence: number;
+  private active = true;
   private currentVirtualTimeUs: VirtualTime;
   private readonly secondaryEvidence: InternalEvidenceDraft[] = [];
   private scheduledEventCount = 0;
@@ -150,10 +151,16 @@ export class SqliteWorldTransaction implements WorldTransaction {
   }
 
   get virtualTimeUs(): VirtualTime {
+    this.assertActive();
     return this.currentVirtualTimeUs;
   }
 
+  revoke(): void {
+    this.active = false;
+  }
+
   getActor(bindingId: ActorBindingId): StoredActor | null {
+    this.assertActive();
     const parsedBinding = ActorBindingIdSchema.parse(bindingId);
     const row = this.database
       .prepare("SELECT binding_id, actor_id, attributes_json, grants_json FROM actors WHERE binding_id = ?")
@@ -173,6 +180,7 @@ export class SqliteWorldTransaction implements WorldTransaction {
   }
 
   getState(packageId: PackageId, namespace: StableId, rowId: string): StoredStateRecord | null {
+    this.assertActive();
     const owner = PackageIdSchema.parse(packageId);
     const stateNamespace = StableIdSchema.parse(namespace);
     if (rowId.length === 0 || rowId.length > 512) throw new RangeError("state row id length is invalid");
@@ -189,6 +197,7 @@ export class SqliteWorldTransaction implements WorldTransaction {
     namespace: StableId,
     options: StateScanOptions = {},
   ): readonly StoredStateRecord[] {
+    this.assertActive();
     const owner = PackageIdSchema.parse(packageId);
     const stateNamespace = StableIdSchema.parse(namespace);
     const limit = normalizeLimit(options.limit);
@@ -207,6 +216,7 @@ export class SqliteWorldTransaction implements WorldTransaction {
   }
 
   putState(packageId: PackageId, namespace: StableId, rowId: string, value: JsonObject): void {
+    this.assertActive();
     const owner = PackageIdSchema.parse(packageId);
     const stateNamespace = StableIdSchema.parse(namespace);
     const normalized = JsonObjectSchema.parse(JSON.parse(canonicalJson(JsonObjectSchema.parse(value))));
@@ -233,6 +243,7 @@ export class SqliteWorldTransaction implements WorldTransaction {
   }
 
   deleteState(packageId: PackageId, namespace: StableId, rowId: string): boolean {
+    this.assertActive();
     const owner = PackageIdSchema.parse(packageId);
     const stateNamespace = StableIdSchema.parse(namespace);
     const before = this.getState(owner, stateNamespace, rowId)?.value ?? null;
@@ -254,6 +265,7 @@ export class SqliteWorldTransaction implements WorldTransaction {
   }
 
   nextRandomU64(packageId: PackageId): bigint {
+    this.assertActive();
     const owner = PackageIdSchema.parse(packageId);
     let state = BigInt(this.meta("random_state"));
     state = (state + SPLITMIX_INCREMENT) & UINT64_MASK;
@@ -273,6 +285,7 @@ export class SqliteWorldTransaction implements WorldTransaction {
   }
 
   activeFaultIds(packageId: PackageId): readonly StableId[] {
+    this.assertActive();
     const owner = PackageIdSchema.parse(packageId);
     const rows = this.database
       .prepare("SELECT fault_id FROM active_faults WHERE package_id = ? ORDER BY fault_id")
@@ -281,6 +294,7 @@ export class SqliteWorldTransaction implements WorldTransaction {
   }
 
   getIdempotencyReceipt(invocation: OperationInvocation): IdempotencyReceipt | null {
+    this.assertActive();
     if (invocation.idempotencyKey === undefined) return null;
     const row = this.database
       .prepare(
@@ -306,6 +320,7 @@ export class SqliteWorldTransaction implements WorldTransaction {
     requestHash: string,
     outcome: OperationOutcome,
   ): void {
+    this.assertActive();
     if (invocation.idempotencyKey === undefined) {
       throw new TypeError("cannot store an idempotency receipt without a key");
     }
@@ -327,6 +342,7 @@ export class SqliteWorldTransaction implements WorldTransaction {
   }
 
   appendEvidence(draft: EvidenceDraft): void {
+    this.assertActive();
     this.secondaryEvidence.push(draft);
   }
 
@@ -336,6 +352,7 @@ export class SqliteWorldTransaction implements WorldTransaction {
     dueUs: VirtualTime,
     actorBindingId: ActorBindingId,
   ): ScheduledEventId {
+    this.assertActive();
     const parsedEvent = EventRefSchema.parse(event);
     const parsedPayload = JsonObjectSchema.parse(payload);
     const parsedDue = VirtualTimeSchema.parse(dueUs);
@@ -373,6 +390,7 @@ export class SqliteWorldTransaction implements WorldTransaction {
   }
 
   setVirtualTime(toUs: VirtualTime): void {
+    this.assertActive();
     const parsed = VirtualTimeSchema.parse(toUs);
     if (parsed < this.currentVirtualTimeUs) throw new RangeError("virtual clock cannot move backward");
     this.setMeta("virtual_time_us", String(parsed));
@@ -380,6 +398,7 @@ export class SqliteWorldTransaction implements WorldTransaction {
   }
 
   claimScheduledEvent(id: ScheduledEventId, status: "fired" | "failed"): ScheduledEvent {
+    this.assertActive();
     const row = this.database
       .prepare(
         "SELECT id, package_id, event_id, payload_json, due_us, correlation_id, actor_binding_id, cause_sequence, status FROM scheduled_events WHERE id = ?",
@@ -394,6 +413,7 @@ export class SqliteWorldTransaction implements WorldTransaction {
   }
 
   finish<T>(value: T, primary: EvidenceDraft): { value: T; evidence: readonly EvidenceEntry[] } {
+    this.assertActive();
     const drafts: readonly InternalEvidenceDraft[] = [primary, ...this.secondaryEvidence];
     const transactionId = `txn_${this.primarySequence.toString(36).padStart(8, "0")}`;
     const entries = drafts.map((draft, index) => {
@@ -433,6 +453,7 @@ export class SqliteWorldTransaction implements WorldTransaction {
   }
 
   private meta(key: string): string {
+    this.assertActive();
     const row = this.database.prepare("SELECT value FROM world_meta WHERE key = ?").get(key) as
       | { value: string }
       | undefined;
@@ -441,7 +462,14 @@ export class SqliteWorldTransaction implements WorldTransaction {
   }
 
   private setMeta(key: string, value: string): void {
+    this.assertActive();
     const changed = this.database.prepare("UPDATE world_meta SET value = ? WHERE key = ?").run(value, key);
     if (changed.changes !== 1) throw new Error(`world metadata ${key} is missing`);
+  }
+
+  private assertActive(): void {
+    if (!this.active) {
+      throw new Error("world transaction is no longer active");
+    }
   }
 }

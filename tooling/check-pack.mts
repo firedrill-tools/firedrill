@@ -81,7 +81,7 @@ function inspectArchive(archivePath: string, name: string): void {
     throw new Error(`${name} does not contain the Apache-2.0 license text`);
   }
   const notice = packedFiles.find((file) => file.endsWith("/dist/NOTICE"));
-  if (!notice || !readFileSync(notice, "utf8").includes("Firedrill contributors")) {
+  if (!notice || !readFileSync(notice, "utf8").includes("Copyright 2026 Reload Tech Inc.")) {
     throw new Error(`${name} does not contain NOTICE`);
   }
   for (const file of packedFiles) {
@@ -89,6 +89,12 @@ function inspectArchive(archivePath: string, name: string): void {
     if (text.includes("firedrill-platform") || text.includes("/Users/")) {
       throw new Error(`${name} leaks a private repository or local path: ${file}`);
     }
+  }
+  if (name === "@firedrill/agent" && !packedFiles.some((file) => file.endsWith("/dist/skill/SKILL.md"))) {
+    throw new Error("@firedrill/agent does not contain the canonical bundled skill");
+  }
+  if (name === "@firedrill/agent" && !packedFiles.some((file) => file.endsWith("/THIRD_PARTY.md"))) {
+    throw new Error("@firedrill/agent does not contain its third-party terms notice");
   }
 }
 
@@ -145,12 +151,14 @@ try {
     join(consumer, "index.mjs"),
     [
       'import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";',
-      'import { spawnSync } from "node:child_process";',
+      'import { spawn, spawnSync } from "node:child_process";',
       'import { tmpdir } from "node:os";',
       'import { join } from "node:path";',
       'import { evaluateAssertions } from "@firedrill/assertions";',
+      'import { createFiredrillAuthoringTools, runFiredrillAgent } from "@firedrill/agent";',
       'import { compileWorld } from "@firedrill/compiler";',
       'import { createDrillWorld } from "@firedrill/drills";',
+      'import { invokeCliWorldOperation, listCliWorldTools, startCliWorldBinding } from "@firedrill/protocol-cli";',
       'import { startHttpWorldBinding } from "@firedrill/protocol-http";',
       'import { mcpToolName, startMcpWorldBinding } from "@firedrill/protocol-mcp";',
       'import { runDrills, verifyReport } from "@firedrill/sdk";',
@@ -160,6 +168,7 @@ try {
       'import { WorldKernel } from "@firedrill/world-kernel";',
       'import { Client, StreamableHTTPClientTransport } from "@modelcontextprotocol/client";',
       'const directory = mkdtempSync(join(tmpdir(), "firedrill-packed-consumer-"));',
+      'const runChild = (command, arguments_, options = {}) => new Promise((resolve_, reject) => { const child = spawn(command, arguments_, { ...options, stdio: ["ignore", "pipe", "pipe"] }); let stdout = ""; let stderr = ""; child.stdout.on("data", (chunk) => stdout += chunk); child.stderr.on("data", (chunk) => stderr += chunk); child.once("error", reject); child.once("close", (code) => resolve_({ code, stdout, stderr })); });',
       "const tool = defineTool({",
       '  manifest: { schemaVersion: 1, id: "counter", version: "1.0.0", engine: ">=0.1.0 <0.2.0",',
       '    capabilities: ["state.read", "state.write"], state: [{ namespace: "values", schema: { type: "object" } }], operations: [',
@@ -231,6 +240,14 @@ try {
       '      const called = await mcp.callTool({ name: mcpToolName("packed-tool", "records.put"), arguments: { count: 11 }, _meta: { "dev.firedrill/idempotency-key": "put-11" } });',
       '      if (called.isError || called.structuredContent?.count !== 11 || local.store.readState("packed-tool", "records", "one")?.value.count !== 11) process.exitCode = 1;',
       "    } finally { await mcp.close(); await mcpBinding.close(); }",
+      '    const cliBinding = await startCliWorldBinding({ client: localClient, tools: manifests, token: "packed-cli-token-0000001" });',
+      "    try {",
+      '      const listed = await listCliWorldTools({ connection: cliBinding }); if (listed.length !== 2 || !listed.some((item) => item.id === "packed-tool")) process.exitCode = 1;',
+      '      const directCli = await invokeCliWorldOperation({ packageId: "packed-tool", operationId: "records.put", arguments: { count: 12 }, idempotencyKey: "put-12", connection: cliBinding }); if (directCli.outcome.status !== "ok" || directCli.outcome.value.count !== 12) process.exitCode = 1;',
+      '      const installedCli = join(process.cwd(), "node_modules", ".bin", "firedrill");',
+      '      const cliListed = await runChild(installedCli, ["world", "tools", "--json"], { env: { ...process.env, ...cliBinding.environment } }); if (cliListed.code !== 0 || !JSON.parse(cliListed.stdout).tools.some((item) => item.id === "packed-tool")) throw new Error("packed CLI Tool discovery failed: " + cliListed.stdout + cliListed.stderr);',
+      '      const cliCalled = await runChild(installedCli, ["world", "call", "packed-tool", "records.put", "--input", "{\\"count\\":13}", "--idempotency-key", "put-13", "--json"], { env: { ...process.env, ...cliBinding.environment } }); const cliCallResult = cliCalled.stdout ? JSON.parse(cliCalled.stdout) : null; if (cliCalled.code !== 0 || cliCallResult?.outcome?.status !== "ok" || local.store.readState("packed-tool", "records", "one")?.value.count !== 13) throw new Error("packed CLI operation failed: " + cliCalled.stdout + cliCalled.stderr);',
+      "    } finally { await cliBinding.close(); }",
       "  } finally { local.store.close(); }",
       "  const drill = await runDrills({",
       '    root: repository, drill: "put-record", runDirectory: "runs", reportDirectory: "report",',
@@ -254,6 +271,8 @@ try {
       '  const runFailure = () => runDrills({ root: repository, drill: "timed-failure", runDirectory: "failure-runs", reportDirectory: "failure-reports", seed: "55", agent: async ({ interactionId, task, binding }) => { const count = Number(task.input?.count); const runnerMcp = new Client({ name: "packed-failure-" + interactionId, version: "1.0.0" }, { versionNegotiation: { mode: "auto" } }); await runnerMcp.connect(new StreamableHTTPClientTransport(new URL(binding.environment.FIREDRILL_MCP_URL), { authProvider: { token: async () => binding.environment.FIREDRILL_MCP_TOKEN } })); try { const result = await runnerMcp.callTool({ name: mcpToolName("packed-tool", "records.put"), arguments: { count }, _meta: { "dev.firedrill/idempotency-key": "failure-" + interactionId } }); return { isError: result.isError ?? false }; } finally { await runnerMcp.close(); } } });',
       '  const failureFirst = await runFailure(); const failureSecond = await runFailure(); const firstFailureTrial = failureFirst.drills[0]?.trials[0]; const secondFailureTrial = failureSecond.drills[0]?.trials[0]; if (!firstFailureTrial || !secondFailureTrial) throw new Error("packed failing workload returned no trial");',
       '  if (failureFirst.verdict !== "failed" || firstFailureTrial.result.status !== "sealed" || secondFailureTrial.result.status !== "sealed" || firstFailureTrial.result.interactions.length !== 1 || firstFailureTrial.result.finishedAtVirtualUs !== 7200000000 || !firstFailureTrial.result.checkpoints.some((checkpoint) => checkpoint.kind === "after_event" && checkpoint.verdict === "failed") || firstFailureTrial.result.trajectoryHash !== secondFailureTrial.result.trajectoryHash || !existsSync(firstFailureTrial.report.files.html)) process.exitCode = 1;',
+      '  const authoringValidate = createFiredrillAuthoringTools(repository).find((item) => item.name === "validate"); if (!authoringValidate) throw new Error("packed Agent has no validation Tool"); const authored = await authoringValidate.handler({}, {}); const authoredContent = authored.content[0]; if (authored.isError || authoredContent?.type !== "text" || JSON.parse(authoredContent.text).status !== "success") throw new Error("packed Agent authoring Tool failed");',
+      '  let missingKeyError; try { await runFiredrillAgent({ root: repository, environment: {} }); } catch (error) { missingKeyError = error; } if (missingKeyError?.code !== "agent.API_KEY_MISSING") throw new Error("packed Agent did not enforce its BYOK gate before model execution");',
       "} finally { rmSync(repository, { force: true, recursive: true }); }",
       'if (process.exitCode !== 1) process.stdout.write("packed consumer passed\\n");',
     ].join("\n"),
@@ -283,6 +302,30 @@ try {
     join(initializedSkill, ".agents", "skills", "firedrill"),
     "installed coding-agent skill",
   );
+
+  const initializedAgent = join(temporary, "initialized-agent");
+  mkdirSync(initializedAgent);
+  run(installedCli, ["init", "--path", "firedrill-agent", "--json"], initializedAgent);
+  assertSameTree(
+    join(root, "skills", "firedrill"),
+    join(initializedAgent, ".agents", "skills", "firedrill"),
+    "installed Firedrill Agent skill",
+  );
+  const withoutAnthropicKey = Object.fromEntries(
+    Object.entries(process.env).filter(([name]) => name !== "ANTHROPIC_API_KEY"),
+  );
+  const missingAgentKey = spawnSync(installedCli, ["agent", "--json"], {
+    cwd: initializedAgent,
+    encoding: "utf8",
+    stdio: "pipe",
+    env: withoutAnthropicKey,
+  });
+  const missingAgentKeyResult = missingAgentKey.stdout ? JSON.parse(missingAgentKey.stdout) : null;
+  if (missingAgentKey.status !== 2 || missingAgentKeyResult?.code !== "agent.API_KEY_MISSING") {
+    throw new Error(
+      `packed CLI did not enforce the Agent BYOK gate\n${missingAgentKey.stdout}\n${missingAgentKey.stderr}`,
+    );
+  }
 
   const pythonAgentProject = join(temporary, "python-agent-detection");
   mkdirSync(pythonAgentProject);

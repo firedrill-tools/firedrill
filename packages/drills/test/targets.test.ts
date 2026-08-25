@@ -117,6 +117,85 @@ describe("agent target invocation", () => {
     });
   });
 
+  it("keeps bounded stderr evidence and reports command launch and exit failures precisely", async () => {
+    const root = repository();
+    writeFileSync(
+      join(root, "failing.mjs"),
+      'process.stderr.write("Traceback: helper failed\\nRuntimeError: model unavailable\\n"); process.exit(7);\n',
+    );
+    writeFileSync(
+      join(root, "noisy.mjs"),
+      'process.stderr.write("x".repeat(1024 * 1024 + 128)); process.stdout.write(JSON.stringify({ ok: true }));\n',
+    );
+    const base = {
+      id: "command-agent",
+      kind: "command" as const,
+      bindings: ["mcp" as const],
+      environmentFromHost: {},
+      timeoutMs: 3_000,
+    };
+
+    const failed = await invokeTarget({
+      descriptor: { ...base, executable: process.execPath, arguments: ["failing.mjs"] },
+      invocation: invocation(),
+      repositoryRoot: root,
+    });
+    expect(failed).toMatchObject({
+      status: "failed",
+      error: {
+        code: "target.COMMAND_FAILED",
+        message: expect.stringContaining("RuntimeError: model unavailable"),
+        details: { executable: process.execPath, stderrAvailable: true, stderrTruncated: false },
+      },
+      attachments: [
+        {
+          kind: "process.stderr",
+          text: expect.stringContaining("Traceback: helper failed"),
+          truncated: false,
+        },
+      ],
+    });
+
+    const noisy = await invokeTarget({
+      descriptor: { ...base, executable: process.execPath, arguments: ["noisy.mjs"] },
+      invocation: invocation(),
+      repositoryRoot: root,
+    });
+    expect(noisy).toMatchObject({
+      status: "completed",
+      output: { ok: true },
+      attachments: [
+        {
+          kind: "process.stderr",
+          bytes: 1024 * 1024 + 128,
+          capturedBytes: 1024 * 1024,
+          truncated: true,
+        },
+      ],
+    });
+
+    const missing = await invokeTarget({
+      descriptor: {
+        ...base,
+        executable: "firedrill-definitely-missing-command",
+        arguments: [],
+      },
+      invocation: invocation(),
+      repositoryRoot: root,
+    });
+    expect(missing).toMatchObject({
+      status: "failed",
+      error: {
+        code: "target.COMMAND_START_FAILED",
+        message: expect.stringContaining("firedrill-definitely-missing-command"),
+        details: {
+          executable: "firedrill-definitely-missing-command",
+          filesystemCode: "ENOENT",
+        },
+      },
+    });
+  });
+
   it("invokes a local HTTP agent endpoint with mapped headers", async () => {
     const requests: Array<{ authorization?: string; body: unknown }> = [];
     const server = createServer((request, response) => {
@@ -331,7 +410,10 @@ describe("agent target invocation", () => {
     const outside = repository();
     writeFileSync(join(outside, "agent.mjs"), "export default () => ({ escaped: true });\n");
     symlinkSync(join(outside, "agent.mjs"), join(root, "escaped.mjs"));
-    writeFileSync(join(root, "slow.mjs"), "setInterval(() => {}, 1000);\n");
+    writeFileSync(
+      join(root, "slow.mjs"),
+      'process.stderr.write("waiting for model response\\n"); setInterval(() => {}, 1000);\n',
+    );
     writeFileSync(join(root, "malformed.mjs"), 'process.stdout.write("not-json");\n');
 
     const remote = await invokeTarget({
@@ -396,6 +478,19 @@ describe("agent target invocation", () => {
       repositoryRoot: root,
       externalHandler: () => cyclic,
     });
+    const thrownCallback = await invokeTarget({
+      descriptor: {
+        id: "throwing-callback-agent",
+        kind: "external",
+        bindings: ["http"],
+        timeoutMs: 100,
+      },
+      invocation: invocation(),
+      repositoryRoot: root,
+      externalHandler: () => {
+        throw new Error("provider rejected request\u0007; check the local model configuration");
+      },
+    });
     const escaped = await invokeTarget({
       descriptor: {
         id: "escaped-agent",
@@ -426,7 +521,17 @@ describe("agent target invocation", () => {
       status: "failed",
       error: { code: "target.EXTERNAL_HANDLER_REQUIRED" },
     });
-    expect(timedOut).toMatchObject({ status: "timed_out", error: { code: "target.TIMEOUT" } });
+    expect(timedOut).toMatchObject({
+      status: "timed_out",
+      error: { code: "target.TIMEOUT", details: { timeoutMs: 30, clock: "wall" } },
+      attachments: [
+        {
+          kind: "process.stderr",
+          text: "waiting for model response\n",
+          truncated: false,
+        },
+      ],
+    });
     expect(malformed).toMatchObject({
       status: "failed",
       error: { code: "target.INVALID_OUTPUT" },
@@ -434,6 +539,14 @@ describe("agent target invocation", () => {
     expect(invalidCallback).toMatchObject({
       status: "failed",
       error: { code: "target.INVALID_OUTPUT" },
+    });
+    expect(thrownCallback).toMatchObject({
+      status: "failed",
+      error: {
+        code: "target.EXECUTION_FAILED",
+        message: "target execution failed: provider rejected request ; check the local model configuration",
+        details: { errorName: "Error" },
+      },
     });
     expect(escaped).toMatchObject({
       status: "failed",

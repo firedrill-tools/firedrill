@@ -11,7 +11,12 @@ import {
   writeFileSync,
 } from "node:fs";
 import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
-import { FIREDRILL_ENGINE_VERSION, SourcePathSchema, canonicalJson } from "@firedrill/contracts";
+import {
+  FIREDRILL_ENGINE_VERSION,
+  SourcePathSchema,
+  canonicalJson,
+  compareStableStrings,
+} from "@firedrill/contracts";
 import type {
   Diagnostic,
   InlineScenarioDefinition,
@@ -178,7 +183,79 @@ function issueDocument(
     };
   }
   if (group === "scenarios" && typeof index === "number") {
-    return { document: scenarios[index]?.document ?? fallback, localPath: rest as (string | number)[] };
+    const source = scenarios[index];
+    if (source === undefined) return { document: fallback, localPath: [] };
+    try {
+      const baseline = baselineFromWorld(world.value);
+      const resolved = resolveScenario(baseline, source.value);
+      const [field, itemIndex, ...tail] = rest;
+      if (field === "state" && typeof itemIndex === "number") {
+        return itemIndex < baseline.state.length
+          ? { document: world.document, localPath: ["state", itemIndex, ...tail] }
+          : {
+              document: source.document,
+              localPath: ["state", itemIndex - baseline.state.length, ...tail],
+            };
+      }
+      if (field === "initialEvents" && typeof itemIndex === "number") {
+        return itemIndex < baseline.initialEvents.length
+          ? { document: world.document, localPath: ["initialEvents", itemIndex, ...tail] }
+          : {
+              document: source.document,
+              localPath: ["initialEvents", itemIndex - baseline.initialEvents.length, ...tail],
+            };
+      }
+      if (field === "actors" && typeof itemIndex === "number") {
+        const actor = resolved.actors[itemIndex];
+        if (actor !== undefined) {
+          const overlayIndex = source.value.actors.findIndex((candidate) => candidate.id === actor.id);
+          const owner = overlayIndex >= 0 ? source : world;
+          const ownerIndex =
+            overlayIndex >= 0
+              ? overlayIndex
+              : world.value.actors.findIndex((candidate) => candidate.id === actor.id);
+          if (ownerIndex >= 0) {
+            const [nested, nestedIndex, ...nestedTail] = tail;
+            if (nested === "grants" && typeof nestedIndex === "number") {
+              const grant = actor.grants[nestedIndex];
+              const authoredActor = owner.value.actors[ownerIndex];
+              const grantIndex = authoredActor?.grants.findIndex(
+                (candidate) =>
+                  candidate.packageId === grant?.packageId && candidate.operationId === grant?.operationId,
+              );
+              if (grantIndex !== undefined && grantIndex >= 0) {
+                return {
+                  document: owner.document,
+                  localPath: ["actors", ownerIndex, "grants", grantIndex, ...nestedTail],
+                };
+              }
+            }
+            return { document: owner.document, localPath: ["actors", ownerIndex, ...tail] };
+          }
+        }
+      }
+      if (field === "faults" && typeof itemIndex === "number") {
+        const fault = resolved.faults[itemIndex];
+        if (fault !== undefined) {
+          const overlayIndex = source.value.faults.findIndex(
+            (candidate) => candidate.packageId === fault.packageId && candidate.faultId === fault.faultId,
+          );
+          if (overlayIndex >= 0) {
+            return { document: source.document, localPath: ["faults", overlayIndex, ...tail] };
+          }
+          const baselineIndex = world.value.faults.findIndex(
+            (candidate) => candidate.packageId === fault.packageId && candidate.faultId === fault.faultId,
+          );
+          if (baselineIndex >= 0) {
+            return { document: world.document, localPath: ["faults", baselineIndex, ...tail] };
+          }
+        }
+      }
+    } catch {
+      // Resolution diagnostics may be emitted while the scenario is incomplete.
+      // The authored document is still the safest available anchor.
+    }
+    return { document: source.document, localPath: rest as (string | number)[] };
   }
   if (group === "drills" && typeof index === "number") {
     return { document: drills[index]?.document ?? fallback, localPath: rest as (string | number)[] };
@@ -627,19 +704,19 @@ export async function compileWorld(options: CompileWorldOptions): Promise<Compil
     return { status: "failed", diagnostics: sortDiagnostics(diagnostics) };
   }
 
-  const sortedTools = tools.sort((left, right) => left.manifest.id.localeCompare(right.manifest.id));
+  const sortedTools = tools.sort((left, right) => compareStableStrings(left.manifest.id, right.manifest.id));
   const sortedScenarios = scenarioSources
     .map((source, index) => ({ source, resolved: scenarios[index] }))
-    .sort((left, right) => (left.resolved?.id ?? "").localeCompare(right.resolved?.id ?? ""));
+    .sort((left, right) => compareStableStrings(left.resolved?.id ?? "", right.resolved?.id ?? ""));
   const sortedDrills = drillSources
     .map((source) => ({ source, resolved: normalizeDrill(source.value) }))
-    .sort((left, right) => left.resolved.id.localeCompare(right.resolved.id));
+    .sort((left, right) => compareStableStrings(left.resolved.id, right.resolved.id));
   const sortedSuites = suiteSources
     .map((source) => ({ source, resolved: normalizeSuite(source.value) }))
-    .sort((left, right) => left.resolved.id.localeCompare(right.resolved.id));
+    .sort((left, right) => compareStableStrings(left.resolved.id, right.resolved.id));
   const sortedTargets = targetSources
     .map((source) => ({ source, resolved: source.value.target }))
-    .sort((left, right) => left.resolved.id.localeCompare(right.resolved.id));
+    .sort((left, right) => compareStableStrings(left.resolved.id, right.resolved.id));
 
   const provisionalIr = {
     schemaVersion: 1,
@@ -724,7 +801,9 @@ export async function compileWorld(options: CompileWorldOptions): Promise<Compil
     ...sortedTargets.map((item) =>
       resourceProvenance("target", item.resolved.id, item.source.document, item.resolved),
     ),
-  ].sort((left, right) => `${left.kind}\u0000${left.id}`.localeCompare(`${right.kind}\u0000${right.id}`));
+  ].sort((left, right) =>
+    compareStableStrings(`${left.kind}\u0000${left.id}`, `${right.kind}\u0000${right.id}`),
+  );
   addDuplicateDiagnostics(sourceProvenance, diagnostics);
   if (diagnostics.some((item) => item.severity === "error")) {
     return { status: "failed", diagnostics: sortDiagnostics(diagnostics) };

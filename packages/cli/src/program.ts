@@ -24,6 +24,7 @@ import { loadWorldBuild } from "@firedrill/world-build";
 import type { InitInspection, InitializedProject, InitPath } from "./init-project.js";
 import { FiredrillInitError, initProject } from "./init-project.js";
 import { watchFiles } from "./watch-files.js";
+import { executeWorldCommand } from "./world-command.js";
 
 export interface CliWriter {
   write(value: string): void;
@@ -33,11 +34,16 @@ export interface CliIo {
   readonly cwd: string;
   readonly stdout: CliWriter;
   readonly stderr: CliWriter;
+  /** Defaults to process.env. Injectable so embedding test runners do not mutate global state. */
+  readonly environment?: Readonly<Record<string, string | undefined>>;
   readonly signal?: AbortSignal;
+  /** Present only for an interactive terminal. JSON and CI callers omit it. */
+  readonly ask?: (question: string) => Promise<string>;
 }
 
 interface ParsedArguments {
   readonly command?:
+    | "agent"
     | "build"
     | "compare"
     | "format"
@@ -46,11 +52,23 @@ interface ParsedArguments {
     | "report"
     | "run"
     | "tool"
-    | "validate";
+    | "validate"
+    | "world";
   readonly reportCommand?: "verify";
   readonly reportPath?: string;
   readonly toolCommand?: "contribute" | "inspect" | "test" | "validate";
+  readonly worldCommand?: "call" | "tools";
   readonly toolId?: string;
+  readonly worldToolId?: string;
+  readonly operationId?: string;
+  readonly operationInput?: string;
+  readonly idempotencyKey?: string;
+  readonly agentPrompt?: string;
+  readonly agentModel?: string;
+  readonly agentEffort?: "low" | "medium" | "high" | "xhigh" | "max";
+  readonly agentMaxTurns?: number;
+  readonly agentMaxBudgetUsd?: number;
+  readonly agentTimeoutMs?: number;
   readonly drillId?: string;
   readonly baselineReport?: string;
   readonly candidateReport?: string;
@@ -81,6 +99,7 @@ Firedrill starts a fresh synthetic world for each trial, connects your existing
 agent through its declared target, then verifies state and tool-call consequences.
 
 Usage:
+  firedrill agent [--prompt <task>] [--model <model>] [--effort <level>] [--max-turns <count>] [--max-budget-usd <amount>] [--timeout-ms <milliseconds>] [--json] [--root <path>]
   firedrill [run] [drill-id] [--suite <id>] [--tag <tag>] [--filter <text>] [--shard <index>/<total>] [--trials <count>] [--retries <count>] [--concurrency <count>] [--seed <seed>] [--build-hash <hash>] [--report-dir <path>] [--watch] [--json] [--root <path>]
   firedrill validate [--json] [--root <path>]
   firedrill plan [--json] [--root <path>]
@@ -88,13 +107,16 @@ Usage:
   firedrill format [--check] [--json] [--root <path>]
   firedrill compare <baseline-report> <candidate-report> [--json]
   firedrill report verify <report-directory> [--json]
-  firedrill init [--path <coding-agent|template|manual>] [--json] [--root <path>]
+  firedrill init [--path <firedrill-agent|coding-agent|template|manual>] [--json] [--root <path>]
   firedrill tool inspect <tool-id> [--json] [--root <path>]
   firedrill tool validate <tool-id> [--json] [--root <path>]
   firedrill tool test <tool-id> [--suite <id>] [--seed <seed>] [--json] [--root <path>]
   firedrill tool contribute <tool-id> --accept-apache-2.0 [--output <path>] [--suite <id>] [--seed <seed>] [--json] [--root <path>]
+  firedrill world tools [--json]
+  firedrill world call <tool-id> <operation-id> [--input <json-object>] [--idempotency-key <key>] [--json]
 
 Commands:
+  agent     Author or repair Firedrill source with the optional local Firedrill Agent
   run       Run every drill, or one named drill; this is the default command
   validate  Parse and validate source without writing a build
   plan      Show the exact semantic build that source would produce
@@ -104,6 +126,7 @@ Commands:
   report    Verify a portable local report bundle without contacting a service
   init      Inspect onboarding paths or initialize one without overwriting files
   tool      Inspect, load-check, or conformance-test a selected Tool
+  world     Discover or call Tools through an active drill's CLI binding
 
 Run options:
   --suite <id>          Run a named drill suite
@@ -123,12 +146,31 @@ Tool contribution options:
   --output <path>       New directory for the local review bundle; never overwritten
 
 Init options:
-  --path <path>         Use coding-agent (recommended), template, or manual
+  --path <path>         Use firedrill-agent, coding-agent, template, or manual
+
+Bare init is guided only in an interactive terminal. JSON, CI, and piped use is
+read-only unless --path explicitly selects a setup.
 `;
 
 const COMMAND_HELP: Readonly<
-  Record<Exclude<ParsedArguments["command"], undefined | "report" | "tool">, string>
+  Record<Exclude<ParsedArguments["command"], undefined | "report" | "tool" | "world">, string>
 > = {
+  agent: `Author or repair this repository with the optional Firedrill Agent
+
+Usage:
+  firedrill agent [--prompt <task>] [--model <model>] [--effort <level>]
+                  [--max-turns <count>] [--max-budget-usd <amount>]
+                  [--timeout-ms <milliseconds>]
+                  [--json] [--root <path>]
+
+This separately installed, local authoring assistant uses the Claude Agent SDK
+and your ANTHROPIC_API_KEY. It can inspect and edit repository files, then call
+the real Firedrill formatter, compiler, Tool checks, and drill runner. It cannot
+read secret files, use a shell, commit, push, publish, or call Firedrill Cloud.
+
+The normal CLI and SDK work without this package or an Anthropic key.
+Defaults: 40 turns, $2 maximum model spend, and a 15-minute deadline.
+`,
   run: `Run drills against the repository world
 
 Usage:
@@ -184,9 +226,12 @@ infer that one run is better when inputs are incompatible.
   init: `Choose a clear starting path for this repository
 
 Usage:
-  firedrill init [--path <coding-agent|template|manual>] [--json] [--root <path>]
+  firedrill init [--path <firedrill-agent|coding-agent|template|manual>] [--json] [--root <path>]
 
-Without --path, init only inspects the repository and explains three choices:
+In an interactive terminal, bare init confirms detected context, asks for the
+first outcome, and lets you choose one of four paths. In JSON, CI, or another
+non-interactive caller, bare init remains a read-only inspection:
+  firedrill-agent Install the skill and brief for Firedrill's optional local agent
   coding-agent  Install the canonical skill and a bounded repository brief
   template      Install a complete neutral world, Tool, target, and passing drill
   manual        Install the smallest compilable shell without a fake drill
@@ -220,6 +265,18 @@ once in firedrill.json under toolPackages. inspect never executes behavior.
 validate and test execute the selected module locally with your authority. test
 runs ordinary conformance drills twice and checks coverage and determinism.
 contribute is only for source owned by this repository; it never uploads source.
+`;
+
+const WORLD_HELP = `Call the active synthetic world from a CLI-based agent
+
+Usage:
+  firedrill world tools [--json]
+  firedrill world call <tool-id> <operation-id> [--input <json-object>]
+            [--idempotency-key <key>] [--json]
+
+This command is available inside an agent target whose bindings include cli.
+It discovers or invokes the same typed Tool operations used by HTTP, MCP, and
+direct bindings. It does not create a world or run a drill by itself.
 `;
 
 const TOOL_COMMAND_HELP: Readonly<Record<Exclude<ParsedArguments["toolCommand"], undefined>, string>> = {
@@ -263,11 +320,45 @@ function helpFor(parsed: ParsedArguments): string {
   if (parsed.command === "tool") {
     return parsed.toolCommand === undefined ? TOOL_HELP : TOOL_COMMAND_HELP[parsed.toolCommand];
   }
+  if (parsed.command === "world") return WORLD_HELP;
   if (parsed.command === undefined) return HELP;
   return COMMAND_HELP[parsed.command];
 }
 
 function parseArguments(arguments_: readonly string[], cwd: string): ParsedArguments {
+  if (arguments_.some((argument) => argument === "--help" || argument === "-h")) {
+    const command = arguments_.find((argument): argument is NonNullable<ParsedArguments["command"]> =>
+      [
+        "agent",
+        "build",
+        "compare",
+        "format",
+        "init",
+        "plan",
+        "report",
+        "run",
+        "tool",
+        "validate",
+        "world",
+      ].includes(argument),
+    );
+    const toolCommand =
+      command === "tool"
+        ? arguments_.find((argument): argument is NonNullable<ParsedArguments["toolCommand"]> =>
+            ["contribute", "inspect", "test", "validate"].includes(argument),
+          )
+        : undefined;
+    return {
+      root: cwd,
+      watch: false,
+      json: arguments_.includes("--json"),
+      check: false,
+      help: true,
+      ...(command === undefined ? {} : { command }),
+      ...(command === "report" ? { reportCommand: "verify" as const } : {}),
+      ...(toolCommand === undefined ? {} : { toolCommand }),
+    };
+  }
   let command: ParsedArguments["command"];
   let root = cwd;
   let json = arguments_.includes("--json");
@@ -277,7 +368,18 @@ function parseArguments(arguments_: readonly string[], cwd: string): ParsedArgum
   let reportCommand: ParsedArguments["reportCommand"];
   let reportPath: string | undefined;
   let toolCommand: ParsedArguments["toolCommand"];
+  let worldCommand: ParsedArguments["worldCommand"];
   let toolId: string | undefined;
+  let worldToolId: string | undefined;
+  let operationId: string | undefined;
+  let operationInput: string | undefined;
+  let idempotencyKey: string | undefined;
+  let agentPrompt: string | undefined;
+  let agentModel: string | undefined;
+  let agentEffort: ParsedArguments["agentEffort"];
+  let agentMaxTurns: number | undefined;
+  let agentMaxBudgetUsd: number | undefined;
+  let agentTimeoutMs: number | undefined;
   let drillId: string | undefined;
   let baselineReport: string | undefined;
   let candidateReport: string | undefined;
@@ -339,6 +441,128 @@ function parseArguments(arguments_: readonly string[], cwd: string): ParsedArgum
         return { root, watch, json, check, help, acceptApache2, error: "--output requires a path" };
       }
       contributionOutput = resolve(cwd, value);
+      index += 1;
+      continue;
+    }
+    if (argument === "--input") {
+      const value = arguments_[index + 1];
+      if (value === undefined) {
+        return { root, watch, json, check, help, error: "--input requires a JSON object" };
+      }
+      operationInput = value;
+      index += 1;
+      continue;
+    }
+    if (argument === "--idempotency-key") {
+      const value = arguments_[index + 1];
+      if (value === undefined || value.length === 0 || value.length > 255) {
+        return {
+          root,
+          watch,
+          json,
+          check,
+          help,
+          error: "--idempotency-key requires 1 through 255 characters",
+        };
+      }
+      idempotencyKey = value;
+      index += 1;
+      continue;
+    }
+    if (argument === "--prompt") {
+      const value = arguments_[index + 1];
+      if (value === undefined || value.trim().length === 0) {
+        return { root, watch, json, check, help, error: "--prompt requires non-empty text" };
+      }
+      agentPrompt = value;
+      index += 1;
+      continue;
+    }
+    if (argument === "--model") {
+      const value = arguments_[index + 1];
+      if (value === undefined || value.trim().length === 0 || value.length > 200) {
+        return { root, watch, json, check, help, error: "--model requires 1 through 200 characters" };
+      }
+      agentModel = value;
+      index += 1;
+      continue;
+    }
+    if (argument === "--effort") {
+      const value = arguments_[index + 1];
+      if (!(["low", "medium", "high", "xhigh", "max"] as const).some((item) => item === value)) {
+        return {
+          root,
+          watch,
+          json,
+          check,
+          help,
+          error: "--effort must be low, medium, high, xhigh, or max",
+        };
+      }
+      agentEffort = value as NonNullable<ParsedArguments["agentEffort"]>;
+      index += 1;
+      continue;
+    }
+    if (argument === "--max-turns") {
+      const value = arguments_[index + 1];
+      agentMaxTurns = Number(value);
+      if (
+        value === undefined ||
+        !Number.isSafeInteger(agentMaxTurns) ||
+        agentMaxTurns < 1 ||
+        agentMaxTurns > 200
+      ) {
+        return {
+          root,
+          watch,
+          json,
+          check,
+          help,
+          error: "--max-turns must be an integer from 1 through 200",
+        };
+      }
+      index += 1;
+      continue;
+    }
+    if (argument === "--max-budget-usd") {
+      const value = arguments_[index + 1];
+      agentMaxBudgetUsd = Number(value);
+      if (
+        value === undefined ||
+        !Number.isFinite(agentMaxBudgetUsd) ||
+        agentMaxBudgetUsd <= 0 ||
+        agentMaxBudgetUsd > 1_000
+      ) {
+        return {
+          root,
+          watch,
+          json,
+          check,
+          help,
+          error: "--max-budget-usd must be greater than 0 and at most 1000",
+        };
+      }
+      index += 1;
+      continue;
+    }
+    if (argument === "--timeout-ms") {
+      const value = arguments_[index + 1];
+      agentTimeoutMs = Number(value);
+      if (
+        value === undefined ||
+        !Number.isSafeInteger(agentTimeoutMs) ||
+        agentTimeoutMs < 1_000 ||
+        agentTimeoutMs > 7_200_000
+      ) {
+        return {
+          root,
+          watch,
+          json,
+          check,
+          help,
+          error: "--timeout-ms must be an integer from 1000 through 7200000",
+        };
+      }
       index += 1;
       continue;
     }
@@ -465,7 +689,12 @@ function parseArguments(arguments_: readonly string[], cwd: string): ParsedArgum
     }
     if (argument === "--path") {
       const value = arguments_[index + 1];
-      if (value !== "coding-agent" && value !== "template" && value !== "manual") {
+      if (
+        value !== "firedrill-agent" &&
+        value !== "coding-agent" &&
+        value !== "template" &&
+        value !== "manual"
+      ) {
         return {
           root,
           tags,
@@ -473,7 +702,7 @@ function parseArguments(arguments_: readonly string[], cwd: string): ParsedArgum
           json,
           check,
           help,
-          error: "--path must be coding-agent, template, or manual",
+          error: "--path must be firedrill-agent, coding-agent, template, or manual",
         };
       }
       initPath = value;
@@ -521,6 +750,28 @@ function parseArguments(arguments_: readonly string[], cwd: string): ParsedArgum
       }
       continue;
     }
+    if (command === "world") {
+      if (worldCommand === undefined) {
+        if (argument !== "call" && argument !== "tools") {
+          return {
+            root,
+            watch,
+            json,
+            check,
+            help,
+            error: `unknown world command ${argument}; use tools or call`,
+          };
+        }
+        worldCommand = argument;
+      } else if (worldCommand === "call" && worldToolId === undefined) {
+        worldToolId = argument;
+      } else if (worldCommand === "call" && operationId === undefined) {
+        operationId = argument;
+      } else {
+        return { root, watch, json, check, help, error: `unexpected argument ${argument}` };
+      }
+      continue;
+    }
     if (command === "run" && drillId === undefined) {
       drillId = argument;
       continue;
@@ -535,6 +786,7 @@ function parseArguments(arguments_: readonly string[], cwd: string): ParsedArgum
       return { root, watch, json, check, help, error: `unexpected argument ${argument}` };
     }
     if (
+      argument === "agent" ||
       argument === "build" ||
       argument === "compare" ||
       argument === "format" ||
@@ -543,7 +795,8 @@ function parseArguments(arguments_: readonly string[], cwd: string): ParsedArgum
       argument === "report" ||
       argument === "run" ||
       argument === "tool" ||
-      argument === "validate"
+      argument === "validate" ||
+      argument === "world"
     ) {
       command = argument;
     } else {
@@ -556,7 +809,18 @@ function parseArguments(arguments_: readonly string[], cwd: string): ParsedArgum
     ...(reportCommand === undefined ? {} : { reportCommand }),
     ...(reportPath === undefined ? {} : { reportPath }),
     ...(toolCommand === undefined ? {} : { toolCommand }),
+    ...(worldCommand === undefined ? {} : { worldCommand }),
     ...(toolId === undefined ? {} : { toolId }),
+    ...(worldToolId === undefined ? {} : { worldToolId }),
+    ...(operationId === undefined ? {} : { operationId }),
+    ...(operationInput === undefined ? {} : { operationInput }),
+    ...(idempotencyKey === undefined ? {} : { idempotencyKey }),
+    ...(agentPrompt === undefined ? {} : { agentPrompt }),
+    ...(agentModel === undefined ? {} : { agentModel }),
+    ...(agentEffort === undefined ? {} : { agentEffort }),
+    ...(agentMaxTurns === undefined ? {} : { agentMaxTurns }),
+    ...(agentMaxBudgetUsd === undefined ? {} : { agentMaxBudgetUsd }),
+    ...(agentTimeoutMs === undefined ? {} : { agentTimeoutMs }),
     ...(drillId === undefined ? {} : { drillId }),
     ...(baselineReport === undefined ? {} : { baselineReport }),
     ...(candidateReport === undefined ? {} : { candidateReport }),
@@ -646,6 +910,9 @@ function parsedCommandName(parsed: ParsedArguments): string {
   }
   if (parsed.command === "report") {
     return parsed.reportCommand === undefined ? "report" : `report.${parsed.reportCommand}`;
+  }
+  if (parsed.command === "world") {
+    return parsed.worldCommand === undefined ? "world" : `world.${parsed.worldCommand}`;
   }
   return parsed.command ?? "run";
 }
@@ -1266,7 +1533,9 @@ function writeDetection(io: CliIo, result: InitInspection): void {
     ...result.detection.languages,
     ...result.detection.packageManagers,
     ...result.detection.testRunners,
+    ...result.detection.applicationFrameworks,
     ...result.detection.agentLibraries,
+    ...result.detection.dataSystems,
     ...(result.detection.mcpConfiguration.length > 0 ? ["MCP configuration"] : []),
   ];
   io.stdout.write(
@@ -1275,11 +1544,15 @@ function writeDetection(io: CliIo, result: InitInspection): void {
   io.stdout.write(
     `Detected: ${detected.length === 0 ? "no recognized agent seam yet" : detected.join(", ")}\n\n`,
   );
-  for (const choice of result.choices) {
+  for (const choice of orderedInitChoices(result)) {
     io.stdout.write(
       `${choice.recommended ? "Recommended" : "Option"}: ${choice.command}\n  ${choice.effect}\n`,
     );
   }
+}
+
+function orderedInitChoices(result: InitInspection) {
+  return [...result.choices].sort((left, right) => Number(right.recommended) - Number(left.recommended));
 }
 
 function writeInitialized(io: CliIo, result: InitializedProject): void {
@@ -1290,12 +1563,55 @@ function writeInitialized(io: CliIo, result: InitializedProject): void {
   for (const step of result.next) io.stdout.write(`Next: ${step}\n`);
 }
 
-function initCommand(parsed: ParsedArguments, io: CliIo): number {
+async function guidedInit(parsed: ParsedArguments, io: CliIo, inspection: InitInspection): Promise<number> {
+  const ask = io.ask;
+  if (ask === undefined) return 0;
+  const contextNote = (
+    await ask("Anything the detector missed about frameworks, data systems, or agent boundaries? (optional) ")
+  )
+    .replace(/\s+/g, " ")
+    .trim();
+  const objective = (await ask("What should the first drill prove? (optional) ")).replace(/\s+/g, " ").trim();
+  if (contextNote.length > 500 || objective.length > 500) {
+    io.stderr.write("init answers must be at most 500 characters each\n");
+    return 2;
+  }
+  const choices = orderedInitChoices(inspection);
+  io.stdout.write("\nChoose a setup:\n");
+  choices.forEach((choice, index) => {
+    io.stdout.write(`  ${index + 1}. ${choice.path}${choice.recommended ? " (recommended)" : ""}\n`);
+  });
+  const answer = (await ask("Setup [1]: ")).trim();
+  const selected =
+    answer === ""
+      ? choices[0]
+      : choices.find((choice, index) => answer === String(index + 1) || answer === choice.path);
+  if (selected === undefined) {
+    io.stderr.write(
+      `Choose 1-${choices.length} or one of: ${choices.map((choice) => choice.path).join(", ")}\n`,
+    );
+    return 2;
+  }
+  const result = initProject(parsed.root, selected.path, {
+    ...(contextNote === "" ? {} : { contextNote }),
+    ...(objective === "" ? {} : { objective }),
+  });
+  if (result.status !== "initialized") throw new Error("guided init did not select a path");
+  writeInitialized(io, result);
+  if (selected.path === "firedrill-agent" && io.environment?.ANTHROPIC_API_KEY) {
+    io.stdout.write("ANTHROPIC_API_KEY detected. Start the authoring session with: firedrill agent\n");
+  }
+  return 0;
+}
+
+async function initCommand(parsed: ParsedArguments, io: CliIo): Promise<number> {
   try {
     const result = initProject(parsed.root, parsed.initPath);
     if (parsed.json) writeJson(io, { command: "init", ...result });
-    else if (result.status === "inspection") writeDetection(io, result);
-    else writeInitialized(io, result);
+    else if (result.status === "inspection") {
+      writeDetection(io, result);
+      if (io.ask !== undefined) return guidedInit(parsed, io, result);
+    } else writeInitialized(io, result);
     return 0;
   } catch (error) {
     if (!(error instanceof FiredrillInitError)) throw error;
@@ -1313,6 +1629,74 @@ function initCommand(parsed: ParsedArguments, io: CliIo): number {
       for (const path of error.paths) io.stderr.write(`  ${path}\n`);
     }
     return 2;
+  }
+}
+
+async function agentCommand(parsed: ParsedArguments, io: CliIo): Promise<number> {
+  let agentPackage: typeof import("@firedrill/agent");
+  try {
+    agentPackage = await import("@firedrill/agent");
+  } catch (error) {
+    const code = (error as NodeJS.ErrnoException).code;
+    const message =
+      code === "ERR_MODULE_NOT_FOUND" || code === "MODULE_NOT_FOUND"
+        ? "Install the optional authoring package beside the CLI: pnpm add -D @firedrill/agent"
+        : "The optional Firedrill Agent package could not be loaded.";
+    if (parsed.json) {
+      writeJson(io, {
+        schemaVersion: 1,
+        command: "agent",
+        status: "failed",
+        code: "agent.NOT_AVAILABLE",
+        message,
+      });
+    } else io.stderr.write(`agent.NOT_AVAILABLE ${message}\n`);
+    return 2;
+  }
+
+  let wroteText = false;
+  try {
+    const result = await agentPackage.runFiredrillAgent({
+      root: parsed.root,
+      ...(parsed.agentPrompt === undefined ? {} : { prompt: parsed.agentPrompt }),
+      ...(parsed.agentModel === undefined ? {} : { model: parsed.agentModel }),
+      ...(parsed.agentEffort === undefined ? {} : { effort: parsed.agentEffort }),
+      ...(parsed.agentMaxTurns === undefined ? {} : { maxTurns: parsed.agentMaxTurns }),
+      ...(parsed.agentMaxBudgetUsd === undefined ? {} : { maxBudgetUsd: parsed.agentMaxBudgetUsd }),
+      ...(parsed.agentTimeoutMs === undefined ? {} : { timeoutMs: parsed.agentTimeoutMs }),
+      ...(io.environment === undefined ? {} : { environment: io.environment }),
+      ...(io.signal === undefined ? {} : { signal: io.signal }),
+      ...(parsed.json
+        ? {}
+        : {
+            onEvent: (event: import("@firedrill/agent").FiredrillAgentEvent) => {
+              if (event.type === "session") {
+                io.stdout.write(`Firedrill Agent · ${event.model}\n\n`);
+              } else if (event.type === "text") {
+                wroteText = true;
+                io.stdout.write(`${event.text}${event.text.endsWith("\n") ? "" : "\n"}`);
+              } else if (event.type === "tool") {
+                io.stdout.write(`  → ${event.name.replace(/^mcp__firedrill__/, "firedrill ")}\n`);
+              } else io.stderr.write(`${event.message}\n`);
+            },
+          }),
+    });
+    if (parsed.json) writeJson(io, { command: "agent", ...result });
+    else {
+      if (!wroteText && result.result !== undefined) io.stdout.write(`${result.result}\n`);
+      io.stdout.write(
+        `\nAgent ${result.status} · ${result.turns} turn${result.turns === 1 ? "" : "s"} · $${result.estimatedCostUsd.toFixed(4)} estimated\n`,
+      );
+    }
+    return result.status === "completed" ? 0 : 1;
+  } catch (error) {
+    const known = error instanceof agentPackage.FiredrillAgentError;
+    const code = known ? error.code : "agent.EXECUTION_FAILED";
+    const message = known ? error.message : "Firedrill Agent failed before producing a result.";
+    if (parsed.json) {
+      writeJson(io, { schemaVersion: 1, command: "agent", status: "failed", code, message });
+    } else io.stderr.write(`${code} ${message}\n`);
+    return code === "agent.API_KEY_MISSING" || code === "agent.INVALID_OPTIONS" ? 2 : 1;
   }
 }
 
@@ -1375,6 +1759,31 @@ export async function runCli(arguments_: readonly string[], io: CliIo): Promise<
     if (parsed.initPath !== undefined && command !== "init") {
       return writeUsageFailure(parsed, io, "--path is only valid with init");
     }
+    if (
+      command !== "agent" &&
+      (parsed.agentPrompt !== undefined ||
+        parsed.agentModel !== undefined ||
+        parsed.agentEffort !== undefined ||
+        parsed.agentMaxTurns !== undefined ||
+        parsed.agentMaxBudgetUsd !== undefined ||
+        parsed.agentTimeoutMs !== undefined)
+    ) {
+      return writeUsageFailure(
+        parsed,
+        io,
+        "--prompt, --model, --effort, --max-turns, --max-budget-usd, and --timeout-ms are only valid with agent",
+      );
+    }
+    if (command !== "world" && (parsed.operationInput !== undefined || parsed.idempotencyKey !== undefined)) {
+      return writeUsageFailure(parsed, io, "--input and --idempotency-key are only valid with world call");
+    }
+    if (
+      command === "world" &&
+      parsed.worldCommand !== "call" &&
+      (parsed.operationInput !== undefined || parsed.idempotencyKey !== undefined)
+    ) {
+      return writeUsageFailure(parsed, io, "--input and --idempotency-key require world call");
+    }
     if (parsed.watch && command !== "run") {
       return writeUsageFailure(parsed, io, "--watch is only valid with run");
     }
@@ -1385,10 +1794,29 @@ export async function runCli(arguments_: readonly string[], io: CliIo): Promise<
         "--watch cannot be combined with --build-hash because immutable builds do not change",
       );
     }
+    if (command === "agent") return agentCommand(parsed, io);
     if (command === "format") return formatCommand(parsed, io);
     if (command === "run") return parsed.watch ? watchCommand(parsed, io) : runCommand(parsed, io);
     if (command === "report") return reportCommand(parsed, io);
     if (command === "tool") return toolCommand(parsed, io);
+    if (command === "world") {
+      return executeWorldCommand(
+        {
+          ...(parsed.worldCommand === undefined ? {} : { command: parsed.worldCommand }),
+          ...(parsed.worldToolId === undefined ? {} : { packageId: parsed.worldToolId }),
+          ...(parsed.operationId === undefined ? {} : { operationId: parsed.operationId }),
+          ...(parsed.operationInput === undefined ? {} : { input: parsed.operationInput }),
+          ...(parsed.idempotencyKey === undefined ? {} : { idempotencyKey: parsed.idempotencyKey }),
+          json: parsed.json,
+        },
+        {
+          stdout: io.stdout,
+          stderr: io.stderr,
+          ...(io.environment === undefined ? {} : { environment: io.environment }),
+          ...(io.signal === undefined ? {} : { signal: io.signal }),
+        },
+      );
+    }
     if (command === "compare") return compareCommand(parsed, io);
     if (command === "init") return initCommand(parsed, io);
     return compileCommand(command, parsed, io);

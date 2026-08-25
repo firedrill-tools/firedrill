@@ -5,4 +5,5 @@ state:
     packageId: resource-store
     namespace: records
     rowId: primary
-    value: { value: 0 }
+    value:
+      value: 0

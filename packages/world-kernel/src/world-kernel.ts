@@ -9,6 +9,7 @@ import {
   Sha256Schema,
   VirtualTimeSchema,
   canonicalJson,
+  compareStableStrings,
 } from "@firedrill/contracts";
 import type {
   CorrelationId,
@@ -245,8 +246,10 @@ export class WorldKernel {
       this.subscriptions.set(
         key,
         [...subscribers].sort((left, right) => {
-          const packageOrder = left.tool.manifest.id.localeCompare(right.tool.manifest.id);
-          return packageOrder === 0 ? left.subscriptionId.localeCompare(right.subscriptionId) : packageOrder;
+          const packageOrder = compareStableStrings(left.tool.manifest.id, right.tool.manifest.id);
+          return packageOrder === 0
+            ? compareStableStrings(left.subscriptionId, right.subscriptionId)
+            : packageOrder;
         }),
       );
     }
@@ -480,6 +483,7 @@ export class WorldKernel {
         primary: {
           kind: "operation" as const,
           invocation,
+          actorId: actor.actorId,
           outcome,
           idempotency: unrecordedIdempotency(invocation),
         },
@@ -500,7 +504,13 @@ export class WorldKernel {
         };
         return {
           value: outcome,
-          primary: { kind: "operation" as const, invocation, outcome, idempotency: "not_recorded" as const },
+          primary: {
+            kind: "operation" as const,
+            invocation,
+            actorId: actor.actorId,
+            outcome,
+            idempotency: "not_recorded" as const,
+          },
         };
       }
       return {
@@ -508,6 +518,7 @@ export class WorldKernel {
         primary: {
           kind: "operation" as const,
           invocation,
+          actorId: actor.actorId,
           outcome: receipt.outcome,
           idempotency: "replayed" as const,
           replayedFromSequence: receipt.firstSequence,
@@ -536,6 +547,7 @@ export class WorldKernel {
         primary: {
           kind: "operation" as const,
           invocation,
+          actorId: actor.actorId,
           outcome,
           idempotency: unrecordedIdempotency(invocation),
         },
@@ -631,7 +643,7 @@ export class WorldKernel {
     if (hash !== undefined) transaction.putIdempotencyReceipt(invocation, hash, outcome);
     return {
       value: outcome,
-      primary: { kind: "operation" as const, invocation, outcome, idempotency },
+      primary: { kind: "operation" as const, invocation, actorId: actor.actorId, outcome, idempotency },
     };
   }
 
@@ -979,7 +991,7 @@ export class WorldKernel {
     const active = new Set(transaction.activeFaultIds(manifest.id));
     return manifest.faults
       .filter((fault) => active.has(fault.id) && fault.appliesTo.includes(operationId))
-      .sort((left, right) => left.id.localeCompare(right.id))[0];
+      .sort((left, right) => compareStableStrings(left.id, right.id))[0];
   }
 
   private validateIdempotencyContract(
@@ -1012,11 +1024,13 @@ export class WorldKernel {
     const parsedOutcome = OperationOutcomeSchema.parse(outcome);
     const committed = this.store.transact(invocation.correlationId, (transaction) => {
       for (const draft of secondary) transaction.appendEvidence(draft);
+      const actorId = transaction.getActor(invocation.actorBindingId)?.actorId;
       return {
         value: parsedOutcome,
         primary: {
           kind: "operation",
           invocation,
+          ...(actorId === undefined ? {} : { actorId }),
           outcome: parsedOutcome,
           idempotency: idempotency ?? unrecordedIdempotency(invocation),
         },

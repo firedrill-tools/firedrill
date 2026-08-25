@@ -13,6 +13,7 @@ import { tmpdir } from "node:os";
 import { join, relative, resolve } from "node:path";
 import { spawnSync } from "node:child_process";
 import { create as createTar, extract as extractTar } from "tar";
+import { compareStableStrings } from "./stable-order.mts";
 
 export interface PublicPackage {
   readonly directory: string;
@@ -61,7 +62,7 @@ export function discoverPublicPackages(repositoryRoot: string): readonly PublicP
     if (names.has(package_.name)) throw new Error(`duplicate public package name ${package_.name}`);
     names.add(package_.name);
   }
-  return packages.sort((left, right) => left.name.localeCompare(right.name));
+  return packages.sort((left, right) => compareStableStrings(left.name, right.name));
 }
 
 function sha256(path: string): string {
@@ -87,7 +88,9 @@ function sortDependencyMap(value: unknown): unknown {
     return value;
   }
   return Object.fromEntries(
-    Object.entries(value as Record<string, unknown>).sort(([left], [right]) => left.localeCompare(right)),
+    Object.entries(value as Record<string, unknown>).sort(([left], [right]) =>
+      compareStableStrings(left, right),
+    ),
   );
 }
 
@@ -105,6 +108,23 @@ function normalizePackedManifest(path: string): void {
   writeFileSync(path, `${JSON.stringify(manifest, null, 2)}\n`);
 }
 
+function assertSelfContainedSourceMaps(packageDirectory: string): void {
+  for (const file of filesUnder(packageDirectory).filter((path) => path.endsWith(".map"))) {
+    const document = JSON.parse(readFileSync(join(packageDirectory, file), "utf8")) as {
+      readonly sources?: readonly string[];
+      readonly sourcesContent?: readonly (string | null)[];
+    };
+    if (
+      (document.sources?.length ?? 0) > 0 &&
+      (!Array.isArray(document.sourcesContent) ||
+        document.sourcesContent.length !== document.sources?.length ||
+        document.sourcesContent.some((source) => source === null))
+    ) {
+      throw new Error(`package source map is not self-contained: ${file}`);
+    }
+  }
+}
+
 function repackDeterministically(rawArchive: string, destination: string, temporary: string): void {
   const unpacked = join(temporary, "unpacked");
   mkdirSync(unpacked);
@@ -113,6 +133,7 @@ function repackDeterministically(rawArchive: string, destination: string, tempor
   if (!existsSync(manifestPath))
     throw new Error(`package archive has no package/package.json: ${rawArchive}`);
   normalizePackedManifest(manifestPath);
+  assertSelfContainedSourceMaps(join(unpacked, "package"));
   createTar(
     {
       cwd: unpacked,

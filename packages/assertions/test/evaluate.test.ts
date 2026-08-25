@@ -1,8 +1,8 @@
 import { AssertionDefinitionSchema, EvidenceEntrySchema } from "@firedrill/contracts";
-import type { EvidenceEntry } from "@firedrill/contracts";
+import type { EvidenceEntry, OperationOutcome } from "@firedrill/contracts";
 import type { StateScanOptions, StoredStateRecord } from "@firedrill/world-store";
 import { describe, expect, it } from "vitest";
-import { evaluateAssertions } from "../src/index.js";
+import { AssertionEvidenceIndex, evaluateAssertions } from "../src/index.js";
 
 const operation = {
   lookup: { packageId: "catalog", operationId: "records.lookup" },
@@ -32,7 +32,7 @@ function stateReader(records: readonly StoredStateRecord[]) {
             record.namespace === namespace &&
             (options.afterRowId === undefined || record.rowId > options.afterRowId),
         )
-        .sort((left, right) => left.rowId.localeCompare(right.rowId))
+        .sort((left, right) => (left.rowId < right.rowId ? -1 : left.rowId > right.rowId ? 1 : 0))
         .slice(0, options.limit ?? 1_000);
     },
   };
@@ -43,19 +43,9 @@ function operationEntry(input: {
   readonly callId: string;
   readonly operation: (typeof operation)[keyof typeof operation];
   readonly arguments: Record<string, unknown>;
-  readonly outcome:
-    | { readonly status: "ok"; readonly value: Record<string, unknown> }
-    | {
-        readonly status: "denied";
-        readonly error: {
-          readonly schemaVersion: 1;
-          readonly code: "world.CAPABILITY_DENIED";
-          readonly source: "world";
-          readonly message: string;
-          readonly retryable: false;
-          readonly issues: readonly [];
-        };
-      };
+  readonly outcome: OperationOutcome;
+  readonly actorId?: string;
+  readonly idempotency?: "not_requested" | "recorded" | "replayed" | "not_recorded";
 }): EvidenceEntry {
   return EvidenceEntrySchema.parse({
     schemaVersion: 1,
@@ -74,8 +64,10 @@ function operationEntry(input: {
       actorBindingId: "actor_assert01",
       arguments: input.arguments,
     },
+    actorId: input.actorId ?? "operator",
     outcome: input.outcome,
-    idempotency: "not_requested",
+    idempotency: input.idempotency ?? "not_requested",
+    ...(input.idempotency === "replayed" ? { replayedFromSequence: 1 } : {}),
   });
 }
 
@@ -161,6 +153,21 @@ const records: readonly StoredStateRecord[] = [
 ];
 
 describe("deterministic assertion evaluation", () => {
+  it("indexes journal pages incrementally and rejects duplicate or unordered evidence", () => {
+    const entries = evidence();
+    const index = new AssertionEvidenceIndex(entries.slice(0, 2));
+    index.append(entries.slice(2));
+
+    expect(index.lastSequence()).toBe(5);
+    expect(index.all()).toEqual(entries);
+    expect(index.operation(operation.update).map((entry) => entry.sequence)).toEqual([3]);
+    expect(index.stateSequences("catalog", "records", "one")).toEqual([1]);
+    expect(index.event({ packageId: "catalog", eventId: "record.changed" }, "emitted")).toHaveLength(1);
+    const lastEntry = entries.at(-1);
+    if (lastEntry === undefined) throw new Error("evidence fixture must not be empty");
+    expect(() => index.append([lastEntry])).toThrow(/strictly ordered/);
+  });
+
   it("evaluates every published assertion kind with structured evidence", () => {
     const assertions = [
       {
@@ -285,6 +292,126 @@ describe("deterministic assertion evaluation", () => {
       diff: { matched: false, details: { missing: true } },
     });
     expect(results.find((item) => item.assertionId === "not-all-denied")?.gate).toBe(false);
+  });
+
+  it("requires successful calls for ordering and argument assertions by default", () => {
+    const attempts = [
+      operationEntry({
+        sequence: 1,
+        callId: "call_filtered01",
+        operation: operation.lookup,
+        arguments: { id: "one", unsafe: true },
+        outcome: {
+          status: "denied",
+          error: {
+            schemaVersion: 1,
+            code: "world.CAPABILITY_DENIED",
+            source: "world",
+            message: "not permitted",
+            retryable: false,
+            issues: [],
+          },
+        },
+      }),
+      operationEntry({
+        sequence: 2,
+        callId: "call_filtered02",
+        operation: operation.update,
+        arguments: { id: "one" },
+        outcome: { status: "ok", value: { updated: true } },
+      }),
+    ];
+    const assertions = [
+      {
+        id: "only-successful-order",
+        kind: "operation.order",
+        sequence: [{ anyOf: [operation.lookup] }, { anyOf: [operation.update] }],
+      },
+      {
+        id: "only-successful-arguments",
+        kind: "operation.arguments",
+        operation: operation.lookup,
+        contains: { unsafe: true },
+      },
+    ].map((assertion) => AssertionDefinitionSchema.parse(assertion));
+
+    const results = evaluateAssertions({ assertions, state: stateReader(records), evidence: attempts });
+    expect(results.every((item) => item.status === "failed")).toBe(true);
+    expect(results[0]?.actual).toEqual([
+      expect.objectContaining({ outcome: "denied", operation: operation.lookup }),
+      expect.objectContaining({ outcome: "ok", operation: operation.update }),
+    ]);
+  });
+
+  it("recognizes declared tool refusals and filters attempts by actor and idempotency", () => {
+    const attempts = [
+      operationEntry({
+        sequence: 1,
+        callId: "call_tooldeny01",
+        operation: operation.remove,
+        actorId: "support-agent",
+        arguments: { id: "one" },
+        outcome: {
+          status: "tool_error",
+          error: {
+            schemaVersion: 1,
+            code: "tool.NOT_OWNER",
+            source: "tool",
+            message: "the actor does not own this record",
+            retryable: false,
+            issues: [],
+          },
+        },
+      }),
+      operationEntry({
+        sequence: 2,
+        callId: "call_recorded02",
+        operation: operation.update,
+        actorId: "support-agent",
+        idempotency: "recorded",
+        arguments: { id: "one" },
+        outcome: { status: "ok", value: { updated: true } },
+      }),
+      operationEntry({
+        sequence: 3,
+        callId: "call_replayed03",
+        operation: operation.update,
+        actorId: "support-agent",
+        idempotency: "replayed",
+        arguments: { id: "one" },
+        outcome: { status: "ok", value: { updated: true } },
+      }),
+      operationEntry({
+        sequence: 4,
+        callId: "call_other04",
+        operation: operation.update,
+        actorId: "other-agent",
+        arguments: { id: "one" },
+        outcome: { status: "ok", value: { updated: true } },
+      }),
+    ];
+    const assertions = [
+      {
+        id: "tool-refusal",
+        kind: "operation.denied",
+        operation: operation.remove,
+        actorId: "support-agent",
+        errorCode: "tool.NOT_OWNER",
+      },
+      {
+        id: "one-replay",
+        kind: "operation.count",
+        operation: operation.update,
+        actorId: "support-agent",
+        idempotency: ["replayed"],
+        outcomes: ["ok"],
+        comparison: { operator: "equals", value: 1 },
+      },
+    ].map((assertion) => AssertionDefinitionSchema.parse(assertion));
+
+    const results = evaluateAssertions({ assertions, state: stateReader(records), evidence: attempts });
+    expect(results.every((item) => item.status === "passed")).toBe(true);
+    expect(results[1]).toMatchObject({ actual: 1, evidenceSequences: [3] });
   });
 
   it("paginates state counts and rejects unordered evidence", () => {

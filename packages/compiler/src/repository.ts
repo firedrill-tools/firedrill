@@ -2,6 +2,7 @@ import { existsSync, lstatSync, readdirSync, realpathSync } from "node:fs";
 import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { diagnostic } from "./diagnostics.js";
 import type { Diagnostic } from "@firedrill/contracts";
+import { compareStableStrings } from "@firedrill/contracts";
 import type { ResourceKind } from "./types.js";
 
 const IGNORED_DIRECTORIES = new Set([".firedrill", ".git", "node_modules"]);
@@ -135,7 +136,7 @@ export function discoverSources(
   const diagnostics: Diagnostic[] = [];
   const visit = (directory: string) => {
     for (const entry of readdirSync(directory, { withFileTypes: true }).sort((a, b) =>
-      a.name.localeCompare(b.name),
+      compareStableStrings(a.name, b.name),
     )) {
       if (entry.isDirectory() && IGNORED_DIRECTORIES.has(entry.name)) continue;
       const absolutePath = join(directory, entry.name);

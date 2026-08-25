@@ -38,7 +38,7 @@
     "conformance": "work-queue-conformance"
   },
   "scripts": {
-    "build": "tsc -p tsconfig.build.json && cp ../../LICENSE dist/LICENSE && cp ../../NOTICE dist/NOTICE",
+    "build": "tsx ../../tooling/package-files.mts clean && tsc -p tsconfig.build.json && tsx ../../tooling/package-files.mts finalize",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "node ../../packages/cli/dist/bin.js tool test work-queue --root ."
   },

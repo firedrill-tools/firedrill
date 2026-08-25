@@ -2,6 +2,7 @@ import { existsSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { OperationInvocation, OperationOutcome } from "@firedrill/contracts";
+import type { WorldTransaction } from "@firedrill/world-store";
 import Database from "better-sqlite3";
 import { afterEach, describe, expect, it } from "vitest";
 import { SqliteWorldStore } from "../src/index.js";
@@ -133,6 +134,33 @@ describe("SQLite world transactions", () => {
     ).toThrow(/crash after mutation/);
     expect(store.readState("calendar", "events", "event_0")?.value.title).toBe("Existing");
     expect(store.readEvidence()).toHaveLength(evidenceBefore);
+    store.close();
+  });
+
+  it("revokes retained transaction contexts after commit and rollback", () => {
+    const directory = temporaryDirectory();
+    const store = createStore(directory);
+    let committed!: WorldTransaction;
+    store.transact(CORRELATION, (transaction) => {
+      committed = transaction;
+      return {
+        value: undefined,
+        primary: { kind: "clock", fromUs: 1_000, toUs: 1_000, reason: "explicit" },
+      };
+    });
+    expect(() =>
+      committed.putState("calendar", "events", "event_2", { id: "event_2", title: "Late write" }),
+    ).toThrow(/no longer active/);
+    expect(store.readState("calendar", "events", "event_2")).toBeNull();
+
+    let rolledBack!: WorldTransaction;
+    expect(() =>
+      store.transact("corr_retained", (transaction) => {
+        rolledBack = transaction;
+        throw new Error("stop");
+      }),
+    ).toThrow(/stop/);
+    expect(() => rolledBack.getState("calendar", "events", "event_0")).toThrow(/no longer active/);
     store.close();
   });
 

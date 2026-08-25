@@ -3,6 +3,7 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, renameSync, rmSync, w
 import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { Sha256 } from "@firedrill/contracts";
+import { compareStableStrings } from "@firedrill/contracts";
 import { FiredrillProjectError } from "./run-drills.js";
 import { inspectTool, testTool } from "./tool-authoring.js";
 import type { TestToolOptions, ToolConformanceResult } from "./tool-authoring.js";
@@ -130,7 +131,7 @@ function writeBundle(directory: string, files: ReadonlyMap<string, Buffer>): rea
     mkdirSync(dirname(destination), { recursive: true });
     writeFileSync(destination, bytes, { flag: "wx" });
   }
-  return [...files.keys()].sort((left, right) => left.localeCompare(right));
+  return [...files.keys()].sort(compareStableStrings);
 }
 
 function frameworkLegalFile(name: "LICENSE" | "NOTICE"): Buffer {
@@ -285,7 +286,7 @@ export async function prepareToolContribution(
   for (const source of sourceFiles) files.set(`source/${source.path}`, source.bytes);
   const checksums = [...files]
     .map(([path, bytes]) => `${hash(bytes).slice("sha256:".length)}  ${path}`)
-    .sort((left, right) => left.localeCompare(right));
+    .sort(compareStableStrings);
   files.set("SHA256SUMS", Buffer.from(`${checksums.join("\n")}\n`));
 
   const parent = dirname(destination);

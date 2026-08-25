@@ -2,8 +2,10 @@ schemaVersion: 1
 target:
   id: starter-agent
   kind: command
-  bindings: [http]
+  bindings:
+    - http
   executable: node
-  arguments: [firedrill/example-agent.mjs]
+  arguments:
+    - firedrill/example-agent.mjs
   workingDirectory: .
   timeoutMs: 5000

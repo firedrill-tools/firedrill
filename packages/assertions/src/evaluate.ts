@@ -12,6 +12,7 @@ import type {
   OperationRef,
 } from "@firedrill/contracts";
 import type { StateScanOptions, StoredStateRecord } from "@firedrill/world-store";
+import { AssertionEvidenceIndex } from "./evidence-index.js";
 
 export interface AssertionStateReader {
   readState(packageId: string, namespace: string, rowId: string): StoredStateRecord | null;
@@ -22,7 +23,7 @@ export interface EvaluateAssertionsInput {
   readonly assertions: readonly AssertionDefinition[];
   readonly state: AssertionStateReader;
   /** Evidence must already be scoped to this drill run and ordered by sequence. */
-  readonly evidence: readonly EvidenceEntry[];
+  readonly evidence: readonly EvidenceEntry[] | AssertionEvidenceIndex;
 }
 
 type Comparison = Extract<AssertionDefinition, { kind: "state.value" }>["comparison"];
@@ -143,20 +144,12 @@ function result(input: {
 }
 
 function stateEvidence(
-  evidence: readonly EvidenceEntry[],
+  evidence: AssertionEvidenceIndex,
   packageId: string,
   namespace: string,
   rowId?: string,
 ): readonly number[] {
-  return evidence
-    .filter(
-      (entry) =>
-        entry.kind === "state_change" &&
-        entry.packageId === packageId &&
-        entry.namespace === namespace &&
-        (rowId === undefined || entry.rowId === rowId),
-    )
-    .map((entry) => entry.sequence);
+  return evidence.stateSequences(packageId, namespace, rowId);
 }
 
 function allState(
@@ -181,20 +174,55 @@ function allState(
   }
 }
 
-function operationEvidence(
-  evidence: readonly EvidenceEntry[],
-  operation: OperationRef,
-): readonly OperationEvidence[] {
-  return evidence.filter(
-    (entry): entry is OperationEvidence =>
-      entry.kind === "operation" && operationEqual(entry.invocation.operation, operation),
+interface OperationEvidenceFilter {
+  readonly actorId?: string;
+  readonly outcomes?: readonly OperationEvidence["outcome"]["status"][];
+  readonly idempotency?: readonly OperationEvidence["idempotency"][];
+}
+
+function normalizedOperationFilter(input: {
+  readonly actorId?: string | undefined;
+  readonly outcomes?: readonly OperationEvidence["outcome"]["status"][] | undefined;
+  readonly idempotency?: readonly OperationEvidence["idempotency"][] | undefined;
+}): OperationEvidenceFilter {
+  return {
+    ...(input.actorId === undefined ? {} : { actorId: input.actorId }),
+    ...(input.outcomes === undefined ? {} : { outcomes: input.outcomes }),
+    ...(input.idempotency === undefined ? {} : { idempotency: input.idempotency }),
+  };
+}
+
+function matchesOperationEvidence(entry: OperationEvidence, filter: OperationEvidenceFilter): boolean {
+  return (
+    (filter.actorId === undefined || entry.actorId === filter.actorId) &&
+    (filter.outcomes === undefined || filter.outcomes.includes(entry.outcome.status)) &&
+    (filter.idempotency === undefined || filter.idempotency.includes(entry.idempotency))
   );
+}
+
+function operationFilterDetails(filter: OperationEvidenceFilter): JsonObject {
+  return {
+    ...(filter.actorId === undefined ? {} : { actorId: filter.actorId }),
+    ...(filter.outcomes === undefined ? {} : { outcomes: [...filter.outcomes] }),
+    ...(filter.idempotency === undefined ? {} : { idempotency: [...filter.idempotency] }),
+  };
+}
+
+function operationAttempt(entry: OperationEvidence): JsonObject {
+  return {
+    sequence: entry.sequence,
+    operation: entry.invocation.operation,
+    outcome: entry.outcome.status,
+    idempotency: entry.idempotency,
+    ...(entry.actorId === undefined ? {} : { actorId: entry.actorId }),
+    ...(entry.outcome.error === undefined ? {} : { errorCode: entry.outcome.error.code }),
+  };
 }
 
 function evaluateOne(
   assertion: AssertionDefinition,
   state: AssertionStateReader,
-  evidence: readonly EvidenceEntry[],
+  evidence: AssertionEvidenceIndex,
 ): AssertionResult {
   if (assertion.kind === "state.value") {
     const record = state.readState(assertion.packageId, assertion.namespace, assertion.rowId);
@@ -235,9 +263,14 @@ function evaluateOne(
   }
 
   if (assertion.kind === "operation.count") {
-    const attempts = operationEvidence(evidence, assertion.operation).filter(
-      (entry) => assertion.outcomes === undefined || assertion.outcomes.includes(entry.outcome.status),
-    );
+    const filter = {
+      ...(assertion.actorId === undefined ? {} : { actorId: assertion.actorId }),
+      ...(assertion.outcomes === undefined ? {} : { outcomes: assertion.outcomes }),
+      ...(assertion.idempotency === undefined ? {} : { idempotency: assertion.idempotency }),
+    };
+    const attempts = evidence
+      .operation(assertion.operation)
+      .filter((entry) => matchesOperationEvidence(entry, filter));
     const matched = compareNumber(attempts.length, assertion.comparison);
     return result({
       assertion,
@@ -247,28 +280,33 @@ function evaluateOne(
       actual: attempts.length,
       location: operationLocation([assertion.operation]),
       operator: assertion.comparison.operator,
-      ...(assertion.outcomes === undefined ? {} : { details: { outcomes: assertion.outcomes } }),
+      details: operationFilterDetails(filter),
       evidenceSequences: attempts.map((entry) => entry.sequence),
     });
   }
 
   if (assertion.kind === "operation.order") {
-    const attempts = evidence.filter((entry) => entry.kind === "operation");
+    const attempts = evidence.allOperations();
+    const expectedSequence = assertion.sequence.map((step) => ({
+      anyOf: step.anyOf,
+      ...operationFilterDetails(normalizedOperationFilter(step)),
+    }));
     let cursor = 0;
     const matchedSequences: number[] = [];
     for (const step of assertion.sequence) {
       const index = attempts.findIndex(
         (entry, candidate) =>
           candidate >= cursor &&
-          step.anyOf.some((operation) => operationEqual(entry.invocation.operation, operation)),
+          step.anyOf.some((operation) => operationEqual(entry.invocation.operation, operation)) &&
+          matchesOperationEvidence(entry, normalizedOperationFilter(step)),
       );
       if (index < cursor) {
         return result({
           assertion,
           matched: false,
           message: "operation sequence was not observed in order",
-          expected: assertion.sequence,
-          actual: attempts.map((entry) => entry.invocation.operation),
+          expected: expectedSequence,
+          actual: attempts.map(operationAttempt),
           location: operationLocation(assertion.sequence.flatMap((step) => step.anyOf)),
           operator: "contains_in_order",
           details: { matchedSteps: matchedSequences.length, totalSteps: assertion.sequence.length },
@@ -283,8 +321,8 @@ function evaluateOne(
       assertion,
       matched: true,
       message: "operation sequence was observed in order",
-      expected: assertion.sequence,
-      actual: attempts.map((entry) => entry.invocation.operation),
+      expected: expectedSequence,
+      actual: attempts.map(operationAttempt),
       location: operationLocation(assertion.sequence.flatMap((step) => step.anyOf)),
       operator: "contains_in_order",
       details: { matchedSteps: matchedSequences.length, totalSteps: assertion.sequence.length },
@@ -293,7 +331,14 @@ function evaluateOne(
   }
 
   if (assertion.kind === "operation.arguments") {
-    const attempts = operationEvidence(evidence, assertion.operation);
+    const filter = {
+      ...(assertion.actorId === undefined ? {} : { actorId: assertion.actorId }),
+      outcomes: assertion.outcomes,
+      ...(assertion.idempotency === undefined ? {} : { idempotency: assertion.idempotency }),
+    };
+    const attempts = evidence
+      .operation(assertion.operation)
+      .filter((entry) => matchesOperationEvidence(entry, filter));
     const attempt = attempts[assertion.occurrence - 1];
     const actual = attempt?.invocation.arguments ?? null;
     const matched = attempt !== undefined && partialMatch(actual, assertion.contains);
@@ -307,16 +352,24 @@ function evaluateOne(
       actual,
       location: operationLocation([assertion.operation], assertion.occurrence),
       operator: "contains",
-      details: { occurrenceFound: attempt !== undefined },
+      details: { occurrenceFound: attempt !== undefined, ...operationFilterDetails(filter) },
       evidenceSequences: attempt === undefined ? [] : [attempt.sequence],
     });
   }
 
   if (assertion.kind === "operation.denied") {
-    const attempts = operationEvidence(evidence, assertion.operation);
+    const outcomes =
+      assertion.outcomes ?? (assertion.errorCode?.startsWith("tool.") === true ? ["tool_error"] : ["denied"]);
+    const filter = {
+      ...(assertion.actorId === undefined ? {} : { actorId: assertion.actorId }),
+      ...(assertion.idempotency === undefined ? {} : { idempotency: assertion.idempotency }),
+    };
+    const attempts = evidence
+      .operation(assertion.operation)
+      .filter((entry) => matchesOperationEvidence(entry, filter));
     const allDenied = attempts.every(
       (entry) =>
-        entry.outcome.status === "denied" &&
+        outcomes.includes(entry.outcome.status as "denied" | "tool_error") &&
         (assertion.errorCode === undefined || entry.outcome.error?.code === assertion.errorCode),
     );
     const matched = allDenied && (!assertion.attemptRequired || attempts.length > 0);
@@ -325,29 +378,19 @@ function evaluateOne(
       matched,
       message: matched ? "all operation attempts were denied" : "operation denial requirement was not met",
       expected: {
-        status: "denied",
+        outcomes,
         attemptRequired: assertion.attemptRequired,
         ...(assertion.errorCode === undefined ? {} : { errorCode: assertion.errorCode }),
       },
-      actual: attempts.map((entry) => ({
-        sequence: entry.sequence,
-        status: entry.outcome.status,
-        ...(entry.outcome.error === undefined ? {} : { errorCode: entry.outcome.error.code }),
-      })),
+      actual: attempts.map(operationAttempt),
       location: operationLocation([assertion.operation]),
       operator: "all_denied",
-      details: { attemptCount: attempts.length },
+      details: { attemptCount: attempts.length, ...operationFilterDetails(filter) },
       evidenceSequences: attempts.map((entry) => entry.sequence),
     });
   }
 
-  const events = evidence.filter(
-    (entry) =>
-      entry.kind === "event" &&
-      entry.event.packageId === assertion.event.packageId &&
-      entry.event.eventId === assertion.event.eventId &&
-      entry.phase === assertion.phase,
-  );
+  const events = evidence.event(assertion.event, assertion.phase);
   const matched = compareNumber(events.length, assertion.comparison);
   return result({
     assertion,
@@ -362,12 +405,9 @@ function evaluateOne(
 }
 
 export function evaluateAssertions(input: EvaluateAssertionsInput): readonly AssertionResult[] {
-  for (let index = 1; index < input.evidence.length; index += 1) {
-    const previous = input.evidence[index - 1];
-    const current = input.evidence[index];
-    if (previous !== undefined && current !== undefined && current.sequence <= previous.sequence) {
-      throw new TypeError("assertion evidence must be strictly ordered by sequence");
-    }
-  }
-  return input.assertions.map((assertion) => evaluateOne(assertion, input.state, input.evidence));
+  const evidence =
+    input.evidence instanceof AssertionEvidenceIndex
+      ? input.evidence
+      : new AssertionEvidenceIndex(input.evidence);
+  return input.assertions.map((assertion) => evaluateOne(assertion, input.state, evidence));
 }

@@ -32,7 +32,7 @@
     "layer": "core"
   },
   "scripts": {
-    "build": "tsc -p tsconfig.build.json && tsx scripts/emit-schemas.mts",
+    "build": "tsx ../../tooling/package-files.mts clean && tsc -p tsconfig.build.json && tsx scripts/emit-schemas.mts && tsx ../../tooling/package-files.mts finalize",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "vitest run"
   },
@@ -44,5 +44,14 @@
     "tsx": "4.23.12",
     "typescript": "5.9.3",
     "vitest": "3.2.7"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/firedrill-tools/firedrill.git",
+    "directory": "packages/contracts"
+  },
+  "homepage": "https://firedrill.tools",
+  "bugs": {
+    "url": "https://github.com/firedrill-tools/firedrill/issues"
   }
 }

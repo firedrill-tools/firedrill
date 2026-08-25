@@ -93,8 +93,6 @@ const DrillSourceShape = {
   targetId: StableIdSchema,
   scenarioId: StableIdSchema.optional(),
   inlineScenario: InlineScenarioDefinitionSchema.optional(),
-  trials: TrialPolicySchema.default({ count: 1, classification: "contract" }),
-  assertions: z.array(AssertionDefinitionSchema).min(1),
 };
 
 /**
@@ -115,6 +113,8 @@ export const DrillSourceSchema = z
       .strict()
       .optional(),
     timeline: DrillTimelineSchema.optional(),
+    trials: TrialPolicySchema.default({ count: 1, classification: "contract" }),
+    assertions: z.array(AssertionDefinitionSchema).min(1),
   })
   .strict()
   .superRefine((drill, context) => {

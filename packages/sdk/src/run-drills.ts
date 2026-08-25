@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { join, resolve } from "node:path";
 import { compileWorld } from "@firedrill/compiler";
 import type {
@@ -14,7 +15,13 @@ import type {
   StableId,
   TargetInvocation,
 } from "@firedrill/contracts";
-import { DrillShardSchema, SeedSchema, Sha256Schema, StableIdSchema } from "@firedrill/contracts";
+import {
+  DrillShardSchema,
+  SeedSchema,
+  Sha256Schema,
+  StableIdSchema,
+  compareStableStrings,
+} from "@firedrill/contracts";
 import type { DrillExecution, DrillTrialHookContext, TargetExecutionContext } from "@firedrill/drills";
 import { runDrill } from "@firedrill/drills";
 import type { WrittenLocalReport } from "@firedrill/reporters";
@@ -259,6 +266,11 @@ interface ValidatedRunOptions {
   readonly shard?: DrillShard;
 }
 
+function drillShardIndex(drillId: string, total: number): number {
+  const digest = createHash("sha256").update("firedrill.drill-shard.v1\0").update(drillId).digest();
+  return digest.readUInt32BE(0) % total;
+}
+
 function selectedDrills(build: LoadedWorldBuild, options: RunDrillsOptions, validated: ValidatedRunOptions) {
   if (build.worldIr.drills.length === 0) {
     throw new FiredrillProjectError(
@@ -309,7 +321,7 @@ function selectedDrills(build: LoadedWorldBuild, options: RunDrillsOptions, vali
   }
   if (validated.shard !== undefined) {
     const shard = validated.shard;
-    drills = drills.filter((_, index) => index % shard.total === shard.index);
+    drills = drills.filter((drill) => drillShardIndex(drill.id, shard.total) === shard.index);
   }
   if (drills.length === 0) {
     throw new FiredrillProjectError(
@@ -376,7 +388,7 @@ function validateOptions(options: RunDrillsOptions): ValidatedRunOptions {
     }
     return parsed.data;
   });
-  tags.sort((left, right) => left.localeCompare(right));
+  tags.sort(compareStableStrings);
   const filter = options.filter?.trim();
   if (filter !== undefined && (filter.length === 0 || filter.length > 200)) {
     throw new FiredrillProjectError(

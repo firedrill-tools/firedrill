@@ -15,7 +15,7 @@ The result is deliberately marked `rehearsal` when the repository has no commit 
 
 The output contains:
 
-- 16 byte-for-byte reproducible npm package archives and their manifest;
+- one byte-for-byte reproducible archive for every publishable npm package, plus their manifest;
 - a source dependency SBOM from the exact `pnpm-lock.yaml`;
 - a production-only installed-runtime SBOM;
 - one artifact SBOM per npm package;

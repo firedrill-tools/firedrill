@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { AssertionDefinitionSchema } from "./assertions.js";
 import { ActorIdSchema, StableIdSchema, VirtualTimeSchema } from "./identifiers.js";
-import { JsonValueSchema } from "./json.js";
+import { compareStableStrings, JsonValueSchema } from "./json.js";
 import { InlineScenarioDefinitionSchema } from "./scenario.js";
 
 export const TrialPolicySchema = z
@@ -166,7 +166,7 @@ export const DrillDefinitionSchema = z
       if (drill.tags.indexOf(tag) !== index) {
         context.addIssue({ code: "custom", path: ["tags", index], message: `duplicate tag ${tag}` });
       }
-      if (index > 0 && (drill.tags[index - 1] ?? "").localeCompare(tag) >= 0) {
+      if (index > 0 && compareStableStrings(drill.tags[index - 1] ?? "", tag) >= 0) {
         context.addIssue({
           code: "custom",
           path: ["tags", index],

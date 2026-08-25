@@ -29,10 +29,11 @@ node packages/cli/dist/bin.js --root examples/quickstart
 
 The drill passes and prints an HTML report path. Change the expected final value as described in the quickstart and run it again to see the assertion diff and reproduction command.
 
-For an existing project, inspect the repository first or install a verified starting path:
+For an existing project, run the guided terminal setup or select a deterministic path directly. JSON, CI, and piped `init` remain read-only unless `--path` is present:
 
 ```sh
 firedrill init
+firedrill init --path firedrill-agent # canonical skill + optional local authoring agent
 firedrill init --path coding-agent  # canonical skill + repository brief
 firedrill init --path template      # complete runnable local example
 ```
@@ -64,7 +65,7 @@ Choose the target that matches how the agent already runs:
 | `http` | The agent application is already running locally | Sends the task to its declared local endpoint |
 | `external` | Jest, Vitest, Mocha, or application code owns the agent process | Passes the task and binding to the `runDrills()` callback |
 
-Each target declares `direct`, `http`, or `mcp` bindings. Adapt the agent at its existing tool/client composition seam; agent business logic should not contain Firedrill conditionals.
+Each target declares `direct`, `http`, `mcp`, or `cli` bindings. Adapt the agent at its existing tool/client composition seam; agent business logic should not contain Firedrill conditionals. A CLI-bound target discovers operations with `firedrill world tools --json` and calls them with `firedrill world call <tool-id> <operation-id> --input '{...}'`.
 
 The agent process continues to own its model/provider configuration and secrets. Firedrill supplies only per-trial synthetic-world connection values. A command target may opt into individual host variables with `environmentFromHost`; every unlisted host secret is withheld.
 
@@ -81,9 +82,24 @@ expect(result.verdict).toBe("passed");
 
 Setup and source errors throw `FiredrillProjectError`. A completed drill that fails an assertion returns `verdict: "failed"`, so the caller's test runner remains in control.
 
+## Optional Firedrill Agent
+
+The framework does not require an authoring agent. Developers may write source directly or use any coding agent with the canonical skill. Those who want a built-in local path can separately install `@firedrill/agent` and invoke it through the same CLI:
+
+```sh
+pnpm add -D @firedrill/cli @firedrill/agent
+export ANTHROPIC_API_KEY=your_key
+firedrill init --path firedrill-agent
+firedrill agent
+```
+
+Firedrill Agent uses the Claude Agent SDK with the developer's own Anthropic key. It can inspect and edit ordinary repository files and call the real local formatter, compiler, Tool checks, and drill runner. It cannot read secret files or generated evidence, use a shell, commit, push, publish, or contact a hosted Firedrill service. Repository content selected during the session is sent to Anthropic under Anthropic's applicable terms; no source is sent to Firedrill.
+
+An invocation defaults to at most 40 turns, $2 of model spend, and a 15-minute wall-clock deadline. The CLI exposes explicit overrides for each limit.
+
 ## What works now
 
-Repository-owned YAML or JSON plus explicitly selected Tool packages compile into a verified immutable world build. Custom Tool behavior is ordinary TypeScript or JavaScript loaded from the repository; reusable packs are ordinary package dependencies named once in `firedrill.json`. Local execution supports isolated SQLite worlds, deterministic scenarios and faults, module/command/HTTP/caller-owned targets, direct/HTTP/MCP bindings, seven typed assertion kinds, seeded trials, cancellation and timeouts, retained worlds, and verified local reports.
+Repository-owned YAML or JSON plus explicitly selected Tool packages compile into a verified immutable world build. Custom Tool behavior is ordinary TypeScript or JavaScript loaded from the repository; reusable packs are ordinary package dependencies named once in `firedrill.json`. One behavior definition is exposed through the selected direct, HTTP, MCP, and CLI adapters and mutates the same world state. The HTTP adapter is Firedrill's typed operation protocol, not an automatic wire-compatible clone of every third-party REST API; an existing vendor-specific client is repointed at its composition seam or through a small repository adapter. Local execution supports a separate isolated SQLite world for every trial and retry, deterministic scenarios and faults, module/command/HTTP/caller-owned targets, seven typed assertion kinds, seeded trials, cancellation and timeouts, retained worlds, and verified local reports.
 
 Long-running drills support multiple actors, ordered interactions, virtual-time horizons, scheduled cross-Tool consequences, invariant checkpoints, stop policies, and event budgets. Suites add tags, text filters, deterministic shards, bounded concurrency, retries with distinct attempt identity, and SDK lifecycle hooks. Watch mode reruns through the same path without overlapping work. `firedrill compare` verifies both report bundles first and labels comparisons as exact-input, descriptive-only, or incompatible before showing factual deltas.
 

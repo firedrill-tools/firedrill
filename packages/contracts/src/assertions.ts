@@ -1,7 +1,13 @@
 import { z } from "zod";
-import { EventRefSchema, OperationRefSchema, PackageIdSchema, StableIdSchema } from "./identifiers.js";
+import {
+  ActorIdSchema,
+  EventRefSchema,
+  OperationRefSchema,
+  PackageIdSchema,
+  StableIdSchema,
+} from "./identifiers.js";
 import { JsonObjectSchema, JsonValueSchema } from "./json.js";
-import { OperationOutcomeStatusSchema } from "./operation.js";
+import { OperationIdempotencyDispositionSchema, OperationOutcomeStatusSchema } from "./operation.js";
 
 export const ComparisonSchema = z.discriminatedUnion("operator", [
   z.object({ operator: z.literal("equals"), value: JsonValueSchema }).strict(),
@@ -33,6 +39,11 @@ const AssertionBase = {
   gate: z.boolean().default(true),
 };
 
+const OperationEvidenceFilter = {
+  actorId: ActorIdSchema.optional(),
+  idempotency: z.array(OperationIdempotencyDispositionSchema).min(1).optional(),
+};
+
 export const StateValueAssertionSchema = z
   .object({
     ...AssertionBase,
@@ -61,6 +72,7 @@ export const OperationCountAssertionSchema = z
     ...AssertionBase,
     kind: z.literal("operation.count"),
     operation: OperationRefSchema,
+    ...OperationEvidenceFilter,
     outcomes: z.array(OperationOutcomeStatusSchema).min(1).optional(),
     comparison: NumericComparisonSchema,
   })
@@ -70,7 +82,17 @@ export const OperationOrderAssertionSchema = z
   .object({
     ...AssertionBase,
     kind: z.literal("operation.order"),
-    sequence: z.array(z.object({ anyOf: z.array(OperationRefSchema).min(1) }).strict()).min(2),
+    sequence: z
+      .array(
+        z
+          .object({
+            anyOf: z.array(OperationRefSchema).min(1),
+            ...OperationEvidenceFilter,
+            outcomes: z.array(OperationOutcomeStatusSchema).min(1).default(["ok"]),
+          })
+          .strict(),
+      )
+      .min(2),
   })
   .strict();
 
@@ -79,6 +101,8 @@ export const OperationArgumentsAssertionSchema = z
     ...AssertionBase,
     kind: z.literal("operation.arguments"),
     operation: OperationRefSchema,
+    ...OperationEvidenceFilter,
+    outcomes: z.array(OperationOutcomeStatusSchema).min(1).default(["ok"]),
     occurrence: z.number().int().positive().default(1),
     contains: JsonObjectSchema,
   })
@@ -89,6 +113,11 @@ export const OperationDeniedAssertionSchema = z
     ...AssertionBase,
     kind: z.literal("operation.denied"),
     operation: OperationRefSchema,
+    ...OperationEvidenceFilter,
+    outcomes: z
+      .array(z.enum(["denied", "tool_error"]))
+      .min(1)
+      .optional(),
     errorCode: z
       .string()
       .regex(/^[a-z][a-z0-9-]*\.[A-Z][A-Z0-9_]*$/)

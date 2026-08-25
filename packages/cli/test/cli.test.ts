@@ -9,6 +9,8 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { createServer } from "node:http";
+import type { AddressInfo } from "node:net";
 import { afterEach, describe, expect, it } from "vitest";
 import { type CliWriter, runCli } from "../src/index.js";
 
@@ -199,10 +201,21 @@ function capture() {
   return { writer, value: () => value };
 }
 
-async function invoke(root: string, arguments_: readonly string[]) {
+async function invoke(
+  root: string,
+  arguments_: readonly string[],
+  environment?: Readonly<Record<string, string | undefined>>,
+  ask?: (question: string) => Promise<string>,
+) {
   const stdout = capture();
   const stderr = capture();
-  const code = await runCli(arguments_, { cwd: root, stdout: stdout.writer, stderr: stderr.writer });
+  const code = await runCli(arguments_, {
+    cwd: root,
+    stdout: stdout.writer,
+    stderr: stderr.writer,
+    ...(environment === undefined ? {} : { environment }),
+    ...(ask === undefined ? {} : { ask }),
+  });
   return { code, stdout: stdout.value(), stderr: stderr.value() };
 }
 
@@ -235,6 +248,111 @@ describe("local CLI front door", () => {
     expect(contribute.stdout).toMatch(
       /authored in this repository[\s\S]*Nothing\s+is uploaded and no pull request is opened/,
     );
+
+    const world = await invoke(root, ["world", "--help"]);
+    expect(world.code).toBe(0);
+    expect(world.stdout).toMatch(/active synthetic world[\s\S]*world call/);
+
+    const agent = await invoke(root, ["agent", "--help"]);
+    expect(agent.code).toBe(0);
+    expect(agent.stdout).toMatch(/Claude Agent SDK[\s\S]*normal CLI and SDK work without/);
+  });
+
+  it("discovers and calls an active world through the public CLI", async () => {
+    const root = mkdtempSync(join(tmpdir(), "firedrill-cli-"));
+    temporaryDirectories.push(root);
+    const token = "cli-world-token-0000000001";
+    const requests: unknown[] = [];
+    const server = createServer((request, response) => {
+      if (request.headers.authorization !== `Bearer ${token}`) {
+        response.writeHead(401, { "content-type": "application/json" });
+        response.end('{"error":"unauthorized"}\n');
+        return;
+      }
+      if (request.method === "GET" && request.url === "/v1/tools") {
+        response.writeHead(200, { "content-type": "application/json" });
+        response.end(
+          `${JSON.stringify({
+            schemaVersion: 1,
+            tools: [
+              {
+                id: "inventory",
+                version: "1.0.0",
+                operations: [
+                  {
+                    id: "items.reserve",
+                    inputSchema: { type: "object" },
+                    outputSchema: { type: "object" },
+                    idempotency: "required",
+                    fidelity: "stateful",
+                  },
+                ],
+              },
+            ],
+          })}\n`,
+        );
+        return;
+      }
+      const chunks: Buffer[] = [];
+      request.on("data", (chunk: Buffer) => chunks.push(chunk));
+      request.on("end", () => {
+        requests.push(JSON.parse(Buffer.concat(chunks).toString("utf8")));
+        response.writeHead(200, { "content-type": "application/json" });
+        response.end(
+          `${JSON.stringify({
+            schemaVersion: 1,
+            callId: "call_cli0001",
+            correlationId: "corr_cli0001",
+            outcome: { status: "ok", value: { reserved: true } },
+          })}\n`,
+        );
+      });
+    });
+    await new Promise<void>((resolve, reject) => {
+      server.once("error", reject);
+      server.listen(0, "127.0.0.1", resolve);
+    });
+    const address = server.address() as AddressInfo;
+    const environment = {
+      FIREDRILL_CLI_URL: `http://127.0.0.1:${address.port}`,
+      FIREDRILL_CLI_TOKEN: token,
+    };
+    try {
+      const tools = await invoke(root, ["world", "tools", "--json"], environment);
+      expect(tools.code, tools.stderr).toBe(0);
+      expect(JSON.parse(tools.stdout)).toMatchObject({
+        command: "world.tools",
+        status: "success",
+        tools: [{ id: "inventory", operations: [{ id: "items.reserve" }] }],
+      });
+
+      const called = await invoke(
+        root,
+        [
+          "world",
+          "call",
+          "inventory",
+          "items.reserve",
+          "--input",
+          '{"sku":"sku-7"}',
+          "--idempotency-key",
+          "reserve-sku-7",
+          "--json",
+        ],
+        environment,
+      );
+      expect(called.code, called.stderr).toBe(0);
+      expect(JSON.parse(called.stdout)).toMatchObject({
+        command: "world.call",
+        status: "completed",
+        outcome: { status: "ok", value: { reserved: true } },
+      });
+      expect(requests).toEqual([{ arguments: { sku: "sku-7" }, idempotencyKey: "reserve-sku-7" }]);
+    } finally {
+      await new Promise<void>((resolve, reject) =>
+        server.close((error) => (error === undefined ? resolve() : reject(error))),
+      );
+    }
   });
 
   it("explains the product loop and gives an actionable first-project diagnostic", async () => {
@@ -252,7 +370,7 @@ describe("local CLI front door", () => {
     );
   });
 
-  it("inspects onboarding without writing and offers three explicit paths", async () => {
+  it("inspects onboarding without writing and offers four explicit paths", async () => {
     const root = mkdtempSync(join(tmpdir(), "firedrill-cli-"));
     temporaryDirectories.push(root);
     writeFileSync(
@@ -274,7 +392,8 @@ describe("local CLI front door", () => {
         firedrillProject: false,
       },
       choices: [
-        { path: "coding-agent", recommended: true },
+        { path: "firedrill-agent", recommended: true },
+        { path: "coding-agent", recommended: false },
         { path: "template", recommended: false },
         { path: "manual", recommended: false },
       ],
@@ -303,6 +422,61 @@ describe("local CLI front door", () => {
     });
   });
 
+  it("does not report Firedrill's own packages as product-agent libraries", async () => {
+    const root = mkdtempSync(join(tmpdir(), "firedrill-cli-"));
+    temporaryDirectories.push(root);
+    writeFileSync(
+      join(root, "package.json"),
+      `${JSON.stringify({
+        name: "customer-agent",
+        private: true,
+        dependencies: {
+          "@firedrill/agent": "0.0.0",
+          "@firedrill/cli": "0.0.0",
+          ai: "5.0.0",
+        },
+      })}\n`,
+    );
+
+    const result = await invoke(root, ["init", "--json"]);
+    expect(result.code, `${result.stdout}\n${result.stderr}`).toBe(0);
+    expect(JSON.parse(result.stdout)).toMatchObject({
+      status: "inspection",
+      detection: { agentLibraries: ["ai"] },
+    });
+  });
+
+  it("guides an interactive developer without changing non-interactive init", async () => {
+    const root = mkdtempSync(join(tmpdir(), "firedrill-cli-"));
+    temporaryDirectories.push(root);
+    writeFileSync(
+      join(root, "package.json"),
+      `${JSON.stringify({ dependencies: { next: "latest", "@prisma/client": "latest" } })}\n`,
+    );
+    writeFileSync(join(root, "agent.ts"), "export const agent = {};\n");
+    const answers = [
+      "The agent also calls an internal queue through a repository adapter.",
+      "Never create the same side effect twice after a timeout.",
+      "1",
+    ];
+    const questions: string[] = [];
+    const result = await invoke(root, ["init"], { ANTHROPIC_API_KEY: "test-key" }, async (question) => {
+      questions.push(question);
+      return answers.shift() ?? "";
+    });
+
+    expect(result.code, `${result.stdout}\n${result.stderr}`).toBe(0);
+    expect(questions).toHaveLength(3);
+    expect(result.stdout).toMatch(
+      /Detected: [^\n]*next[^\n]*@prisma\/client[\s\S]*Initialized the firedrill-agent path[\s\S]*ANTHROPIC_API_KEY detected/,
+    );
+    const brief = readFileSync(join(root, ".agents", "firedrill", "BRIEF.md"), "utf8");
+    expect(brief).toContain(
+      '- Context note: "The agent also calls an internal queue through a repository adapter."',
+    );
+    expect(brief).toContain('- Prove: "Never create the same side effect twice after a timeout."');
+  });
+
   it("installs one canonical coding-agent skill and never overwrites a conflict", async () => {
     const root = mkdtempSync(join(tmpdir(), "firedrill-cli-"));
     temporaryDirectories.push(root);
@@ -312,7 +486,7 @@ describe("local CLI front door", () => {
     expect(readFileSync(skillPath, "utf8")).toMatch(/Definition of done[\s\S]*firedrill validate --json/);
     expect(existsSync(join(root, ".agents", "skills", "firedrill", "references", "bindings.md"))).toBe(true);
     expect(readFileSync(join(root, ".agents", "firedrill", "BRIEF.md"), "utf8")).toMatch(
-      /bounded, read-only inspection[\s\S]*Coding-agent task/,
+      /bounded, read-only inspection[\s\S]*Authoring task/,
     );
     expect(existsSync(join(root, "firedrill.json"))).toBe(false);
     expect(readFileSync(join(root, ".gitignore"), "utf8")).toBe(".firedrill/\n");
@@ -341,6 +515,41 @@ describe("local CLI front door", () => {
     expect(readFileSync(skillPath, "utf8")).toBe("user-owned instructions\n");
   });
 
+  it("installs the Firedrill Agent authoring assets and fails clearly before spending without a key", async () => {
+    const root = mkdtempSync(join(tmpdir(), "firedrill-cli-"));
+    temporaryDirectories.push(root);
+    const initialized = await invoke(root, ["init", "--path", "firedrill-agent", "--json"]);
+    expect(initialized.code, `${initialized.stdout}\n${initialized.stderr}`).toBe(0);
+    expect(JSON.parse(initialized.stdout)).toMatchObject({
+      status: "initialized",
+      path: "firedrill-agent",
+      next: expect.arrayContaining([expect.stringContaining("ANTHROPIC_API_KEY")]),
+    });
+    expect(existsSync(join(root, ".agents", "skills", "firedrill", "SKILL.md"))).toBe(true);
+
+    const missingKey = await invoke(root, ["agent", "--json"], {});
+    expect(missingKey.code).toBe(2);
+    expect(JSON.parse(missingKey.stdout)).toEqual({
+      schemaVersion: 1,
+      command: "agent",
+      status: "failed",
+      code: "agent.API_KEY_MISSING",
+      message: "ANTHROPIC_API_KEY is not set. Export your Anthropic API key, then run firedrill agent again.",
+    });
+
+    const help = await invoke(root, ["agent", "--help"]);
+    expect(help.code).toBe(0);
+    expect(help.stdout).toMatch(/40 turns[\s\S]*\$2[\s\S]*15-minute/);
+
+    const invalidTimeout = await invoke(root, ["agent", "--timeout-ms", "999", "--json"]);
+    expect(invalidTimeout.code).toBe(2);
+    expect(JSON.parse(invalidTimeout.stdout)).toMatchObject({
+      status: "failed",
+      code: "framework.INVALID_ARGUMENT",
+      message: "--timeout-ms must be an integer from 1000 through 7200000",
+    });
+  });
+
   it("preserves existing ignore rules and appends generated runtime state exactly once", async () => {
     const root = mkdtempSync(join(tmpdir(), "firedrill-cli-"));
     temporaryDirectories.push(root);
@@ -363,6 +572,10 @@ describe("local CLI front door", () => {
     const initialized = await invoke(root, ["init", "--path", "template", "--json"]);
     expect(initialized.code, `${initialized.stdout}\n${initialized.stderr}`).toBe(0);
     expect(JSON.parse(initialized.stdout)).toMatchObject({ status: "initialized", path: "template" });
+
+    const format = await invoke(root, ["format", "--check", "--json"]);
+    expect(format.code, `${format.stdout}\n${format.stderr}`).toBe(0);
+    expect(JSON.parse(format.stdout)).toMatchObject({ status: "success", changed: [] });
 
     const validation = await invoke(root, ["validate", "--json"]);
     expect(validation.code, `${validation.stdout}\n${validation.stderr}`).toBe(0);
@@ -891,6 +1104,15 @@ describe("local CLI front door", () => {
     expect(unknown.code).toBe(2);
     expect(unknown.stderr).toMatch(/Available drills: read-note/);
     expect((await invoke(root, ["validate", "--check"])).code).toBe(2);
+  });
+
+  it("treats help as non-executing even when it appears where an option value was expected", async () => {
+    const root = repository();
+    const result = await invoke(root, ["run", "--report-dir", "--help"]);
+    expect(result.code).toBe(0);
+    expect(result.stdout).toContain("Run drills against the repository world");
+    expect(result.stderr).toBe("");
+    expect(existsSync(join(root, "--help"))).toBe(false);
   });
 
   it("keeps invalid invocations machine-readable whenever --json is present", async () => {

@@ -29,13 +29,19 @@ function stableOutcome(outcome: OperationOutcome): unknown {
 }
 
 function stableTargetResult(result: TargetResult): unknown {
-  return result.error === undefined ? result : { ...result, error: stableError(result.error) };
+  const { attachments: _attachments, ...stable } = result;
+  return result.error === undefined ? stable : { ...stable, error: stableError(result.error) };
 }
 
 function stableEvidenceEntry(entry: EvidenceEntry): unknown {
   const { correlationId: _correlationId, ...stable } = entry;
   if (entry.kind === "operation") {
-    const { callId: _callId, correlationId: _invocationCorrelationId, ...invocation } = entry.invocation;
+    const {
+      callId: _callId,
+      correlationId: _invocationCorrelationId,
+      idempotencyKey: _idempotencyKey,
+      ...invocation
+    } = entry.invocation;
     return {
       ...stable,
       invocation,

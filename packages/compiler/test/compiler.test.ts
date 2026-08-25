@@ -58,6 +58,7 @@ function initialState(scenario: InlineScenarioDefinition) {
 async function executeFixture(input: {
   readonly name: string;
   readonly prepare?: (repository: string) => void;
+  readonly scenarioId?: string;
   readonly operation: { readonly packageId: string; readonly operationId: string };
   readonly arguments: Record<string, unknown>;
   readonly idempotencyKey?: string;
@@ -73,7 +74,12 @@ async function executeFixture(input: {
   const loaded = await loadWorldBuild(compiled.build.buildDirectory);
   expect(loaded.status, JSON.stringify(loaded.status === "failed" ? loaded.diagnostics : [])).toBe("success");
   if (loaded.status !== "success") return;
-  const scenario = loaded.build.worldIr.baseline;
+  const scenario =
+    input.scenarioId === undefined
+      ? loaded.build.worldIr.baseline
+      : loaded.build.worldIr.scenarios.find((candidate) => candidate.id === input.scenarioId);
+  expect(scenario, `fixture has no scenario ${input.scenarioId}`).toBeDefined();
+  if (scenario === undefined) return;
   const actor = scenario.actors[0];
   expect(actor).toBeDefined();
   if (actor === undefined) return;
@@ -255,6 +261,30 @@ describe("source to executable world", () => {
       },
     });
     await executeFixture({
+      name: "facility",
+      scenarioId: "unresponsive-controller",
+      operation: { packageId: "climate-control", operationId: "temperature.set" },
+      arguments: { roomId: "greenhouse", celsius: 19 },
+      idempotencyKey: "set-greenhouse-during-timeout",
+      verify: (store, outcome) => {
+        expect(outcome).toMatchObject({
+          status: "tool_error",
+          error: { code: "tool.CONTROLLER_TIMEOUT", retryable: true },
+        });
+        expect(store.readState("climate-control", "rooms", "greenhouse")?.value).toEqual({
+          celsius: 21,
+        });
+        expect(store.readEvidence()).toContainEqual(
+          expect.objectContaining({
+            kind: "fault",
+            packageId: "climate-control",
+            faultId: "controller-timeout",
+            timing: "before",
+          }),
+        );
+      },
+    });
+    await executeFixture({
       name: "laboratory",
       operation: { packageId: "sample-tracker", operationId: "samples.process" },
       arguments: { sampleId: "specimen-a" },
@@ -412,6 +442,30 @@ describe("source to executable world", () => {
     if (before.status === "success" && after.status === "success") {
       expect(after.build.manifest.buildHash).toBe(before.build.manifest.buildHash);
     }
+  });
+
+  it("preserves YAML comments while canonicalizing flow collections", async () => {
+    const repository = temporaryFixture("appointments");
+    const scenarioPath = join(repository, "world", "busy-morning.scenario.yaml");
+    const source = readFileSync(scenarioPath, "utf8");
+    writeFileSync(
+      scenarioPath,
+      `# Scenario explanation retained for reviewers.\n${source.replace(
+        "schemaVersion: 1",
+        "schemaVersion: 1 # source format version",
+      )}\n# End-of-file reviewer note.\n`,
+    );
+
+    const formatted = await formatWorldSources({ repositoryRoot: repository });
+    expect(formatted.status).toBe("success");
+    const output = readFileSync(scenarioPath, "utf8");
+    expect(output).toContain("# Scenario explanation retained for reviewers.");
+    expect(output).toContain("schemaVersion: 1 # source format version");
+    expect(output).toContain("# End-of-file reviewer note.");
+
+    const repeated = await formatWorldSources({ repositoryRoot: repository, check: true });
+    expect(repeated.status).toBe("success");
+    if (repeated.status === "success") expect(repeated.files.every((file) => !file.changed)).toBe(true);
   });
 
   it("preserves nested schemas when deterministic formatting reorders Tool resources", async () => {
@@ -709,6 +763,41 @@ describe("compiler failures", () => {
       expect(found?.span?.path).toBe(case_.path);
       expect(found?.span?.start.line).toBeGreaterThan(0);
     }
+  });
+
+  it("anchors resolved scenario data errors to the authored overlay row", async () => {
+    const repository = temporaryFixture("appointments");
+    const scenarioPath = join(repository, "world", "busy-morning.scenario.yaml");
+    const source = `${readFileSync(scenarioPath, "utf8")}state:\n  - action: upsert\n    packageId: reservations\n    namespace: slots\n    rowId: afternoon\n    value:\n      available: invalid\n`;
+    writeFileSync(scenarioPath, source);
+
+    const result = await compileWorld({ repositoryRoot: repository, materialize: false });
+    expect(result.status).toBe("failed");
+    if (result.status !== "failed") return;
+    const found = result.diagnostics.find(
+      (item) => item.code === "FD1203" && item.span?.path === "world/busy-morning.scenario.yaml",
+    );
+    expect(found?.span?.start.line).toBe(
+      source.split("\n").findIndex((line) => line.includes("available:")) + 1,
+    );
+  });
+
+  it("names missing schema fields and gives a field-specific repair", async () => {
+    const repository = temporaryFixture("appointments");
+    const drillPath = join(repository, "world", "reserve-slot.drill.yaml");
+    writeFileSync(drillPath, readFileSync(drillPath, "utf8").replace(/^targetId:.*\n/m, ""));
+
+    const result = await compileWorld({ repositoryRoot: repository, materialize: false });
+    expect(result.status).toBe("failed");
+    if (result.status !== "failed") return;
+    const found = result.diagnostics.find((item) => item.code === "FD1102");
+    expect(found).toMatchObject({
+      message: expect.stringContaining("targetId:"),
+      path: ["targetId"],
+      suggestion: expect.stringContaining("targetId"),
+      span: { path: "world/reserve-slot.drill.yaml" },
+    });
+    expect(found?.suggestion).not.toContain("remove unknown");
   });
 
   it("rejects source symlinks escaping the repository", async () => {

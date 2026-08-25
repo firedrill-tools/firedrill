@@ -156,6 +156,13 @@ export const OperationInvocationSchema = z
 
 export const OperationOutcomeStatusSchema = z.enum(["ok", "denied", "tool_error", "unsupported", "invalid"]);
 
+export const OperationIdempotencyDispositionSchema = z.enum([
+  "not_requested",
+  "recorded",
+  "replayed",
+  "not_recorded",
+]);
+
 export const OperationOutcomeSchema = z
   .object({
     status: OperationOutcomeStatusSchema,
@@ -198,3 +205,4 @@ export type ToolSubscriptionContract = z.infer<typeof ToolSubscriptionContractSc
 export type ToolPackageManifest = z.infer<typeof ToolPackageManifestSchema>;
 export type OperationInvocation = z.infer<typeof OperationInvocationSchema>;
 export type OperationOutcome = z.infer<typeof OperationOutcomeSchema>;
+export type OperationIdempotencyDisposition = z.infer<typeof OperationIdempotencyDispositionSchema>;

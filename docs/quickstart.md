@@ -4,16 +4,17 @@ This guide explains Firedrill's repository contract. The files belong beside the
 
 ## 1. Pick a verified starting path
 
-In an existing repository, `firedrill init` performs a bounded read-only inspection and prints three explicit choices. It never edits anything without `--path`.
+In an interactive terminal, `firedrill init` performs a bounded inspection, shows the frameworks, data systems, agent seams, and coding-agent conventions it found, then asks what the first drill should prove and which of four setup paths to use. Nothing is written until that final choice. In JSON, CI, or piped use, bare `firedrill init` remains a read-only inspection; pass `--path` to select a setup deterministically.
 
 ```sh
 firedrill init
+firedrill init --path firedrill-agent
 firedrill init --path coding-agent
 # or: firedrill init --path template
 # or: firedrill init --path manual
 ```
 
-The coding-agent path installs the canonical skill and a repository-specific brief under `.agents/` without creating application or world source. The template path creates a complete runnable Tool, target, scenario, and drill. The manual path creates only a valid world shell and deterministic probe Tool. Existing source files are never replaced. Every selected path also ensures `.firedrill/` is present in the repository's `.gitignore`, appending only that rule when necessary.
+The Firedrill Agent and coding-agent paths install the same canonical skill and repository-specific brief under `.agents/` without creating application or world source. The first uses the separately installed `@firedrill/agent` package and the developer's `ANTHROPIC_API_KEY`; the second leaves execution to an existing coding agent. The template path creates a complete runnable Tool, target, scenario, and drill. The manual path creates only a valid world shell and deterministic probe Tool. Existing source files are never replaced. Every selected path also ensures `.firedrill/` is present in the repository's `.gitignore`, appending only that rule when necessary.
 
 Alternatively, copy `examples/quickstart` into a temporary directory or inspect it in place. It contains one intentionally plain agent and one Tool so the framework concepts stay visible.
 
@@ -43,6 +44,8 @@ Run `firedrill validate`, inspect the discovered work with `firedrill plan`, the
 
 The ignored side is reproducible runtime output and may contain synthetic data, model output, and evidence. Provider keys belong in the agent's normal ignored environment files or secret manager—never in either Firedrill source or reports.
 
+Repository data is the reproducible starting definition, not a live database dump. Each trial, retry, and concurrent run materializes its own SQLite file from the pinned build plus scenario. Runtime Tool calls mutate that isolated file and never write records back into YAML or JSON. Editing repository data creates the starting state for later builds and runs; retained older worlds and evidence remain unchanged. All Tools selected for one trial share that trial's world database, which is what makes cross-Tool consequences, the clock, pending events, and the ordered journal atomic. A project may therefore retain many SQLite worlds without assigning one database per vendor or Tool.
+
 ## 2. Replace the fixture with the agent's real boundaries
 
 Work from the interfaces the agent already uses:
@@ -51,10 +54,10 @@ Work from the interfaces the agent already uses:
 - Put baseline records, actors, permissions, time, and initial events in the world.
 - Put each meaningful starting condition or provider failure in a scenario.
 - Choose one target matching how the agent already runs: module, command, local HTTP, or an SDK callback.
-- Give the target only the direct, HTTP, or MCP bindings it needs.
+- Give the target only the direct, HTTP, MCP, or CLI bindings it needs.
 - Write drills around observable consequences and safety invariants, not phrasing in the model response.
 
-Tools are not limited to REST APIs. They describe capabilities and consequences; HTTP and MCP are current transport adapters. A CLI-based agent can still receive an HTTP or MCP world binding through environment variables.
+Tools are not limited to REST APIs. They describe capabilities and consequences; direct, HTTP, MCP, and CLI are transport adapters over the same Tool behavior and SQLite world. The generic HTTP adapter does not automatically reproduce a vendor's URL and payload conventions. Keep that translation at the agent's normal client seam or in a small repository adapter instead of adding vendor branches to Firedrill core.
 
 ### Reuse an installed Tool package when one fits
 
@@ -81,7 +84,7 @@ The pre-release source tree includes [`@firedrill/tool-work-queue`](../tool-pack
 
 ## 3. Keep the agent integration at one seam
 
-For a command target, Firedrill sends a JSON invocation on stdin and supplies the declared binding variables, such as `FIREDRILL_HTTP_URL` and `FIREDRILL_HTTP_TOKEN` or their MCP equivalents. For an external target, `runDrills()` supplies the same values in `binding.environment`. A direct binding is available only to a module or callback target that declares it.
+For a command target, Firedrill sends a JSON invocation on stdin and supplies the declared binding variables, such as `FIREDRILL_HTTP_URL` and `FIREDRILL_HTTP_TOKEN`, their MCP equivalents, or `FIREDRILL_CLI_URL` and `FIREDRILL_CLI_TOKEN`. For an external target, `runDrills()` supplies the same values in `binding.environment`. A direct binding is available only to a module or callback target that declares it.
 
 Firedrill does not become the model-provider credential store. An external callback uses the provider configuration already available to its owning process. A command target can map only the host variables it needs:
 
@@ -94,7 +97,7 @@ Unlisted host variables are not inherited by the command. The target's `timeoutM
 
 Repoint or adapt the agent's existing tool client once. Do not duplicate every agent action or scatter test-mode branches through business logic.
 
-HTTP-bound agents can discover their granted operations at `GET $FIREDRILL_HTTP_URL/v1/tools` and call one at `POST /v1/operations/{packageId}/{operationId}` with bearer authentication. MCP-bound agents use the supplied Streamable HTTP URL and token; discovered names are `{packageId}.{operationId}`. The protocol package READMEs define the exact request and response envelopes.
+HTTP-bound agents can discover their granted operations at `GET $FIREDRILL_HTTP_URL/v1/tools` and call one at `POST /v1/operations/{packageId}/{operationId}` with bearer authentication. MCP-bound agents use the supplied Streamable HTTP URL and token; discovered names are `{packageId}.{operationId}`. CLI-bound agents call `firedrill world tools --json` and `firedrill world call <tool-id> <operation-id> --input '{...}' --json`. The protocol package READMEs define the exact request and response envelopes.
 
 ## 4. Run and diagnose
 
@@ -115,7 +118,7 @@ firedrill tool test <tool-id>
 
 Exit code `0` means every selected drill passed. Exit code `1` means source, execution, or assertions failed. Exit code `2` means the CLI invocation itself was invalid. Human and JSON modes carry the same diagnostics and report locations.
 
-Every trial retains its exact world and writes terminal, JSON, JSONL, JUnit, and self-contained HTML evidence under the current project's `.firedrill/` directory. That directory is generated and Git-ignored by default. Use `firedrill report verify <report-directory>` to check the exact file set, hashes, schemas, identities, evidence ordering, and generated projections without an account or network. This proves bundle integrity, not authorship. Use the build hash, seed, and reproduction command in the report to rerun deterministic world inputs.
+Every trial retains its exact world and writes terminal, JSON, JSONL, JUnit, and self-contained HTML evidence under the current project's `.firedrill/` directory. That directory is generated and Git-ignored by default. Use `firedrill report verify <report-directory>` to check the exact file set, hashes, schemas, identities, evidence ordering, and generated projections without an account or network. This proves bundle integrity, not authorship. The report's reproduction command recompiles current repository source and reruns with the recorded seed; use its displayed build hash to confirm or restore the matching source revision first.
 
 A drill timeline can span hours of virtual time while running locally in minutes. It declares actors, ordered interactions, a horizon, invariant checkpoints, and Tool-call and event budgets; it is still a drill and uses the same runner and evidence. Watch mode queues edits and reruns without overlapping. To inspect change, compare two verified report directories:
 
@@ -133,8 +136,18 @@ firedrill tool contribute <tool-id> --accept-apache-2.0
 
 This copies only the Tool declaration and its exact local behavior dependency closure, blocks common secret patterns, writes checksums and a portable conformance summary, and never overwrites, uploads, or opens a pull request.
 
-## 5. Let a coding agent iterate to green
+## 5. Let an authoring agent iterate to green
 
 A coding agent should begin with `.agents/firedrill/BRIEF.md` and `.agents/skills/firedrill/SKILL.md`, inspect the real agent's tool clients, existing mocks, fixtures, and failure tests, create or select Tool packages, then run `firedrill validate --json` repeatedly until diagnostics are empty. It should run a small passing and intentionally failing drill before adding breadth. It must not invent unsupported fidelity or change production behavior merely to satisfy a fixture.
+
+The optional local Firedrill Agent follows that same skill rather than a private format:
+
+```sh
+pnpm add -D @firedrill/agent
+export ANTHROPIC_API_KEY=your_key
+firedrill agent
+```
+
+It uses the Claude Agent SDK with the developer's key. It may send selected repository content to Anthropic under Anthropic's applicable terms, but sends nothing to Firedrill Cloud. Repository discovery/search skips known secret and generated paths; file edits stay inside the selected repository; shell, generic web, Git publication, and subagents are disabled. A run defaults to 40 turns, a $2 spend ceiling, and a 15-minute deadline. These controls reduce accidental exposure but do not sandbox ordinary repository code that the Agent authors and later executes. Review its diff as you would any coding-agent change. The compiler and drill runner—not the Agent's narrative—remain the authority.
 
 Published JSON Schemas are available from `@firedrill/compiler/schema/*` and `@firedrill/contracts/schema/*`. Source diagnostics include stable codes, file locations, paths, and corrective suggestions for machine use.

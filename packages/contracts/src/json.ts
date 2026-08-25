@@ -17,6 +17,11 @@ export const JsonValueSchema: z.ZodType<JsonValue> = z.lazy(() =>
 
 export const JsonObjectSchema: z.ZodType<JsonObject> = z.record(z.string(), JsonValueSchema);
 
+/** Locale-independent ordering for every reproducible artifact and execution decision. */
+export function compareStableStrings(left: string, right: string): number {
+  return left < right ? -1 : left > right ? 1 : 0;
+}
+
 /**
  * Stable JSON serialization for semantic hashes and reproducible artifacts.
  * Object keys are sorted recursively; array order remains meaningful.
@@ -41,7 +46,7 @@ export function canonicalJson(value: JsonValue): string {
       return Object.fromEntries(
         Object.entries(item)
           .filter(([, child]) => child !== undefined)
-          .sort(([left], [right]) => left.localeCompare(right))
+          .sort(([left], [right]) => compareStableStrings(left, right))
           .map(([key, child]) => [key, normalize(child)]),
       );
     } finally {
