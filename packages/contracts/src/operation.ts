@@ -74,6 +74,186 @@ export const ToolSubscriptionContractSchema = z
   })
   .strict();
 
+export const HttpMethodSchema = z.enum(["DELETE", "GET", "PATCH", "POST", "PUT"]);
+
+const HTTP_PATH_LITERAL = /^[A-Za-z0-9._~-]+$/;
+const HTTP_PATH_PARAMETER = /^[A-Za-z_][A-Za-z0-9_]*$/;
+const HTTP_NAME = /^[A-Za-z0-9!#$%&'*+.^_`|~-]+$/;
+
+/** Splits one validated OpenAPI-style path template into literal and parameter segments. */
+export function httpPathSegments(path: string): readonly string[] {
+  if (path === "/") return [];
+  return path.slice(1).split("/");
+}
+
+export function httpPathParameter(segment: string): string | undefined {
+  if (!segment.startsWith("{") || !segment.endsWith("}")) return undefined;
+  return segment.slice(1, -1);
+}
+
+/** True when two templates can match the same concrete path. */
+export function httpRoutesOverlap(
+  left: { readonly method: string; readonly path: string },
+  right: { readonly method: string; readonly path: string },
+): boolean {
+  if (left.method !== right.method) return false;
+  const leftSegments = httpPathSegments(left.path);
+  const rightSegments = httpPathSegments(right.path);
+  if (leftSegments.length !== rightSegments.length) return false;
+  return leftSegments.every((segment, index) => {
+    const other = rightSegments[index];
+    return (
+      other !== undefined &&
+      (httpPathParameter(segment) !== undefined ||
+        httpPathParameter(other) !== undefined ||
+        segment === other)
+    );
+  });
+}
+
+const FRAMEWORK_HTTP_ROUTES = [
+  { method: "GET", path: "/health" },
+  { method: "GET", path: "/v1/tools" },
+  { method: "POST", path: "/v1/operations/{packageId}/{operationId}" },
+] as const;
+
+/** True when a Tool route could shadow a framework-owned world-binding route. */
+export function httpRouteConflictsWithFramework(route: {
+  readonly method: string;
+  readonly path: string;
+}): boolean {
+  return FRAMEWORK_HTTP_ROUTES.some((reserved) => httpRoutesOverlap(route, reserved));
+}
+
+export const HttpPathTemplateSchema = z
+  .string()
+  .min(1)
+  .max(512)
+  .superRefine((path, context) => {
+    if (!path.startsWith("/")) {
+      context.addIssue({ code: "custom", message: "HTTP route path must start with /" });
+      return;
+    }
+    if (path.length > 1 && path.endsWith("/")) {
+      context.addIssue({ code: "custom", message: "HTTP route path must not end with /" });
+    }
+    if (path.includes("?") || path.includes("#")) {
+      context.addIssue({ code: "custom", message: "HTTP route path cannot contain a query or fragment" });
+    }
+    const parameters = new Set<string>();
+    for (const [index, segment] of httpPathSegments(path).entries()) {
+      const parameter = httpPathParameter(segment);
+      if (parameter !== undefined) {
+        if (!HTTP_PATH_PARAMETER.test(parameter)) {
+          context.addIssue({
+            code: "custom",
+            path: [index],
+            message: `invalid HTTP path parameter ${parameter}`,
+          });
+        } else if (parameters.has(parameter)) {
+          context.addIssue({
+            code: "custom",
+            path: [index],
+            message: `duplicate HTTP path parameter ${parameter}`,
+          });
+        }
+        parameters.add(parameter);
+      } else if (!HTTP_PATH_LITERAL.test(segment)) {
+        context.addIssue({
+          code: "custom",
+          path: [index],
+          message: `invalid HTTP path segment ${segment}`,
+        });
+      }
+    }
+  });
+
+export const HttpRouteAuthSchema = z.discriminatedUnion("kind", [
+  z.object({ kind: z.literal("bearer") }).strict(),
+  z
+    .object({
+      kind: z.literal("header"),
+      name: z.string().min(1).max(128).regex(HTTP_NAME),
+    })
+    .strict(),
+  z
+    .object({
+      kind: z.literal("query"),
+      name: z.string().min(1).max(128).regex(HTTP_NAME),
+    })
+    .strict(),
+  z
+    .object({
+      kind: z.literal("basic"),
+      token: z.enum(["username", "password"]),
+      username: z.string().min(1).max(128).optional(),
+    })
+    .strict()
+    .superRefine((auth, context) => {
+      if (auth.token === "password" && auth.username === undefined) {
+        context.addIssue({
+          code: "custom",
+          path: ["username"],
+          message: "basic password authentication requires a fixed username",
+        });
+      }
+      if (auth.token === "username" && auth.username !== undefined) {
+        context.addIssue({
+          code: "custom",
+          path: ["username"],
+          message: "basic username authentication cannot also declare a fixed username",
+        });
+      }
+    }),
+  z.object({ kind: z.literal("none") }).strict(),
+]);
+
+export const HttpRouteContractSchema = z
+  .object({
+    id: StableIdSchema,
+    operationId: OperationIdSchema,
+    method: HttpMethodSchema,
+    path: HttpPathTemplateSchema,
+    auth: HttpRouteAuthSchema,
+    requestBody: z.enum(["none", "json", "form", "text"]),
+    response: z
+      .object({
+        successStatus: z.number().int().min(200).max(299),
+        errors: z
+          .array(
+            z
+              .object({
+                code: z.string().regex(/^[A-Z][A-Z0-9_]*$/),
+                status: z.number().int().min(400).max(599),
+              })
+              .strict(),
+          )
+          .default([]),
+      })
+      .strict(),
+  })
+  .strict()
+  .superRefine((route, context) => {
+    if (httpRouteConflictsWithFramework(route)) {
+      context.addIssue({
+        code: "custom",
+        path: ["path"],
+        message: `HTTP route conflicts with a framework route at ${route.method} ${route.path}`,
+      });
+    }
+    const seen = new Set<string>();
+    for (const [index, error] of route.response.errors.entries()) {
+      if (seen.has(error.code)) {
+        context.addIssue({
+          code: "custom",
+          path: ["response", "errors", index, "code"],
+          message: `duplicate HTTP error mapping ${error.code}`,
+        });
+      }
+      seen.add(error.code);
+    }
+  });
+
 export const ToolPackageManifestSchema = z
   .object({
     schemaVersion: z.literal(1),
@@ -86,6 +266,7 @@ export const ToolPackageManifestSchema = z
     events: z.array(ToolEventContractSchema).default([]),
     faults: z.array(ToolFaultContractSchema).default([]),
     subscriptions: z.array(ToolSubscriptionContractSchema).default([]),
+    http: z.array(HttpRouteContractSchema).default([]),
   })
   .strict()
   .superRefine((manifest, context) => {
@@ -123,6 +304,7 @@ export const ToolPackageManifestSchema = z
       ["events", manifest.events.map((event) => event.id)],
       ["faults", manifest.faults.map((fault) => fault.id)],
       ["subscriptions", manifest.subscriptions.map((subscription) => subscription.id)],
+      ["http", manifest.http.map((route) => route.id)],
     ] as const) {
       if (new Set(values).size !== values.length) {
         context.addIssue({
@@ -138,6 +320,46 @@ export const ToolPackageManifestSchema = z
     ] as const) {
       if (new Set(values).size !== values.length) {
         context.addIssue({ code: "custom", path: [field], message: `${field} must not contain duplicates` });
+      }
+    }
+    for (const [routeIndex, route] of manifest.http.entries()) {
+      const operation = operationsById.get(route.operationId);
+      if (operation === undefined) {
+        context.addIssue({
+          code: "custom",
+          path: ["http", routeIndex, "operationId"],
+          message: `HTTP route references unknown operation ${route.operationId}`,
+        });
+        continue;
+      }
+      const mapped = new Set(route.response.errors.map((error) => error.code));
+      for (const declared of operation.declaredErrors) {
+        if (!mapped.has(declared)) {
+          context.addIssue({
+            code: "custom",
+            path: ["http", routeIndex, "response", "errors"],
+            message: `HTTP route does not map declared error ${declared}`,
+          });
+        }
+      }
+      for (const [errorIndex, error] of route.response.errors.entries()) {
+        if (!operation.declaredErrors.includes(error.code)) {
+          context.addIssue({
+            code: "custom",
+            path: ["http", routeIndex, "response", "errors", errorIndex, "code"],
+            message: `HTTP route maps undeclared error ${error.code}`,
+          });
+        }
+      }
+      for (let otherIndex = 0; otherIndex < routeIndex; otherIndex += 1) {
+        const other = manifest.http[otherIndex];
+        if (other !== undefined && httpRoutesOverlap(route, other)) {
+          context.addIssue({
+            code: "custom",
+            path: ["http", routeIndex, "path"],
+            message: `HTTP route overlaps ${other.method} ${other.path}`,
+          });
+        }
       }
     }
   });
@@ -202,6 +424,10 @@ export type ToolEventContract = z.infer<typeof ToolEventContractSchema>;
 export type ToolStateContract = z.infer<typeof ToolStateContractSchema>;
 export type ToolFaultContract = z.infer<typeof ToolFaultContractSchema>;
 export type ToolSubscriptionContract = z.infer<typeof ToolSubscriptionContractSchema>;
+export type HttpMethod = z.infer<typeof HttpMethodSchema>;
+export type HttpPathTemplate = z.infer<typeof HttpPathTemplateSchema>;
+export type HttpRouteAuth = z.infer<typeof HttpRouteAuthSchema>;
+export type HttpRouteContract = z.infer<typeof HttpRouteContractSchema>;
 export type ToolPackageManifest = z.infer<typeof ToolPackageManifestSchema>;
 export type OperationInvocation = z.infer<typeof OperationInvocationSchema>;
 export type OperationOutcome = z.infer<typeof OperationOutcomeSchema>;

@@ -447,7 +447,7 @@ describe("agent target invocation", () => {
         executable: process.execPath,
         arguments: ["slow.mjs"],
         environmentFromHost: {},
-        timeoutMs: 30,
+        timeoutMs: 500,
       },
       invocation: invocation(),
       repositoryRoot: root,
@@ -523,7 +523,7 @@ describe("agent target invocation", () => {
     });
     expect(timedOut).toMatchObject({
       status: "timed_out",
-      error: { code: "target.TIMEOUT", details: { timeoutMs: 30, clock: "wall" } },
+      error: { code: "target.TIMEOUT", details: { timeoutMs: 500, clock: "wall" } },
       attachments: [
         {
           kind: "process.stderr",

@@ -2,16 +2,14 @@ let input = "";
 for await (const chunk of process.stdin) input += chunk;
 
 const invocation = JSON.parse(input);
-const response = await fetch(`${process.env.FIREDRILL_HTTP_URL}/v1/operations/workspace/records.set`, {
-  method: "POST",
+const response = await fetch(`${process.env.FIREDRILL_HTTP_URL}/api/records/primary`, {
+  method: "PUT",
   headers: {
-    authorization: `Bearer ${process.env.FIREDRILL_HTTP_TOKEN}`,
     "content-type": "application/json",
+    "idempotency-key": `${invocation.runId}-${invocation.interactionId}`,
+    "x-api-key": process.env.FIREDRILL_HTTP_TOKEN,
   },
-  body: JSON.stringify({
-    arguments: { value: invocation.input.value },
-    idempotencyKey: `set-${invocation.input.value}`,
-  }),
+  body: JSON.stringify({ value: invocation.input.value }),
 });
 const result = await response.json();
 
@@ -19,4 +17,4 @@ if (!response.ok) {
   process.stderr.write(JSON.stringify(result));
   process.exit(1);
 }
-process.stdout.write(JSON.stringify({ operationStatus: result.outcome.status }));
+process.stdout.write(JSON.stringify({ storedValue: result.value }));

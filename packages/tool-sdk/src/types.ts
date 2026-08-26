@@ -1,7 +1,10 @@
 import type {
   EventRef,
+  HttpMethod,
   JsonObject,
   JsonValue,
+  OperationInvocation,
+  OperationOutcome,
   OperationRef,
   ToolPackageManifest,
 } from "@firedrill/contracts";
@@ -69,20 +72,67 @@ export type ToolOperationHandler = (input: Readonly<JsonObject>, context: ToolCo
 
 export type ToolSubscriptionHandler = (payload: Readonly<JsonObject>, context: ToolContext) => void;
 
+export type ToolHttpRequestBody =
+  | { readonly kind: "none" }
+  | { readonly kind: "json"; readonly value: JsonValue }
+  | { readonly kind: "form"; readonly value: Readonly<Record<string, readonly string[]>> }
+  | { readonly kind: "text"; readonly value: string };
+
+export interface ToolHttpRequest {
+  readonly routeId: string;
+  readonly method: HttpMethod;
+  readonly pathname: string;
+  readonly path: Readonly<Record<string, string>>;
+  readonly query: Readonly<Record<string, readonly string[]>>;
+  /** Lowercase header names with all received values retained. */
+  readonly headers: Readonly<Record<string, readonly string[]>>;
+  readonly body: ToolHttpRequestBody;
+}
+
+export interface ToolHttpOperationInput {
+  readonly arguments: JsonObject;
+  readonly idempotencyKey?: string;
+}
+
+export type ToolHttpResponseBody =
+  | { readonly kind: "empty" }
+  | { readonly kind: "json"; readonly value: JsonValue }
+  | { readonly kind: "text"; readonly value: string; readonly contentType?: string }
+  | { readonly kind: "bytes"; readonly value: Uint8Array; readonly contentType: string };
+
+export interface ToolHttpResponse {
+  readonly headers?: Readonly<Record<string, string>>;
+  readonly body: ToolHttpResponseBody;
+}
+
+export interface ToolHttpOperationResult {
+  readonly invocation: OperationInvocation;
+  readonly outcome: OperationOutcome;
+}
+
+/** Pure wire codec around one semantic operation. State and side effects remain in the operation handler. */
+export interface ToolHttpRouteCodec {
+  decode(request: ToolHttpRequest): ToolHttpOperationInput;
+  encode(result: ToolHttpOperationResult): ToolHttpResponse;
+}
+
 export interface ToolDefinition {
   readonly manifest: ToolPackageManifest;
   readonly operations: Readonly<Record<string, ToolOperationHandler>>;
   readonly subscriptions: Readonly<Record<string, ToolSubscriptionHandler>>;
+  readonly http: Readonly<Record<string, ToolHttpRouteCodec>>;
 }
 
 export interface ToolDefinitionInput {
   readonly manifest: unknown;
   readonly operations: Readonly<Record<string, ToolOperationHandler>>;
   readonly subscriptions?: Readonly<Record<string, ToolSubscriptionHandler>>;
+  readonly http?: Readonly<Record<string, ToolHttpRouteCodec>>;
 }
 
 /** Executable Tool behavior stored separately from its declarative, compiler-validated manifest. */
 export interface ToolBehaviorDefinition {
   readonly operations: Readonly<Record<string, ToolOperationHandler>>;
   readonly subscriptions?: Readonly<Record<string, ToolSubscriptionHandler>>;
+  readonly http?: Readonly<Record<string, ToolHttpRouteCodec>>;
 }

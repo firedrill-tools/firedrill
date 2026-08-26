@@ -57,6 +57,19 @@ export function normalizeManifest(input: ToolPackageManifest): ToolPackageManife
       .map((fault) => ({ ...fault, appliesTo: [...fault.appliesTo].sort() }))
       .sort((left, right) => compareStableStrings(left.id, right.id)),
     subscriptions: [...input.subscriptions].sort((left, right) => compareStableStrings(left.id, right.id)),
+    http: input.http
+      .map((route) => ({
+        ...route,
+        auth:
+          route.auth.kind === "header" ? { ...route.auth, name: route.auth.name.toLowerCase() } : route.auth,
+        response: {
+          ...route.response,
+          errors: [...route.response.errors].sort((left, right) =>
+            compareStableStrings(left.code, right.code),
+          ),
+        },
+      }))
+      .sort((left, right) => compareStableStrings(left.id, right.id)),
   });
 }
 

@@ -199,10 +199,10 @@ async function worldBindings(
       if (kind === "direct") continue;
       const binding =
         kind === "http"
-          ? await startHttpWorldBinding({ client, tools: build.worldIr.tools })
+          ? await startHttpWorldBinding({ client, tools: build.tools })
           : kind === "mcp"
             ? await startMcpWorldBinding({ client, tools: build.worldIr.tools })
-            : await startCliWorldBinding({ client, tools: build.worldIr.tools });
+            : await startCliWorldBinding({ client, tools: build.tools });
       bindings.push(binding);
       for (const [name, value] of Object.entries(binding.environment)) {
         if (environment[name] !== undefined && environment[name] !== value) {

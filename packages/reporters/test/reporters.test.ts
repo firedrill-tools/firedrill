@@ -185,6 +185,7 @@ function tools(): readonly ToolPackageManifest[] {
       events: [],
       faults: [],
       subscriptions: [],
+      http: [],
     },
   ];
 }

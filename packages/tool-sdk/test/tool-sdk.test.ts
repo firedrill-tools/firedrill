@@ -69,12 +69,54 @@ describe("defineToolBehavior", () => {
       defineToolBehavior({ operations: {}, hidden: {} } as unknown as Parameters<
         typeof defineToolBehavior
       >[0]),
-    ).toThrow(/only operations and subscriptions/);
+    ).toThrow(/only operations, subscriptions, and http/);
     expect(() =>
       defineToolBehavior({ operations: { invalid: true } } as unknown as Parameters<
         typeof defineToolBehavior
       >[0]),
     ).toThrow(/must be a function/);
+  });
+
+  it("requires exact pure codecs for declared HTTP routes", () => {
+    const routeManifest = {
+      ...manifest,
+      http: [
+        {
+          id: "get-event",
+          operationId: "events.get",
+          method: "GET",
+          path: "/events/{eventId}",
+          auth: { kind: "bearer" },
+          requestBody: "none",
+          response: { successStatus: 200, errors: [] },
+        },
+      ],
+    } as const;
+    expect(() =>
+      defineTool({
+        manifest: routeManifest,
+        operations: { "events.get": () => ({ id: "event_1" }) },
+        subscriptions: { "receive-reminder": () => undefined },
+      }),
+    ).toThrow(/HTTP route handlers do not match the manifest \(missing: get-event\)/);
+
+    const tool = defineTool({
+      manifest: routeManifest,
+      operations: { "events.get": () => ({ id: "event_1" }) },
+      subscriptions: { "receive-reminder": () => undefined },
+      http: {
+        "get-event": {
+          decode: (request) => ({ arguments: { id: request.path.eventId ?? "missing" } }),
+          encode: ({ outcome }) => ({
+            body:
+              outcome.status === "ok"
+                ? { kind: "json", value: outcome.value ?? null }
+                : { kind: "json", value: { error: outcome.error?.message ?? "failed" } },
+          }),
+        },
+      },
+    });
+    expect(Object.isFrozen(tool.http)).toBe(true);
   });
 });
 

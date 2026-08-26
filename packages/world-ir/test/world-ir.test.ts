@@ -181,6 +181,37 @@ describe("canonical world IR", () => {
     );
   });
 
+  it("rejects overlapping HTTP routes across unrelated Tool packages", () => {
+    const route = {
+      id: "reserve-slot",
+      operationId: "slots.reserve",
+      method: "POST",
+      path: "/api/slots/{slotId}",
+      auth: { kind: "bearer" },
+      requestBody: "json",
+      response: { successStatus: 200, errors: [] },
+    } as const;
+    const competing = {
+      ...tool,
+      id: "alternate-reservations",
+      operations: [{ ...tool.operations[0], id: "book" }],
+      http: [
+        {
+          ...route,
+          id: "book-slot",
+          operationId: "book",
+          path: "/api/slots/special",
+        },
+      ],
+    } as const;
+    const result = CanonicalWorldIrSchema.safeParse({
+      ...world,
+      tools: [{ ...competing }, { ...tool, http: [route] }],
+    });
+    expect(result.success).toBe(false);
+    expect(result.error?.issues.map((issue) => issue.message).join("\n")).toMatch(/HTTP route overlaps/);
+  });
+
   it("resolves suite drill references and tag selection against canonical drills", () => {
     const valid = CanonicalWorldIrSchema.parse({
       ...world,

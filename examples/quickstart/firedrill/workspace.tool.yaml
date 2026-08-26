@@ -5,28 +5,49 @@ manifest:
   id: workspace
   version: 1.0.0
   engine: ">=0.1.0 <0.2.0"
-  capabilities: [state.read, state.write]
+  capabilities:
+    - state.read
+    - state.write
   state:
     - namespace: records
       schema:
         type: object
-        required: [value]
+        required:
+          - value
         properties:
-          value: { type: integer }
+          value:
+            type: integer
         additionalProperties: false
   operations:
     - id: records.set
       inputSchema:
         type: object
-        required: [value]
+        required:
+          - value
         properties:
-          value: { type: integer }
+          value:
+            type: integer
         additionalProperties: false
       outputSchema:
         type: object
-        required: [value]
+        required:
+          - value
         properties:
-          value: { type: integer }
+          value:
+            type: integer
         additionalProperties: false
       idempotency: required
       fidelity: stateful
+  http:
+    - id: set-record
+      operationId: records.set
+      method: PUT
+      path: /api/records/{recordId}
+      auth:
+        kind: header
+        name: x-api-key
+      requestBody: json
+      response:
+        successStatus: 200
+        errors:
+          []

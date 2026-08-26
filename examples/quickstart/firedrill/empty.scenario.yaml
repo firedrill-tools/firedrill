@@ -5,4 +5,5 @@ state:
     packageId: workspace
     namespace: records
     rowId: primary
-    value: { value: 0 }
+    value:
+      value: 0

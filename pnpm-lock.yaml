@@ -229,13 +229,13 @@ importers:
       '@firedrill/protocol-http':
         specifier: workspace:*
         version: link:../protocol-http
+      '@firedrill/tool-sdk':
+        specifier: workspace:*
+        version: link:../tool-sdk
       '@firedrill/world-kernel':
         specifier: workspace:*
         version: link:../world-kernel
     devDependencies:
-      '@firedrill/tool-sdk':
-        specifier: workspace:*
-        version: link:../tool-sdk
       '@firedrill/world-store-sqlite':
         specifier: workspace:*
         version: link:../world-store-sqlite
@@ -251,13 +251,13 @@ importers:
       '@firedrill/contracts':
         specifier: workspace:*
         version: link:../contracts
+      '@firedrill/tool-sdk':
+        specifier: workspace:*
+        version: link:../tool-sdk
       '@firedrill/world-kernel':
         specifier: workspace:*
         version: link:../world-kernel
     devDependencies:
-      '@firedrill/tool-sdk':
-        specifier: workspace:*
-        version: link:../tool-sdk
       '@firedrill/world-store-sqlite':
         specifier: workspace:*
         version: link:../world-store-sqlite

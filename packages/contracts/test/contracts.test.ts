@@ -200,6 +200,83 @@ describe("generic Tool contracts", () => {
       ]),
     );
   });
+
+  it("validates wire HTTP routes against semantic operations and declared errors", () => {
+    const manifest = {
+      schemaVersion: 1,
+      id: "ledger",
+      version: "1.0.0",
+      engine: ">=0.1.0",
+      capabilities: [],
+      operations: [
+        {
+          id: "entries.create",
+          inputSchema: { type: "object" },
+          outputSchema: { type: "object" },
+          declaredErrors: ["CONFLICT"],
+          idempotency: "required",
+          fidelity: "stateful",
+        },
+      ],
+      http: [
+        {
+          id: "create-entry",
+          operationId: "entries.create",
+          method: "POST",
+          path: "/v2/accounts/{accountId}/entries",
+          auth: { kind: "bearer" },
+          requestBody: "json",
+          response: {
+            successStatus: 201,
+            errors: [{ code: "CONFLICT", status: 409 }],
+          },
+        },
+      ],
+    } as const;
+    const parsed = ToolPackageManifestSchema.parse(manifest);
+    expect(parsed.http[0]?.path).toBe("/v2/accounts/{accountId}/entries");
+
+    const incomplete = ToolPackageManifestSchema.safeParse({
+      ...manifest,
+      http: [{ ...manifest.http[0], response: { successStatus: 201, errors: [] } }],
+    });
+    expect(incomplete.success).toBe(false);
+    expect(incomplete.error?.issues.map((issue) => issue.message)).toContain(
+      "HTTP route does not map declared error CONFLICT",
+    );
+
+    const overlapping = ToolPackageManifestSchema.safeParse({
+      ...manifest,
+      http: [
+        manifest.http[0],
+        {
+          ...manifest.http[0],
+          id: "create-special-entry",
+          path: "/v2/accounts/special/entries",
+        },
+      ],
+    });
+    expect(overlapping.success).toBe(false);
+    expect(overlapping.error?.issues.map((issue) => issue.message)).toContain(
+      "HTTP route overlaps POST /v2/accounts/{accountId}/entries",
+    );
+
+    const reserved = ToolPackageManifestSchema.safeParse({
+      ...manifest,
+      http: [
+        {
+          ...manifest.http[0],
+          id: "replace-discovery",
+          method: "GET",
+          path: "/v1/tools",
+        },
+      ],
+    });
+    expect(reserved.success).toBe(false);
+    expect(reserved.error?.issues.map((issue) => issue.message)).toContain(
+      "HTTP route conflicts with a framework route at GET /v1/tools",
+    );
+  });
 });
 
 describe("agent target contracts", () => {

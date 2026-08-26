@@ -2,8 +2,10 @@ schemaVersion: 1
 target:
   id: local-agent
   kind: command
-  bindings: [http]
+  bindings:
+    - http
   executable: node
-  arguments: [agent.mjs]
+  arguments:
+    - agent.mjs
   workingDirectory: .
   timeoutMs: 5000

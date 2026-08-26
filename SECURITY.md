@@ -31,7 +31,7 @@ The local framework does not claim to sandbox that code. The compiler rejects No
 ## Enforced local boundaries
 
 - Repository source, installed Tool source, immutable builds, and target modules are checked for path escape and external symlinks before use.
-- HTTP and MCP world bindings listen only on an explicit loopback address, require a random bearer token, validate request host/origin, and cap request bodies at 1 MiB.
+- HTTP and MCP world bindings listen only on an explicit loopback address, validate request host/origin, and cap request bodies at 1 MiB. Generic HTTP and MCP surfaces require a random per-invocation bearer token. A repository-owned synthetic HTTP route enforces its declared placement of that same token; an explicit `auth.kind: none` route is intentionally reachable by any local process that can reach the ephemeral listener and should be used only to model an unauthenticated local API.
 - World access is scoped to one target invocation and revoked before timeout or cancellation is delivered. A retained direct client cannot mutate the world after that invocation ends.
 - Remote HTTP agent targets are opt-in. Redirects are never followed because an invocation carries world binding credentials. Target input and output are bounded.
 - Subprocess targets receive only world binding variables, explicitly mapped host variables, and the minimum platform variables needed to launch a process. They are spawned without a shell.

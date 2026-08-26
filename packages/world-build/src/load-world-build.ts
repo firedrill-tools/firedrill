@@ -6,6 +6,7 @@ import type { Diagnostic, ToolPackageManifest } from "@firedrill/contracts";
 import { defineTool } from "@firedrill/tool-sdk";
 import type {
   ToolBehaviorDefinition,
+  ToolHttpRouteCodec,
   ToolOperationHandler,
   ToolSubscriptionHandler,
 } from "@firedrill/tool-sdk";
@@ -105,8 +106,8 @@ function behaviorExport(value: unknown): ToolBehaviorDefinition {
   }
   const record = value as Record<string, unknown>;
   const keys = Object.keys(record);
-  if (keys.some((key) => key !== "operations" && key !== "subscriptions")) {
-    throw new TypeError("Tool export accepts only operations and subscriptions");
+  if (keys.some((key) => key !== "operations" && key !== "subscriptions" && key !== "http")) {
+    throw new TypeError("Tool export accepts only operations, subscriptions, and http");
   }
   if (
     typeof record.operations !== "object" ||
@@ -123,12 +124,23 @@ function behaviorExport(value: unknown): ToolBehaviorDefinition {
   ) {
     throw new TypeError("Tool export subscriptions must be an object");
   }
+  if (
+    record.http !== undefined &&
+    (typeof record.http !== "object" || record.http === null || Array.isArray(record.http))
+  ) {
+    throw new TypeError("Tool export http must be an object");
+  }
   return {
     operations: record.operations as Readonly<Record<string, ToolOperationHandler>>,
     ...(record.subscriptions === undefined
       ? {}
       : {
           subscriptions: record.subscriptions as Readonly<Record<string, ToolSubscriptionHandler>>,
+        }),
+    ...(record.http === undefined
+      ? {}
+      : {
+          http: record.http as Readonly<Record<string, ToolHttpRouteCodec>>,
         }),
   };
 }
@@ -186,6 +198,7 @@ async function loadTool(input: {
         manifest: input.manifest,
         operations: behavior.operations,
         ...(behavior.subscriptions === undefined ? {} : { subscriptions: behavior.subscriptions }),
+        ...(behavior.http === undefined ? {} : { http: behavior.http }),
       }),
     };
   } catch (error) {

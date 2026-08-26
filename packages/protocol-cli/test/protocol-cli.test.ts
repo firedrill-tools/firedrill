@@ -87,7 +87,7 @@ describe("CLI world protocol", () => {
     const fixture = world();
     const binding = await startCliWorldBinding({
       client: fixture.client,
-      tools: [fixture.tool.manifest],
+      tools: [fixture.tool],
       token: "test-cli-token-000000001",
     });
     try {

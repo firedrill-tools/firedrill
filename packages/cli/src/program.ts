@@ -868,6 +868,13 @@ function buildSummary(result: Extract<CompileWorldResult, { status: "success" }>
       id: tool.id,
       version: tool.version,
       operations: tool.operations.length,
+      httpRoutes: tool.http.map((route) => ({
+        id: route.id,
+        operationId: route.operationId,
+        method: route.method,
+        path: route.path,
+        auth: route.auth.kind,
+      })),
     })),
     scenarios: result.build.worldIr.scenarios.map((scenario) => scenario.id),
     drills: result.build.worldIr.drills.map((drill) => drill.id),
@@ -991,8 +998,11 @@ async function compileCommand(
     io.stdout.write(`World ${summary.worldId}\nBuild ${summary.buildHash}\n`);
     for (const tool of summary.tools) {
       io.stdout.write(
-        `Tool ${tool.id}@${tool.version} — ${tool.operations} operation${tool.operations === 1 ? "" : "s"}\n`,
+        `Tool ${tool.id}@${tool.version} — ${tool.operations} operation${tool.operations === 1 ? "" : "s"}; ${tool.httpRoutes.length} HTTP route${tool.httpRoutes.length === 1 ? "" : "s"}\n`,
       );
+      for (const route of tool.httpRoutes) {
+        io.stdout.write(`  HTTP ${route.method} ${route.path} → ${route.operationId}\n`);
+      }
     }
     io.stdout.write(
       `${summary.scenarios.length} scenario${summary.scenarios.length === 1 ? "" : "s"}; ${summary.drills.length} drill${summary.drills.length === 1 ? "" : "s"}; ${summary.targets.length} target${summary.targets.length === 1 ? "" : "s"}\n`,
@@ -1062,10 +1072,13 @@ function writeToolInspection(io: CliIo, inspection: ToolInspection): void {
   );
   io.stdout.write(`Artifact ${inspection.artifact.artifactHash}\n`);
   io.stdout.write(
-    `${manifest.operations.length} operation${manifest.operations.length === 1 ? "" : "s"}; ${manifest.state.length} state namespace${manifest.state.length === 1 ? "" : "s"}; ${manifest.events.length} event${manifest.events.length === 1 ? "" : "s"}; ${manifest.faults.length} fault${manifest.faults.length === 1 ? "" : "s"}; ${manifest.subscriptions.length} subscription${manifest.subscriptions.length === 1 ? "" : "s"}\n`,
+    `${manifest.operations.length} operation${manifest.operations.length === 1 ? "" : "s"}; ${manifest.http.length} HTTP route${manifest.http.length === 1 ? "" : "s"}; ${manifest.state.length} state namespace${manifest.state.length === 1 ? "" : "s"}; ${manifest.events.length} event${manifest.events.length === 1 ? "" : "s"}; ${manifest.faults.length} fault${manifest.faults.length === 1 ? "" : "s"}; ${manifest.subscriptions.length} subscription${manifest.subscriptions.length === 1 ? "" : "s"}\n`,
   );
   for (const operation of manifest.operations) {
     io.stdout.write(`  ${operation.id} — ${operation.fidelity}\n`);
+  }
+  for (const route of manifest.http) {
+    io.stdout.write(`  HTTP ${route.method} ${route.path} → ${route.operationId}\n`);
   }
 }
 

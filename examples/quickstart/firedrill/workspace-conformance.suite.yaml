@@ -1,3 +1,4 @@
 schemaVersion: 1
 id: workspace-conformance
-drills: [set-record]
+drills:
+  - set-record

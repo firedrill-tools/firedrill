@@ -13,6 +13,7 @@ import {
   TargetDescriptorSchema,
   ToolPackageManifestSchema,
   compareStableStrings,
+  httpRoutesOverlap,
 } from "@firedrill/contracts";
 import type {
   AssertionDefinition,
@@ -218,6 +219,12 @@ export const CanonicalWorldIrSchema = z
     );
 
     const indexes = indexTools(world.tools);
+    const httpRoutes: Array<{
+      readonly packageId: string;
+      readonly routeId: string;
+      readonly method: string;
+      readonly path: string;
+    }> = [];
     for (const [toolIndex, tool] of world.tools.entries()) {
       for (const [subscriptionIndex, subscription] of tool.subscriptions.entries()) {
         if (!indexes.events.has(eventKey(subscription.event))) {
@@ -227,6 +234,22 @@ export const CanonicalWorldIrSchema = z
             message: `subscription references unknown event ${subscription.event.packageId}.${subscription.event.eventId}`,
           });
         }
+      }
+      for (const [routeIndex, route] of tool.http.entries()) {
+        const conflict = httpRoutes.find((candidate) => httpRoutesOverlap(route, candidate));
+        if (conflict !== undefined) {
+          context.addIssue({
+            code: "custom",
+            path: ["tools", toolIndex, "http", routeIndex, "path"],
+            message: `HTTP route overlaps ${conflict.packageId}.${conflict.routeId} at ${conflict.method} ${conflict.path}`,
+          });
+        }
+        httpRoutes.push({
+          packageId: tool.id,
+          routeId: route.id,
+          method: route.method,
+          path: route.path,
+        });
       }
     }
 

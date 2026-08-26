@@ -29,8 +29,8 @@ function world() {
           description: "Add points to one score",
           inputSchema: {
             type: "object",
-            required: ["points"],
-            properties: { points: { type: "integer" } },
+            required: ["board", "points"],
+            properties: { board: { type: "string" }, points: { type: "integer" } },
             additionalProperties: false,
           },
           outputSchema: {
@@ -39,16 +39,79 @@ function world() {
             properties: { score: { type: "integer" } },
             additionalProperties: false,
           },
+          declaredErrors: ["BOARD_LOCKED"],
           idempotency: "required",
           fidelity: "stateful",
+        },
+      ],
+      http: [
+        {
+          id: "add-score",
+          operationId: "scores.add",
+          method: "POST",
+          path: "/api/boards/{board}/scores",
+          auth: { kind: "header", name: "x-api-key" },
+          requestBody: "json",
+          response: {
+            successStatus: 201,
+            errors: [{ code: "BOARD_LOCKED", status: 409 }],
+          },
         },
       ],
     },
     operations: {
       "scores.add": (input, context) => {
-        const score = Number(context.state.get("scores", "main")?.score ?? 0) + Number(input.points);
-        context.state.put("scores", "main", { score });
+        const board = String(input.board);
+        if (board === "locked") {
+          context.fail({
+            code: "BOARD_LOCKED",
+            message: "this board no longer accepts scores",
+          });
+        }
+        const score = Number(context.state.get("scores", board)?.score ?? 0) + Number(input.points);
+        context.state.put("scores", board, { score });
         return { score };
+      },
+    },
+    http: {
+      "add-score": {
+        decode: (request) => {
+          if (request.headers["x-api-key"] !== undefined) {
+            throw new TypeError("the route credential must not be exposed to the codec");
+          }
+          const payload =
+            request.body.kind === "json" &&
+            typeof request.body.value === "object" &&
+            request.body.value !== null &&
+            !Array.isArray(request.body.value)
+              ? request.body.value
+              : undefined;
+          if (typeof payload?.delta !== "number" || !Number.isSafeInteger(payload.delta)) {
+            throw new TypeError("delta must be an integer");
+          }
+          const idempotencyKey = request.headers["idempotency-key"]?.[0];
+          return {
+            arguments: { board: request.path.board ?? "", points: payload.delta },
+            ...(idempotencyKey === undefined ? {} : { idempotencyKey }),
+          };
+        },
+        encode: ({ outcome }) => ({
+          headers: { "x-synthetic-service": "scoreboard" },
+          body:
+            outcome.status === "ok"
+              ? {
+                  kind: "json",
+                  value: {
+                    total:
+                      typeof outcome.value === "object" &&
+                      outcome.value !== null &&
+                      !Array.isArray(outcome.value)
+                        ? (outcome.value.score ?? null)
+                        : null,
+                  },
+                }
+              : { kind: "json", value: { error: outcome.error?.message ?? "request failed" } },
+        }),
       },
     },
   });
@@ -110,7 +173,7 @@ describe("HTTP world binding", () => {
     const fixture = world();
     const binding = await startHttpWorldBinding({
       client: fixture.client,
-      tools: [fixture.tool.manifest],
+      tools: [fixture.tool],
       token: "test-world-token-00000001",
     });
     try {
@@ -132,7 +195,7 @@ describe("HTTP world binding", () => {
           authorization: `Bearer ${binding.token}`,
           "content-type": "application/json",
         },
-        body: JSON.stringify({ arguments: { points: 6 }, idempotencyKey: "add-six" }),
+        body: JSON.stringify({ arguments: { board: "main", points: 6 }, idempotencyKey: "add-six" }),
       });
       expect(called.status).toBe(200);
       expect(await called.json()).toMatchObject({ outcome: { status: "ok", value: { score: 6 } } });
@@ -151,12 +214,92 @@ describe("HTTP world binding", () => {
     const fixture = world();
     const binding = await startHttpWorldBinding({
       client: fixture.client,
-      tools: [fixture.tool.manifest],
+      tools: [fixture.tool],
       token: "test-world-token-00000002",
     });
     try {
       expect(await requestWithHost(new URL(binding.baseUrl), "attacker.example")).toBe(421);
       expect(fixture.client.callsIssued()).toBe(0);
+    } finally {
+      await binding.close();
+      fixture.store.close();
+    }
+  });
+
+  it("maps a provider-shaped request and response around the same semantic operation", async () => {
+    const fixture = world();
+    const binding = await startHttpWorldBinding({
+      client: fixture.client,
+      tools: [fixture.tool],
+      token: "test-world-token-00000003",
+    });
+    try {
+      const unauthorized = await fetch(`${binding.baseUrl}/api/boards/west/scores`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ delta: 4 }),
+      });
+      expect(unauthorized.status).toBe(401);
+      expect(unauthorized.headers.get("www-authenticate")).toBeNull();
+      expect(await unauthorized.json()).toMatchObject({ code: "framework.HTTP_UNAUTHORIZED" });
+      expect(fixture.client.callsIssued()).toBe(0);
+
+      const malformed = await fetch(`${binding.baseUrl}/api/boards/west/scores`, {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          "idempotency-key": "missing-delta",
+          "x-api-key": binding.token,
+        },
+        body: JSON.stringify({}),
+      });
+      expect(malformed.status).toBe(400);
+      expect(await malformed.json()).toMatchObject({ code: "framework.HTTP_REQUEST_MAPPING_FAILED" });
+      expect(fixture.client.callsIssued()).toBe(0);
+
+      const unsupported = await fetch(`${binding.baseUrl}/api/boards/west/scores`, {
+        headers: { "x-api-key": binding.token },
+      });
+      expect(unsupported.status).toBe(405);
+      expect(unsupported.headers.get("allow")).toBe("POST");
+      expect(await unsupported.json()).toMatchObject({ code: "framework.HTTP_METHOD_NOT_ALLOWED" });
+      expect(fixture.client.callsIssued()).toBe(0);
+
+      const called = await fetch(`${binding.baseUrl}/api/boards/west/scores?source=agent`, {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          "idempotency-key": "west-add-four",
+          "x-api-key": binding.token,
+        },
+        body: JSON.stringify({ delta: 4 }),
+      });
+      expect(called.status).toBe(201);
+      expect(called.headers.get("x-synthetic-service")).toBe("scoreboard");
+      expect(await called.json()).toEqual({ total: 4 });
+      expect(fixture.store.readState("scoreboard", "scores", "west")?.value).toEqual({ score: 4 });
+      expect(fixture.client.callsIssued()).toBe(1);
+
+      const rejected = await fetch(`${binding.baseUrl}/api/boards/locked/scores`, {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          "idempotency-key": "locked-add-four",
+          "x-api-key": binding.token,
+        },
+        body: JSON.stringify({ delta: 4 }),
+      });
+      expect(rejected.status).toBe(409);
+      expect(await rejected.json()).toEqual({ error: "this board no longer accepts scores" });
+      expect(fixture.store.readState("scoreboard", "scores", "locked")).toBeNull();
+      expect(fixture.client.callsIssued()).toBe(2);
+      expect(fixture.store.readEvidence().at(-1)).toMatchObject({
+        kind: "operation",
+        outcome: {
+          status: "tool_error",
+          error: { code: "tool.BOARD_LOCKED" },
+        },
+      });
     } finally {
       await binding.close();
       fixture.store.close();

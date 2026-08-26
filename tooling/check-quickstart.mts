@@ -19,9 +19,24 @@ function run(arguments_: readonly string[]) {
 try {
   cpSync(source, temporary, { recursive: true });
 
+  const formatting = run(["format", "--check", "--json"]);
+  if (formatting.status !== 0 || JSON.parse(formatting.stdout).status !== "success") {
+    throw new Error(`quickstart formatting failed\n${formatting.stdout}\n${formatting.stderr}`);
+  }
+
   const validation = run(["validate"]);
   if (validation.status !== 0 || !validation.stdout.includes("World valid")) {
     throw new Error(`quickstart validation failed\n${validation.stdout}\n${validation.stderr}`);
+  }
+
+  const plan = run(["plan", "--json"]);
+  const planned = plan.status === 0 ? JSON.parse(plan.stdout) : undefined;
+  if (
+    plan.status !== 0 ||
+    planned?.tools?.[0]?.httpRoutes?.[0]?.method !== "PUT" ||
+    planned?.tools?.[0]?.httpRoutes?.[0]?.path !== "/api/records/{recordId}"
+  ) {
+    throw new Error(`quickstart plan omitted the synthetic HTTP route\n${plan.stdout}\n${plan.stderr}`);
   }
 
   const passing = run([]);
@@ -36,8 +51,8 @@ try {
   const drillPath = join(temporary, "firedrill", "set-record.drill.yaml");
   const drill = readFileSync(drillPath, "utf8");
   const changed = drill.replace(
-    "comparison: { operator: equals, value: 7 }",
-    "comparison: { operator: equals, value: 8 }",
+    "    comparison:\n      operator: equals\n      value: 7",
+    "    comparison:\n      operator: equals\n      value: 8",
   );
   if (changed === drill) throw new Error("quickstart failure edit no longer matches the documented source");
   writeFileSync(drillPath, changed);

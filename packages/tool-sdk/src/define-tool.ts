@@ -34,6 +34,7 @@ export function defineTool(input: ToolDefinitionInput): ToolDefinition {
   const behavior = defineToolBehavior({
     operations: input.operations,
     ...(input.subscriptions === undefined ? {} : { subscriptions: input.subscriptions }),
+    ...(input.http === undefined ? {} : { http: input.http }),
   });
   assertExactHandlers(
     "operation",
@@ -45,10 +46,16 @@ export function defineTool(input: ToolDefinitionInput): ToolDefinition {
     manifest.subscriptions.map((subscription) => subscription.id),
     Object.keys(behavior.subscriptions ?? {}),
   );
+  assertExactHandlers(
+    "HTTP route",
+    manifest.http.map((route) => route.id),
+    Object.keys(behavior.http ?? {}),
+  );
 
   return Object.freeze({
     manifest: deepFreeze(manifest),
     operations: behavior.operations,
     subscriptions: behavior.subscriptions ?? {},
+    http: behavior.http ?? {},
   });
 }

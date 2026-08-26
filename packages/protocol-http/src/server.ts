@@ -2,14 +2,24 @@ import { randomBytes, timingSafeEqual } from "node:crypto";
 import { createServer } from "node:http";
 import type { IncomingMessage, Server, ServerResponse } from "node:http";
 import { JsonObjectSchema } from "@firedrill/contracts";
-import type { JsonObject, OperationOutcome, ToolPackageManifest } from "@firedrill/contracts";
+import type { JsonObject, OperationOutcome } from "@firedrill/contracts";
+import type { ToolDefinition } from "@firedrill/tool-sdk";
 import type { BoundWorldClient } from "@firedrill/world-kernel";
+import {
+  WireRequestError,
+  invokeWireRoute,
+  matchWireRoute,
+  registerWireRoutes,
+  wireMethodsForPath,
+  wireRouteAuthorized,
+  writeWireResponse,
+} from "./wire.js";
 
 const MAX_BODY_BYTES = 1024 * 1024;
 
 export interface StartHttpWorldBindingOptions {
   readonly client: BoundWorldClient;
-  readonly tools: readonly ToolPackageManifest[];
+  readonly tools: readonly ToolDefinition[];
   readonly hostname?: "127.0.0.1" | "::1";
   readonly port?: number;
   readonly token?: string;
@@ -68,6 +78,17 @@ function authorized(header: string | undefined, token: string): boolean {
   return actual.length === expected.length && timingSafeEqual(actual, expected);
 }
 
+function setWireAuthenticationChallenge(
+  response: ServerResponse,
+  auth: ToolDefinition["manifest"]["http"][number]["auth"],
+): void {
+  if (auth.kind === "bearer") {
+    response.setHeader("www-authenticate", 'Bearer realm="Firedrill synthetic API"');
+  } else if (auth.kind === "basic") {
+    response.setHeader("www-authenticate", 'Basic realm="Firedrill synthetic API", charset="UTF-8"');
+  }
+}
+
 async function requestBody(request: IncomingMessage): Promise<Buffer> {
   const declared = Number(request.headers["content-length"] ?? 0);
   if (Number.isFinite(declared) && declared > MAX_BODY_BYTES) {
@@ -121,11 +142,11 @@ function outcomeStatus(outcome: OperationOutcome): number {
   return 422;
 }
 
-function toolIndex(tools: readonly ToolPackageManifest[]) {
+function toolIndex(tools: readonly ToolDefinition[]) {
   return tools.map((tool) => ({
-    id: tool.id,
-    version: tool.version,
-    operations: tool.operations.map((operation) => ({
+    id: tool.manifest.id,
+    version: tool.manifest.version,
+    operations: tool.manifest.operations.map((operation) => ({
       id: operation.id,
       ...(operation.description === undefined ? {} : { description: operation.description }),
       inputSchema: operation.inputSchema,
@@ -138,15 +159,51 @@ function toolIndex(tools: readonly ToolPackageManifest[]) {
 
 function handler(options: {
   readonly client: BoundWorldClient;
-  readonly tools: readonly ToolPackageManifest[];
+  readonly tools: readonly ToolDefinition[];
   readonly token: string;
 }) {
+  const wireRoutes = registerWireRoutes(options.tools);
   return async (request: IncomingMessage, response: ServerResponse): Promise<void> => {
     if (!validRequestOrigin(request)) {
       writeJson(response, 421, { schemaVersion: 1, error: "request host or origin is not loopback" });
       return;
     }
     const url = new URL(request.url ?? "/", "http://localhost");
+    const wire = matchWireRoute(wireRoutes, request.method, url.pathname);
+    if (wire !== undefined) {
+      if (!wireRouteAuthorized(request, url, wire.route, options.token)) {
+        setWireAuthenticationChallenge(response, wire.route.contract.auth);
+        writeJson(response, 401, {
+          schemaVersion: 1,
+          code: "framework.HTTP_UNAUTHORIZED",
+          error: "invalid synthetic API credential",
+        });
+        return;
+      }
+      try {
+        writeWireResponse(
+          response,
+          await invokeWireRoute({ match: wire, request, url, client: options.client }),
+        );
+      } catch (error) {
+        writeJson(response, error instanceof WireRequestError ? error.status : 500, {
+          schemaVersion: 1,
+          code: error instanceof WireRequestError ? error.code : "framework.HTTP_RESPONSE_MAPPING_FAILED",
+          error: error instanceof WireRequestError ? error.message : "synthetic API response mapping failed",
+        });
+      }
+      return;
+    }
+    const allowedWireMethods = wireMethodsForPath(wireRoutes, url.pathname);
+    if (allowedWireMethods.length > 0) {
+      response.setHeader("allow", allowedWireMethods.join(", "));
+      writeJson(response, 405, {
+        schemaVersion: 1,
+        code: "framework.HTTP_METHOD_NOT_ALLOWED",
+        error: "method is not allowed for this synthetic API route",
+      });
+      return;
+    }
     if (request.method === "GET" && url.pathname === "/health") {
       writeJson(response, 200, { schemaVersion: 1, status: "ready" });
       return;
@@ -217,8 +274,9 @@ export async function startHttpWorldBinding(
   const hostname = options.hostname ?? "127.0.0.1";
   const token = options.token ?? randomBytes(32).toString("base64url");
   if (token.length < 16) throw new TypeError("world token must contain at least 16 characters");
+  const routeHandler = handler({ client: options.client, tools: options.tools, token });
   const server = createServer((request, response) => {
-    void handler({ client: options.client, tools: options.tools, token })(request, response).catch(() => {
+    void routeHandler(request, response).catch(() => {
       if (!response.headersSent) writeJson(response, 500, { schemaVersion: 1, error: "binding failed" });
       else response.destroy();
     });
