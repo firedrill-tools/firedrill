@@ -1,3 +1,4 @@
 schemaVersion: 1
 id: work-queue-conformance
-drills: [work-queue-behavior]
+drills:
+  - work-queue-behavior

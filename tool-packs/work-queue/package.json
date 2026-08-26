@@ -40,7 +40,7 @@
   "scripts": {
     "build": "tsx ../../tooling/package-files.mts clean && tsc -p tsconfig.build.json && tsx ../../tooling/package-files.mts finalize",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "test": "node ../../packages/cli/dist/bin.js tool test work-queue --root ."
+    "test": "node ../../packages/cli/dist/bin.js format --check --root . && node ../../packages/cli/dist/bin.js tool test work-queue --root ."
   },
   "dependencies": {
     "@firedrill/tool-sdk": "workspace:*"

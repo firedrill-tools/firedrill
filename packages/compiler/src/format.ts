@@ -46,14 +46,14 @@ function authoredArrayPeer(normalized: unknown, authored: readonly unknown[], in
   for (const identity of ["id", "namespace"] as const) {
     const value = normalizedRecord[identity];
     if (typeof value !== "string") continue;
-    const match = authored.find(
+    const matches = authored.filter(
       (candidate) =>
         typeof candidate === "object" &&
         candidate !== null &&
         !Array.isArray(candidate) &&
         (candidate as Record<string, unknown>)[identity] === value,
     );
-    if (match !== undefined) return match;
+    if (matches.length === 1) return matches[0];
   }
   return authored[index];
 }

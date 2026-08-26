@@ -2,51 +2,89 @@ schemaVersion: 1
 id: work-queue-behavior
 title: Exercise every declared work-queue behavior
 targetId: conformance-agent
-actorId: worker
 scenarioId: baseline
+actorId: worker
 task:
   instruction: List, claim, and complete a work item, including missing-item failures.
 assertions:
   - id: listed-once
     kind: operation.count
-    operation: { packageId: work-queue, operationId: items.list }
-    outcomes: [ok]
-    comparison: { operator: equals, value: 1 }
+    operation:
+      packageId: work-queue
+      operationId: items.list
+    outcomes:
+      - ok
+    comparison:
+      operator: equals
+      value: 1
   - id: claim-succeeded
     kind: operation.count
-    operation: { packageId: work-queue, operationId: items.claim }
-    outcomes: [ok]
-    comparison: { operator: equals, value: 1 }
+    operation:
+      packageId: work-queue
+      operationId: items.claim
+    outcomes:
+      - ok
+    comparison:
+      operator: equals
+      value: 1
   - id: claim-failure-observed
     kind: operation.count
-    operation: { packageId: work-queue, operationId: items.claim }
-    outcomes: [tool_error]
-    comparison: { operator: equals, value: 1 }
+    operation:
+      packageId: work-queue
+      operationId: items.claim
+    outcomes:
+      - tool_error
+    comparison:
+      operator: equals
+      value: 1
   - id: completion-succeeded
     kind: operation.count
-    operation: { packageId: work-queue, operationId: items.complete }
-    outcomes: [ok]
-    comparison: { operator: equals, value: 1 }
+    operation:
+      packageId: work-queue
+      operationId: items.complete
+    outcomes:
+      - ok
+    comparison:
+      operator: equals
+      value: 1
   - id: completion-failure-observed
     kind: operation.count
-    operation: { packageId: work-queue, operationId: items.complete }
-    outcomes: [tool_error]
-    comparison: { operator: equals, value: 1 }
+    operation:
+      packageId: work-queue
+      operationId: items.complete
+    outcomes:
+      - tool_error
+    comparison:
+      operator: equals
+      value: 1
   - id: item-completed
     kind: state.value
     packageId: work-queue
     namespace: items
     rowId: task-1
-    path: [status]
-    comparison: { operator: equals, value: completed }
+    path:
+      - status
+    comparison:
+      operator: equals
+      value: completed
   - id: completion-event-emitted
     kind: event.count
-    event: { packageId: work-queue, eventId: item.completed }
+    event:
+      packageId: work-queue
+      eventId: item.completed
     phase: emitted
-    comparison: { operator: equals, value: 1 }
+    comparison:
+      operator: equals
+      value: 1
   - id: work-happened-in-order
     kind: operation.order
     sequence:
-      - anyOf: [{ packageId: work-queue, operationId: items.list }]
-      - anyOf: [{ packageId: work-queue, operationId: items.claim }]
-      - anyOf: [{ packageId: work-queue, operationId: items.complete }]
+      - anyOf:
+          - packageId: work-queue
+            operationId: items.list
+      - anyOf:
+          - packageId: work-queue
+            operationId: items.claim
+      - anyOf:
+          - packageId: work-queue
+            operationId: items.complete

@@ -468,6 +468,38 @@ describe("source to executable world", () => {
     if (repeated.status === "success") expect(repeated.files.every((file) => !file.changed)).toBe(true);
   });
 
+  it("formats repeated state namespaces without confusing distinct rows", async () => {
+    const repository = temporaryFixture("appointments");
+    const scenarioPath = join(repository, "world", "busy-morning.scenario.yaml");
+    appendFileSync(
+      scenarioPath,
+      `state:
+  - action: upsert
+    packageId: reservations
+    namespace: slots
+    rowId: morning-1
+    value: { available: true }
+  - action: upsert
+    packageId: reservations
+    namespace: slots
+    rowId: morning-2
+    value: { available: false }
+`,
+    );
+
+    const before = await compileWorld({ repositoryRoot: repository, materialize: false });
+    expect(before.status).toBe("success");
+    const formatted = await formatWorldSources({ repositoryRoot: repository });
+    expect(formatted.status).toBe("success");
+    const after = await compileWorld({ repositoryRoot: repository, materialize: false });
+    expect(after.status).toBe("success");
+    if (before.status === "success" && after.status === "success") {
+      expect(after.build.manifest.buildHash).toBe(before.build.manifest.buildHash);
+      const scenario = after.build.worldIr.scenarios.find((item) => item.id === "busy-morning");
+      expect(scenario?.state.map((item) => item.rowId)).toEqual(["morning", "morning-1", "morning-2"]);
+    }
+  });
+
   it("preserves nested schemas when deterministic formatting reorders Tool resources", async () => {
     const repository = temporaryFixture("appointments");
     const toolPath = join(repository, "world", "reservations.tool.yaml");

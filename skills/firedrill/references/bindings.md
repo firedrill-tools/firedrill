@@ -22,7 +22,7 @@ Firedrill supplies:
 - `FIREDRILL_HTTP_URL`
 - `FIREDRILL_HTTP_TOKEN`
 
-Use bearer authentication. Discover granted operations with `GET /v1/tools`. Invoke one with:
+The generic operation surface uses bearer authentication. Discover granted operations with `GET /v1/tools`. Invoke one with:
 
 ```http
 POST /v1/operations/{packageId}/{operationId}
@@ -34,7 +34,11 @@ Content-Type: application/json
 
 The response always includes `schemaVersion`, `callId`, `correlationId`, and `outcome`. Read `outcome.status`; do not assume every HTTP 2xx response represents a successful Tool result.
 
-This is Firedrill's typed operation protocol, not an automatic wire-compatible clone of a vendor REST surface. When the product agent uses vendor-specific URLs and payloads, adapt that client once at its normal composition seam or add a small repository-owned translation adapter. Do not put vendor routes in framework core.
+This is Firedrill's typed operation protocol. It is useful when the agent can consume Firedrill's semantic operation envelope directly.
+
+When the existing client already expects another HTTP method, path, credential placement, or payload, first inspect `firedrill plan --json` and `firedrill tool inspect <tool-id> --json` for a declared synthetic route. A compatible route uses the same `FIREDRILL_HTTP_URL` and per-trial token but places that token according to its own declaration. Point the existing client's test base URL and credential at those values; do not rewrite every call site.
+
+A synthetic route is explicit Tool source, not an inferred clone. Its pure codec maps the wire request to one semantic operation and maps the outcome back to the declared response. The operation still owns authorization decisions, state, events, scheduled work, and failures. If no compatible route exists, author one in the repository Tool or use one small adapter at the client's normal composition seam. Never put a product-specific route or behavior branch in Firedrill core, and never claim coverage for an undeclared route.
 
 ## MCP world binding
 

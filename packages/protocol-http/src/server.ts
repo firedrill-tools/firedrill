@@ -20,6 +20,8 @@ const MAX_BODY_BYTES = 1024 * 1024;
 export interface StartHttpWorldBindingOptions {
   readonly client: BoundWorldClient;
   readonly tools: readonly ToolDefinition[];
+  /** Internal composition seam used by protocol wrappers that need only the generic operation surface. */
+  readonly syntheticRoutes?: boolean;
   readonly hostname?: "127.0.0.1" | "::1";
   readonly port?: number;
   readonly token?: string;
@@ -91,20 +93,20 @@ function setWireAuthenticationChallenge(
 
 async function requestBody(request: IncomingMessage): Promise<Buffer> {
   const declared = Number(request.headers["content-length"] ?? 0);
-  if (Number.isFinite(declared) && declared > MAX_BODY_BYTES) {
-    request.resume();
-    throw new RangeError("request body exceeds 1 MiB");
-  }
+  let oversized = Number.isFinite(declared) && declared > MAX_BODY_BYTES;
   const chunks: Buffer[] = [];
   let bytes = 0;
   for await (const chunk of request) {
     const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
     bytes += buffer.length;
     if (bytes > MAX_BODY_BYTES) {
-      request.resume();
-      throw new RangeError("request body exceeds 1 MiB");
+      oversized = true;
+      continue;
     }
-    chunks.push(buffer);
+    if (!oversized) chunks.push(buffer);
+  }
+  if (oversized) {
+    throw new RangeError("request body exceeds 1 MiB");
   }
   return Buffer.concat(chunks);
 }
@@ -161,8 +163,9 @@ function handler(options: {
   readonly client: BoundWorldClient;
   readonly tools: readonly ToolDefinition[];
   readonly token: string;
+  readonly syntheticRoutes: boolean;
 }) {
-  const wireRoutes = registerWireRoutes(options.tools);
+  const wireRoutes = registerWireRoutes(options.syntheticRoutes ? options.tools : []);
   return async (request: IncomingMessage, response: ServerResponse): Promise<void> => {
     if (!validRequestOrigin(request)) {
       writeJson(response, 421, { schemaVersion: 1, error: "request host or origin is not loopback" });
@@ -274,7 +277,12 @@ export async function startHttpWorldBinding(
   const hostname = options.hostname ?? "127.0.0.1";
   const token = options.token ?? randomBytes(32).toString("base64url");
   if (token.length < 16) throw new TypeError("world token must contain at least 16 characters");
-  const routeHandler = handler({ client: options.client, tools: options.tools, token });
+  const routeHandler = handler({
+    client: options.client,
+    tools: options.tools,
+    token,
+    syntheticRoutes: options.syntheticRoutes ?? true,
+  });
   const server = createServer((request, response) => {
     void routeHandler(request, response).catch(() => {
       if (!response.headersSent) writeJson(response, 500, { schemaVersion: 1, error: "binding failed" });

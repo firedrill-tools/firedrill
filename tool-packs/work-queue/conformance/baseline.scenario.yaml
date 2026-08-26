@@ -5,9 +5,13 @@ state:
     packageId: work-queue
     namespace: items
     rowId: task-1
-    value: { title: Review the change, status: available }
+    value:
+      title: Review the change
+      status: available
   - action: upsert
     packageId: work-queue
     namespace: items
     rowId: task-2
-    value: { title: Publish the result, status: available }
+    value:
+      title: Publish the result
+      status: available

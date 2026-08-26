@@ -81,6 +81,7 @@ manifest:
         type: object
         required: [value]
         properties:
+          recordId: { type: string }
           value: { type: integer }
         additionalProperties: false
       outputSchema:
@@ -100,7 +101,7 @@ export default {
   operations: {
     "records.set": (input, context) => {
       const value = { value: Number(input.value) };
-      context.state.put("records", "primary", value);
+      context.state.put("records", String(input.recordId ?? "primary"), value);
       return value;
     },
   },
@@ -108,6 +109,62 @@ export default {
 ```
 
 The manifest owns schemas, capabilities, declared errors, events, faults, and fidelity. The behavior module owns deterministic consequences. Keep business-specific behavior here, never in the Firedrill kernel.
+
+### Optional synthetic HTTP route
+
+Declare a wire route only when the existing agent's HTTP client needs that shape. The route points to an existing semantic operation; it does not create another behavior implementation.
+
+```yaml
+  http:
+    - id: set-record
+      operationId: records.set
+      method: PUT
+      path: /api/records/{recordId}
+      auth: { kind: header, name: x-api-key }
+      requestBody: json
+      response:
+        successStatus: 200
+        errors: []
+```
+
+Add the exact matching codec to the Tool behavior export:
+
+```js
+export default {
+  operations: {
+    "records.set": (input, context) => {
+      const value = { value: Number(input.value) };
+      context.state.put("records", String(input.recordId), value);
+      return value;
+    },
+  },
+  http: {
+    "set-record": {
+      decode: (request) => {
+        const body =
+          request.body.kind === "json" &&
+          typeof request.body.value === "object" &&
+          request.body.value !== null &&
+          !Array.isArray(request.body.value)
+            ? request.body.value
+            : {};
+        return {
+          arguments: { recordId: request.path.recordId, value: body.value },
+          idempotencyKey: request.headers["idempotency-key"]?.[0],
+        };
+      },
+      encode: ({ outcome }) => ({
+        body:
+          outcome.status === "ok"
+            ? { kind: "json", value: outcome.value }
+            : { kind: "json", value: { error: outcome.error.message } },
+      }),
+    },
+  },
+};
+```
+
+Validate optional wire fields deliberately rather than relying only on coercion. Route codecs receive bounded path/query/header/body data but no `ToolContext`, so they cannot own state. Firedrill removes the declared synthetic credential before calling the decoder. Every declared Tool error must have a route status mapping. Unsupported routes fail closed; never add a successful placeholder for behavior that is not implemented. Run `firedrill plan --json` to inspect method, path, auth kind, and operation fidelity before executing the agent.
 
 `idempotency` describes the operation's call contract:
 

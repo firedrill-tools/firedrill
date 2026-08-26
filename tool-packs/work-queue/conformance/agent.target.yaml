@@ -2,8 +2,10 @@ schemaVersion: 1
 target:
   id: conformance-agent
   kind: command
-  bindings: [http]
+  bindings:
+    - http
   executable: node
-  arguments: [conformance/agent.mjs]
+  arguments:
+    - conformance/agent.mjs
   workingDirectory: .
   timeoutMs: 5000

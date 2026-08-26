@@ -6,32 +6,45 @@ const baseUrl = process.env.FIREDRILL_HTTP_URL;
 const token = process.env.FIREDRILL_HTTP_TOKEN;
 if (!baseUrl || !token) throw new Error("Firedrill HTTP binding is missing");
 
-async function call(operation, arguments_, idempotencyKey) {
-  const response = await fetch(`${baseUrl}/v1/operations/work-queue/${operation}`, {
+const listedResponse = await fetch(`${baseUrl}/api/work-items?status=available&limit=10`, {
+  headers: { authorization: `Bearer ${token}` },
+});
+const listed = await listedResponse.json();
+
+async function claim(id, idempotencyKey) {
+  const basic = Buffer.from(`firedrill:${token}`, "utf8").toString("base64");
+  return fetch(`${baseUrl}/api/work-items/${encodeURIComponent(id)}/claim`, {
     method: "POST",
-    headers: { authorization: `Bearer ${token}`, "content-type": "application/json" },
-    body: JSON.stringify({
-      arguments: arguments_,
-      ...(idempotencyKey === undefined ? {} : { idempotencyKey }),
-    }),
+    headers: { authorization: `Basic ${basic}`, "idempotency-key": idempotencyKey },
   });
-  const body = await response.json();
-  if (!body.outcome) throw new Error(JSON.stringify(body));
-  return body.outcome;
 }
 
-const listed = await call("items.list", {});
-const claimed = await call("items.claim", { id: "task-1" }, "claim-task-1");
-const missingClaim = await call("items.claim", { id: "missing" }, "claim-missing");
-const completed = await call("items.complete", { id: "task-1", result: "reviewed" }, "complete-task-1");
-const missingCompletion = await call("items.complete", { id: "missing" }, "complete-missing");
+async function complete(id, idempotencyKey, result) {
+  return fetch(
+    `${baseUrl}/api/work-items/${encodeURIComponent(id)}?access_token=${encodeURIComponent(token)}`,
+    {
+      method: "PATCH",
+      headers: { "content-type": "text/plain; charset=utf-8", "idempotency-key": idempotencyKey },
+      body: result,
+    },
+  );
+}
+
+const claimed = await claim("task-1", "claim-task-1");
+const missingClaim = await claim("missing", "claim-missing");
+const completed = await complete("task-1", "complete-task-1", "reviewed");
+const missingCompletion = await complete("missing", "complete-missing", "not-used");
 
 if (
-  listed.status !== "ok" ||
-  claimed.status !== "ok" ||
-  missingClaim.status !== "tool_error" ||
-  completed.status !== "ok" ||
-  missingCompletion.status !== "tool_error"
+  !listedResponse.ok ||
+  listed.data?.items?.length !== 2 ||
+  listed.meta?.count !== 2 ||
+  claimed.status !== 204 ||
+  missingClaim.status !== 404 ||
+  !completed.ok ||
+  completed.headers.get("x-item-status") !== "completed" ||
+  (await completed.text()) !== "completed\n" ||
+  missingCompletion.status !== 404
 ) {
   throw new Error("conformance agent observed unexpected Tool outcomes");
 }

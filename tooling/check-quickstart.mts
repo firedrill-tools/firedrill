@@ -34,7 +34,8 @@ try {
   if (
     plan.status !== 0 ||
     planned?.tools?.[0]?.httpRoutes?.[0]?.method !== "PUT" ||
-    planned?.tools?.[0]?.httpRoutes?.[0]?.path !== "/api/records/{recordId}"
+    planned?.tools?.[0]?.httpRoutes?.[0]?.path !== "/api/records/{recordId}" ||
+    planned?.tools?.[0]?.httpRoutes?.[0]?.fidelity !== "stateful"
   ) {
     throw new Error(`quickstart plan omitted the synthetic HTTP route\n${plan.stdout}\n${plan.stderr}`);
   }

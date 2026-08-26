@@ -189,6 +189,17 @@ describe("HTTP world binding", () => {
         tools: [{ id: "scoreboard", operations: [{ id: "scores.add" }] }],
       });
 
+      const oversized = await fetch(`${binding.baseUrl}/v1/operations/scoreboard/scores.add`, {
+        method: "POST",
+        headers: {
+          authorization: `Bearer ${binding.token}`,
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({ arguments: { board: "main", padding: "x".repeat(1024 * 1024) } }),
+      });
+      expect(oversized.status).toBe(413);
+      expect(fixture.client.callsIssued()).toBe(0);
+
       const called = await fetch(`${binding.baseUrl}/v1/operations/scoreboard/scores.add`, {
         method: "POST",
         headers: {

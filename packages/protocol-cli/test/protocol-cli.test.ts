@@ -48,12 +48,49 @@ function world() {
           fidelity: "stateful",
         },
       ],
+      http: [
+        {
+          id: "add-value",
+          operationId: "values.add",
+          method: "POST",
+          path: "/counter/add",
+          auth: { kind: "header", name: "x-api-key" },
+          requestBody: "json",
+          response: { successStatus: 200, errors: [] },
+        },
+      ],
     },
     operations: {
       "values.add": (input, context) => {
         const value = Number(context.state.get("values", "main")?.value ?? 0) + Number(input.amount);
         context.state.put("values", "main", { value });
         return { value };
+      },
+    },
+    http: {
+      "add-value": {
+        decode: (request) => {
+          const idempotencyKey = request.headers["idempotency-key"]?.[0];
+          return {
+            arguments:
+              request.body.kind === "json" &&
+              typeof request.body.value === "object" &&
+              request.body.value !== null &&
+              !Array.isArray(request.body.value)
+                ? { amount: request.body.value.amount ?? null }
+                : {},
+            ...(idempotencyKey === undefined ? {} : { idempotencyKey }),
+          };
+        },
+        encode: ({ outcome }) => ({
+          body: {
+            kind: "json",
+            value:
+              outcome.status === "ok"
+                ? (outcome.value ?? null)
+                : { error: outcome.error?.message ?? "request failed" },
+          },
+        }),
       },
     },
   });
@@ -110,6 +147,17 @@ describe("CLI world protocol", () => {
         FIREDRILL_CLI_URL: binding.baseUrl,
         FIREDRILL_CLI_TOKEN: binding.token,
       });
+
+      const syntheticRoute = await fetch(`${binding.baseUrl}/counter/add`, {
+        method: "POST",
+        headers: {
+          authorization: `Bearer ${binding.token}`,
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({ amount: 1 }),
+      });
+      expect(syntheticRoute.status).toBe(404);
+      expect(fixture.client.callsIssued()).toBe(1);
     } finally {
       await binding.close();
       fixture.store.close();

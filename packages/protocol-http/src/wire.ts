@@ -1,4 +1,5 @@
 import { timingSafeEqual } from "node:crypto";
+import { validateHeaderValue } from "node:http";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import {
   JsonObjectSchema,
@@ -17,6 +18,8 @@ import type {
 import type { BoundWorldClient, KernelInvocationResult } from "@firedrill/world-kernel";
 
 export const MAX_HTTP_BODY_BYTES = 1024 * 1024;
+export const MAX_HTTP_RESPONSE_HEADERS = 64;
+export const MAX_HTTP_RESPONSE_HEADER_BYTES = 16 * 1024;
 
 const FORBIDDEN_RESPONSE_HEADERS = new Set([
   "connection",
@@ -230,20 +233,20 @@ export function wireRouteAuthorized(
 
 async function requestBytes(request: IncomingMessage): Promise<Buffer> {
   const declared = Number(request.headers["content-length"] ?? 0);
-  if (Number.isFinite(declared) && declared > MAX_HTTP_BODY_BYTES) {
-    request.resume();
-    throw new WireRequestError("framework.HTTP_BODY_TOO_LARGE", 413, "request body exceeds 1 MiB");
-  }
+  let oversized = Number.isFinite(declared) && declared > MAX_HTTP_BODY_BYTES;
   const chunks: Buffer[] = [];
   let bytes = 0;
   for await (const chunk of request) {
     const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
     bytes += buffer.length;
     if (bytes > MAX_HTTP_BODY_BYTES) {
-      request.resume();
-      throw new WireRequestError("framework.HTTP_BODY_TOO_LARGE", 413, "request body exceeds 1 MiB");
+      oversized = true;
+      continue;
     }
-    chunks.push(buffer);
+    if (!oversized) chunks.push(buffer);
+  }
+  if (oversized) {
+    throw new WireRequestError("framework.HTTP_BODY_TOO_LARGE", 413, "request body exceeds 1 MiB");
   }
   return Buffer.concat(chunks);
 }
@@ -379,23 +382,42 @@ function responseBytes(response: ToolHttpResponse): {
     return { bytes, contentType: "application/json; charset=utf-8" };
   }
   if (body.kind === "text") {
+    if (body.contentType !== undefined) validateResponseContentType(body.contentType);
     return {
       bytes: Buffer.from(body.value, "utf8"),
       contentType: body.contentType ?? "text/plain; charset=utf-8",
     };
   }
+  validateResponseContentType(body.contentType);
   return { bytes: Buffer.from(body.value), contentType: body.contentType };
 }
 
+function validateResponseContentType(value: string): void {
+  if (value.length === 0 || value.length > 1024) {
+    throw new TypeError("HTTP route codec returned an invalid response content type");
+  }
+  validateHeaderValue("content-type", value);
+}
+
 function responseHeaders(response: ToolHttpResponse): Record<string, string> {
+  const entries = Object.entries(response.headers ?? {});
+  if (entries.length > MAX_HTTP_RESPONSE_HEADERS) {
+    throw new TypeError(`HTTP route codec returned more than ${MAX_HTTP_RESPONSE_HEADERS} headers`);
+  }
   const headers: Record<string, string> = {};
-  for (const [name, value] of Object.entries(response.headers ?? {})) {
+  let bytes = 0;
+  for (const [name, value] of entries) {
     const lower = name.toLowerCase();
     if (!HEADER_NAME.test(name) || FORBIDDEN_RESPONSE_HEADERS.has(lower)) {
       throw new TypeError(`HTTP route codec returned forbidden response header ${name}`);
     }
     if (value.includes("\r") || value.includes("\n")) {
       throw new TypeError(`HTTP route codec returned an invalid value for header ${name}`);
+    }
+    validateHeaderValue(name, value);
+    bytes += Buffer.byteLength(name) + Buffer.byteLength(value);
+    if (bytes > MAX_HTTP_RESPONSE_HEADER_BYTES) {
+      throw new TypeError("HTTP route codec response headers exceed 16 KiB");
     }
     headers[lower] = value;
   }

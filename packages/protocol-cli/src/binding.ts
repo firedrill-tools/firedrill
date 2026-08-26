@@ -27,7 +27,7 @@ export interface CliWorldBinding {
  * shape, not a second implementation of Tool behavior.
  */
 export async function startCliWorldBinding(options: StartCliWorldBindingOptions): Promise<CliWorldBinding> {
-  const binding = await startHttpWorldBinding(options);
+  const binding = await startHttpWorldBinding({ ...options, syntheticRoutes: false });
   return {
     kind: "cli",
     baseUrl: binding.baseUrl,

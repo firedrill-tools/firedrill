@@ -864,18 +864,28 @@ function buildSummary(result: Extract<CompileWorldResult, { status: "success" }>
     engineVersion: result.build.manifest.engineVersion,
     compilerVersion: result.build.manifest.compilerVersion,
     packageLockHash: result.build.manifest.packageLockHash,
-    tools: result.build.worldIr.tools.map((tool) => ({
-      id: tool.id,
-      version: tool.version,
-      operations: tool.operations.length,
-      httpRoutes: tool.http.map((route) => ({
-        id: route.id,
-        operationId: route.operationId,
-        method: route.method,
-        path: route.path,
-        auth: route.auth.kind,
-      })),
-    })),
+    tools: result.build.worldIr.tools.map((tool) => {
+      const operations = new Map(tool.operations.map((operation) => [operation.id, operation]));
+      return {
+        id: tool.id,
+        version: tool.version,
+        operations: tool.operations.length,
+        httpRoutes: tool.http.map((route) => {
+          const operation = operations.get(route.operationId);
+          if (operation === undefined) {
+            throw new TypeError(`HTTP route ${tool.id}.${route.id} references a missing operation`);
+          }
+          return {
+            id: route.id,
+            operationId: route.operationId,
+            method: route.method,
+            path: route.path,
+            auth: route.auth.kind,
+            fidelity: operation.fidelity,
+          };
+        }),
+      };
+    }),
     scenarios: result.build.worldIr.scenarios.map((scenario) => scenario.id),
     drills: result.build.worldIr.drills.map((drill) => drill.id),
     drillDetails: result.build.worldIr.drills.map((drill) => ({
@@ -1078,7 +1088,10 @@ function writeToolInspection(io: CliIo, inspection: ToolInspection): void {
     io.stdout.write(`  ${operation.id} — ${operation.fidelity}\n`);
   }
   for (const route of manifest.http) {
-    io.stdout.write(`  HTTP ${route.method} ${route.path} → ${route.operationId}\n`);
+    const fidelity = manifest.operations.find((operation) => operation.id === route.operationId)?.fidelity;
+    io.stdout.write(
+      `  HTTP ${route.method} ${route.path} → ${route.operationId}${fidelity === undefined ? "" : ` — ${fidelity}`}\n`,
+    );
   }
 }
 
