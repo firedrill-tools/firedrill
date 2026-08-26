@@ -40,6 +40,10 @@ When the existing client already expects another HTTP method, path, credential p
 
 A synthetic route is explicit Tool source, not an inferred clone. Its pure codec maps the wire request to one semantic operation and maps the outcome back to the declared response. The operation still owns authorization decisions, state, events, scheduled work, and failures. If no compatible route exists, author one in the repository Tool or use one small adapter at the client's normal composition seam. Never put a product-specific route or behavior branch in Firedrill core, and never claim coverage for an undeclared route.
 
+## Callback receiver binding
+
+A callback is a request from the synthetic world into the application under test, typically after a Tool emits an event. It is separate from every agent-facing binding above. Start the local receiver through the application's ordinary test setup, then map the Tool's abstract receiver id with `--callback-receiver <id>=<loopback-origin>` or the SDK's `callbackReceivers` option. Use `--callback-secret-env` when the contract declares HMAC signing. Do not put URLs or secrets in Tool source, and do not expose a remote receiver merely to make a local drill pass.
+
 ## MCP world binding
 
 Firedrill supplies:

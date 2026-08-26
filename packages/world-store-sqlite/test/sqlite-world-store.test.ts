@@ -1,8 +1,13 @@
 import { existsSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import type { OperationInvocation, OperationOutcome } from "@firedrill/contracts";
-import type { WorldTransaction } from "@firedrill/world-store";
+import type {
+  CallbackDeliveryId,
+  OperationInvocation,
+  OperationOutcome,
+  VirtualTime,
+} from "@firedrill/contracts";
+import type { CallbackTransition, WorldTransaction } from "@firedrill/world-store";
 import Database from "better-sqlite3";
 import { afterEach, describe, expect, it } from "vitest";
 import { SqliteWorldStore } from "../src/index.js";
@@ -61,6 +66,53 @@ function createStore(
     ],
     activeFaults: [{ packageId: "calendar", faultId: "slow-write" }],
   });
+}
+
+function enqueueReminder(
+  store: SqliteWorldStore,
+  retryDelaysUs: readonly VirtualTime[] = [1_000],
+): CallbackDeliveryId {
+  return store.transact("corr_callback", (transaction) => {
+    const payload = { reminderId: "reminder_1" };
+    const deliveryId = transaction.enqueueCallback({
+      callback: { packageId: "calendar", callbackId: "send-reminder" },
+      receiverId: "application",
+      event: { packageId: "calendar", eventId: "reminder.due" },
+      payload,
+      eventSequence: transaction.primarySequence,
+      dueUs: transaction.virtualTimeUs,
+      actorBindingId: "actor_primary",
+      retryDelaysUs,
+    });
+    return {
+      value: deliveryId,
+      primary: {
+        kind: "event",
+        event: { packageId: "calendar", eventId: "reminder.due" },
+        phase: "emitted",
+        payload,
+      },
+    };
+  }).value;
+}
+
+const CALLBACK_REQUEST = {
+  method: "POST",
+  path: "/callbacks/reminders",
+  bodyHash: HASH_A,
+  bodyBytes: 37,
+  signature: { kind: "none" },
+} as const;
+
+const CALLBACK_RESPONSE = {
+  status: 204,
+  body: "",
+  bodyHash: HASH_B,
+  bodyBytes: 0,
+} as const;
+
+function callbackResult(transition: CallbackTransition) {
+  return { value: transition.delivery, primary: transition.evidence };
 }
 
 afterEach(() => {
@@ -220,6 +272,181 @@ describe("SQLite world transactions", () => {
     expect(left.evidenceHash()).toBe(right.evidenceHash());
     left.close();
     right.close();
+  });
+});
+
+describe("SQLite callback outbox", () => {
+  it("commits callback intent with its event and advances through a deterministic retry", () => {
+    const directory = temporaryDirectory();
+    const store = createStore(directory);
+    const deliveryId = enqueueReminder(store);
+
+    expect(store.nextCallbackDelivery(1_000)).toMatchObject({
+      id: deliveryId,
+      status: "pending",
+      attemptCount: 0,
+      retryDelaysUs: [1_000],
+    });
+    expect(
+      store
+        .readEvidence()
+        .slice(-2)
+        .map((entry) => entry.kind),
+    ).toEqual(["event", "callback"]);
+
+    store.transact("corr_attempt1", (transaction) =>
+      callbackResult(transaction.startCallbackAttempt(deliveryId, CALLBACK_REQUEST)),
+    );
+    expect(store.listCallbackDeliveries("in_flight")).toHaveLength(1);
+
+    store.transact("corr_retry01", (transaction) =>
+      callbackResult(
+        transaction.settleCallbackAttempt(deliveryId, {
+          status: "retry_scheduled",
+          attempt: 1,
+          nextAttemptUs: 2_000,
+          response: { ...CALLBACK_RESPONSE, status: 503 },
+          durationMs: 12,
+        }),
+      ),
+    );
+    expect(store.nextCallbackDelivery(1_999)).toBeNull();
+    expect(store.nextCallbackDelivery(2_000)).toMatchObject({
+      id: deliveryId,
+      status: "pending",
+      attemptCount: 1,
+      dueUs: 2_000,
+    });
+
+    store.transact("corr_attempt2", (transaction) => {
+      transaction.setVirtualTime(2_000);
+      const transition = transaction.startCallbackAttempt(deliveryId, CALLBACK_REQUEST);
+      transaction.appendEvidence(transition.evidence);
+      return {
+        value: transition.delivery,
+        primary: { kind: "clock", fromUs: 1_000, toUs: 2_000, reason: "scheduled_work" },
+      };
+    });
+    store.transact("corr_deliver1", (transaction) =>
+      callbackResult(
+        transaction.settleCallbackAttempt(deliveryId, {
+          status: "delivered",
+          attempt: 2,
+          response: CALLBACK_RESPONSE,
+          durationMs: 8,
+        }),
+      ),
+    );
+    expect(store.listCallbackDeliveries("delivered")).toMatchObject([{ id: deliveryId, attemptCount: 2 }]);
+    expect(
+      store
+        .readEvidence()
+        .filter((entry) => entry.kind === "callback")
+        .map((entry) => entry.phase),
+    ).toEqual(["queued", "attempt_started", "retry_scheduled", "attempt_started", "delivered"]);
+    store.close();
+  });
+
+  it("rolls callback intent back with the transaction that emitted it", () => {
+    const directory = temporaryDirectory();
+    const store = createStore(directory);
+    const evidenceBefore = store.readEvidence().length;
+    expect(() =>
+      store.transact("corr_rollback", (transaction) => {
+        transaction.enqueueCallback({
+          callback: { packageId: "calendar", callbackId: "send-reminder" },
+          receiverId: "application",
+          event: { packageId: "calendar", eventId: "reminder.due" },
+          payload: { reminderId: "reminder_1" },
+          eventSequence: transaction.primarySequence,
+          dueUs: transaction.virtualTimeUs,
+          actorBindingId: "actor_primary",
+          retryDelaysUs: [],
+        });
+        throw new Error("crash before commit");
+      }),
+    ).toThrow(/crash before commit/);
+    expect(store.listCallbackDeliveries()).toEqual([]);
+    expect(store.readEvidence()).toHaveLength(evidenceBefore);
+    store.close();
+  });
+
+  it("recovers an interrupted attempt without ever claiming it was delivered", () => {
+    const directory = temporaryDirectory();
+    const filePath = join(directory, "world.sqlite");
+    let store = createStore(directory);
+    const retryingId = enqueueReminder(store, [500]);
+    store.transact("corr_started1", (transaction) =>
+      callbackResult(transaction.startCallbackAttempt(retryingId, CALLBACK_REQUEST)),
+    );
+    store.close();
+
+    store = SqliteWorldStore.open(filePath);
+    store.transact("corr_recover1", (transaction) =>
+      callbackResult(transaction.recoverCallbackAttempt(retryingId)),
+    );
+    expect(store.nextCallbackDelivery(1_500)).toMatchObject({
+      id: retryingId,
+      status: "pending",
+      attemptCount: 1,
+    });
+    expect(store.readEvidence().at(-1)).toMatchObject({
+      kind: "callback",
+      phase: "recovered",
+      deliveryId: retryingId,
+    });
+
+    const finalId = enqueueReminder(store, []);
+    store.transact("corr_started2", (transaction) =>
+      callbackResult(transaction.startCallbackAttempt(finalId, CALLBACK_REQUEST)),
+    );
+    store.transact("corr_recover2", (transaction) =>
+      callbackResult(transaction.recoverCallbackAttempt(finalId)),
+    );
+    expect(store.listCallbackDeliveries("failed")).toMatchObject([{ id: finalId }]);
+    expect(store.readEvidence().at(-1)).toMatchObject({
+      kind: "callback",
+      phase: "failed",
+      deliveryId: finalId,
+      error: { code: "framework.CALLBACK_OUTCOME_UNKNOWN" },
+    });
+    store.close();
+  });
+
+  it("snapshots and restores pending callbacks with world state and virtual time", () => {
+    const directory = temporaryDirectory();
+    const store = createStore(directory);
+    const deliveryId = enqueueReminder(store, [500]);
+    const snapshotPath = join(directory, "callback-baseline.sqlite");
+    store.createSnapshot(snapshotPath, "corr_cb_snap");
+
+    store.transact("corr_cb_fail", (transaction) =>
+      callbackResult(transaction.startCallbackAttempt(deliveryId, CALLBACK_REQUEST)),
+    );
+    store.transact("corr_cb_done", (transaction) =>
+      callbackResult(
+        transaction.settleCallbackAttempt(deliveryId, {
+          status: "failed",
+          attempt: 1,
+          error: {
+            code: "framework.CALLBACK_REJECTED",
+            message: "receiver rejected request",
+            retryable: false,
+          },
+          durationMs: 5,
+        }),
+      ),
+    );
+    expect(store.listCallbackDeliveries("failed")).toHaveLength(1);
+
+    store.resetFromSnapshot(snapshotPath, "corr_cb_reset");
+    expect(store.nextCallbackDelivery(1_000)).toMatchObject({
+      id: deliveryId,
+      status: "pending",
+      attemptCount: 0,
+    });
+    expect(store.listCallbackDeliveries("failed")).toEqual([]);
+    store.close();
   });
 });
 

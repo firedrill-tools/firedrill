@@ -69,7 +69,7 @@ describe("defineToolBehavior", () => {
       defineToolBehavior({ operations: {}, hidden: {} } as unknown as Parameters<
         typeof defineToolBehavior
       >[0]),
-    ).toThrow(/only operations, subscriptions, and http/);
+    ).toThrow(/only operations, subscriptions, http, and callbacks/);
     expect(() =>
       defineToolBehavior({ operations: { invalid: true } } as unknown as Parameters<
         typeof defineToolBehavior
@@ -117,6 +117,51 @@ describe("defineToolBehavior", () => {
       },
     });
     expect(Object.isFrozen(tool.http)).toBe(true);
+  });
+
+  it("requires an exact pure codec for each declared callback", () => {
+    const callbackManifest = {
+      ...manifest,
+      events: [{ id: "reminder.due", payloadSchema: { type: "object" } }],
+      callbacks: [
+        {
+          id: "notify-application",
+          eventId: "reminder.due",
+          receiverId: "application",
+          method: "POST",
+          path: "/callbacks/reminders",
+          idempotencyHeader: "Idempotency-Key",
+        },
+      ],
+    } as const;
+    expect(() =>
+      defineTool({
+        manifest: callbackManifest,
+        operations: { "events.get": () => ({ id: "event_1" }) },
+        subscriptions: { "receive-reminder": () => undefined },
+      }),
+    ).toThrow(/callback handlers do not match the manifest \(missing: notify-application\)/);
+
+    const tool = defineTool({
+      manifest: callbackManifest,
+      operations: { "events.get": () => ({ id: "event_1" }) },
+      subscriptions: { "receive-reminder": () => undefined },
+      callbacks: {
+        "notify-application": {
+          encode: ({ deliveryId, payload }) => ({
+            headers: { "content-type": "application/json" },
+            body: { kind: "json", value: { deliveryId, payload } },
+          }),
+        },
+      },
+    });
+    expect(Object.isFrozen(tool.callbacks)).toBe(true);
+    expect(() =>
+      defineToolBehavior({
+        operations: {},
+        callbacks: { invalid: { encode: () => ({ body: { kind: "empty" } }), hidden: true } },
+      } as never),
+    ).toThrow(/callbacks.invalid must contain only an encode function/);
   });
 });
 

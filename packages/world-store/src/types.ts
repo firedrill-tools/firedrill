@@ -2,6 +2,11 @@ import type {
   ActorBindingId,
   ActorId,
   AssertionResult,
+  CallbackDeliveryId,
+  CallbackErrorEvidence,
+  CallbackRef,
+  CallbackRequestEvidence,
+  CallbackResponseEvidence,
   CorrelationId,
   ErrorEnvelope,
   EventRef,
@@ -68,6 +73,50 @@ export interface ScheduledEvent {
   readonly status: "pending" | "fired" | "failed" | "cancelled";
 }
 
+export interface CallbackDelivery {
+  readonly id: CallbackDeliveryId;
+  readonly callback: CallbackRef;
+  readonly receiverId: StableId;
+  readonly event: EventRef;
+  readonly payload: Readonly<JsonObject>;
+  readonly eventSequence: number;
+  readonly dueUs: VirtualTime;
+  readonly correlationId: CorrelationId;
+  readonly actorBindingId: ActorBindingId;
+  readonly status: "pending" | "in_flight" | "delivered" | "failed";
+  readonly attemptCount: number;
+  readonly retryDelaysUs: readonly VirtualTime[];
+}
+
+type CallbackAttemptFailure =
+  | {
+      readonly response: CallbackResponseEvidence;
+      readonly error?: CallbackErrorEvidence;
+    }
+  | {
+      readonly response?: CallbackResponseEvidence;
+      readonly error: CallbackErrorEvidence;
+    };
+
+export type CallbackAttemptSettlement =
+  | {
+      readonly status: "delivered";
+      readonly attempt: number;
+      readonly response: CallbackResponseEvidence;
+      readonly durationMs: number;
+    }
+  | ({
+      readonly status: "retry_scheduled";
+      readonly attempt: number;
+      readonly nextAttemptUs: VirtualTime;
+      readonly durationMs: number;
+    } & CallbackAttemptFailure)
+  | ({
+      readonly status: "failed";
+      readonly attempt: number;
+      readonly durationMs: number;
+    } & CallbackAttemptFailure);
+
 export interface IdempotencyReceipt {
   readonly requestHash: string;
   readonly outcome: OperationOutcome;
@@ -93,6 +142,22 @@ export type EvidenceDraft =
       readonly scheduledForUs?: VirtualTime;
       readonly handlerPackageId?: PackageId;
       readonly subscriptionId?: StableId;
+      readonly causeSequence?: number;
+    }
+  | {
+      readonly kind: "callback";
+      readonly callback: CallbackRef;
+      readonly deliveryId: CallbackDeliveryId;
+      readonly receiverId: StableId;
+      readonly event: EventRef;
+      readonly phase: "queued" | "attempt_started" | "delivered" | "retry_scheduled" | "failed" | "recovered";
+      readonly attempt?: number;
+      readonly idempotencyKey: string;
+      readonly scheduledForUs?: VirtualTime;
+      readonly request?: CallbackRequestEvidence;
+      readonly response?: CallbackResponseEvidence;
+      readonly error?: CallbackErrorEvidence;
+      readonly durationMs?: number;
       readonly causeSequence?: number;
     }
   | {
@@ -129,6 +194,11 @@ export type EvidenceDraft =
       readonly causeSequence?: number;
     };
 
+export interface CallbackTransition {
+  readonly delivery: CallbackDelivery;
+  readonly evidence: Extract<EvidenceDraft, { readonly kind: "callback" }>;
+}
+
 export interface WorldTransaction {
   readonly primarySequence: number;
   readonly virtualTimeUs: VirtualTime;
@@ -149,7 +219,7 @@ export interface WorldTransaction {
     requestHash: string,
     outcome: OperationOutcome,
   ): void;
-  appendEvidence(draft: EvidenceDraft): void;
+  appendEvidence(draft: EvidenceDraft): number;
   scheduleEvent(
     event: EventRef,
     payload: JsonObject,
@@ -158,6 +228,20 @@ export interface WorldTransaction {
   ): ScheduledEventId;
   setVirtualTime(toUs: VirtualTime): void;
   claimScheduledEvent(id: ScheduledEventId, status: "fired" | "failed"): ScheduledEvent;
+  enqueueCallback(input: {
+    readonly callback: CallbackRef;
+    readonly receiverId: StableId;
+    readonly event: EventRef;
+    readonly payload: JsonObject;
+    readonly eventSequence: number;
+    readonly dueUs: VirtualTime;
+    readonly actorBindingId: ActorBindingId;
+    readonly retryDelaysUs: readonly VirtualTime[];
+  }): CallbackDeliveryId;
+  startCallbackAttempt(id: CallbackDeliveryId, request: CallbackRequestEvidence): CallbackTransition;
+  failCallbackDelivery(id: CallbackDeliveryId, error: CallbackErrorEvidence): CallbackTransition;
+  settleCallbackAttempt(id: CallbackDeliveryId, settlement: CallbackAttemptSettlement): CallbackTransition;
+  recoverCallbackAttempt(id: CallbackDeliveryId): CallbackTransition;
 }
 
 export interface WorldTransactionResult<T> {
@@ -186,6 +270,8 @@ export interface WorldStore {
   readEvidence(fromSequence?: number, limit?: number): readonly EvidenceEntry[];
   nextScheduledEvent(atOrBeforeUs?: VirtualTime): ScheduledEvent | null;
   listScheduledEvents(status?: ScheduledEvent["status"]): readonly ScheduledEvent[];
+  nextCallbackDelivery(atOrBeforeUs?: VirtualTime): CallbackDelivery | null;
+  listCallbackDeliveries(status?: CallbackDelivery["status"]): readonly CallbackDelivery[];
   stateHash(): string;
   evidenceHash(): string;
   createSnapshot(destinationPath: string, correlationId: CorrelationId): SnapshotId;

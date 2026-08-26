@@ -20,13 +20,15 @@ The `agent` callback is used only by a target declared with `kind: external`. Mo
 
 Use `suite`, `tags`, `filter`, and `shard` for deterministic selection; `trials`, `retries`, and `concurrency` bound local work. Lifecycle hooks exist at suite, drill, and trial boundaries and never replace the customer's test runner. `verifyReport()` verifies one portable local bundle; `compareRuns()` verifies two and returns an explicit compatibility grade before factual deltas.
 
+Use `callbackReceivers` when the world must send an asynchronous request into the local application under test. Each key is the abstract receiver id declared by Tool source; each value supplies a loopback `baseUrl` and, only when required, an HMAC `secret`. The same mapping is available non-interactively in the CLI. See the repository [callback guide](../../docs/callbacks.md).
+
 `binding.environment` contains only the connection values for the target's declared HTTP or MCP binding. `binding.world` exists only for a declared direct binding. Adapt these values at the agent's existing client/tool composition seam rather than adding Firedrill branches to each action. The callback's owning process keeps its normal model/provider credentials; do not copy them into the Firedrill binding. Spawned command targets receive only host variables explicitly named by their `environmentFromHost` mapping.
 
 Callback output may be any ordinary JSON-serializable value; optional `undefined` object properties are omitted just as they are over HTTP or stdout. It is retained as target evidence but does not replace state and operation assertions.
 
 Setup and source problems reject with `FiredrillProjectError`, including stable code, details, and compiler diagnostics. A successful source build returns any non-error compiler diagnostics on `result.diagnostics`; an exact `buildHash` run returns none because it does not recompile source. A drill that executes and fails assertions resolves normally with `verdict: "failed"`, leaving Jest, Vitest, Mocha, or application code in control.
 
-Tool authors and consumers use `inspectTool()` to inspect a selected repository or installed-package contract without executing behavior. `validateTool()` explicitly loads the selected behavior with the developer's local authority. `testTool()` runs a selected repository conformance suite twice and returns ordinary verified drill reports plus operation/error/event/fault/subscription coverage and same-seed state/trajectory reproducibility.
+Tool authors and consumers use `inspectTool()` to inspect a selected repository or installed-package contract without executing behavior. `validateTool()` explicitly loads the selected behavior with the developer's local authority. `testTool()` runs a selected repository conformance suite twice and returns ordinary verified drill reports plus operation/error/event/fault/subscription/callback coverage and same-seed state/trajectory reproducibility.
 
 `prepareToolContribution()` is limited to Tool source owned by the current repository. It requires an explicit Apache-2.0/source-rights/customer-data attestation, successful conformance, and a clean source scan. It writes a new local review bundle and never overwrites, uploads, or opens a pull request.
 

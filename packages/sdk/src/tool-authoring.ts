@@ -13,6 +13,7 @@ import type {
 } from "@firedrill/contracts";
 import { loadWorldBuild } from "@firedrill/world-build";
 import type { LoadedWorldBuild } from "@firedrill/world-build";
+import type { CallbackReceiver } from "@firedrill/drills";
 import { FiredrillProjectError, runDrills } from "./run-drills.js";
 import type { AgentCallback, RunDrillsResult } from "./run-drills.js";
 
@@ -59,11 +60,14 @@ export interface TestToolOptions extends InspectToolOptions {
   /** Defaults to <root>/.firedrill/tool-tests/<tool-id>. */
   readonly testDirectory?: string;
   readonly allowRemoteHttp?: boolean;
+  /** Runtime-local endpoints used by conformance drills that exercise callbacks. */
+  readonly callbackReceivers?: Readonly<Record<string, CallbackReceiver>>;
   readonly hostEnvironment?: Readonly<Record<string, string | undefined>>;
   readonly signal?: AbortSignal;
 }
 
 export type ToolConformanceViolationCode =
+  | "CALLBACK_UNCOVERED"
   | "DECLARED_ERROR_UNCOVERED"
   | "DRILL_RUN_FAILED"
   | "EVENT_UNCOVERED"
@@ -117,6 +121,14 @@ export interface ToolSubscriptionCoverage {
   readonly failures: number;
 }
 
+export interface ToolCallbackCoverage {
+  readonly callbackId: string;
+  readonly queued: number;
+  readonly delivered: number;
+  readonly retryScheduled: number;
+  readonly failed: number;
+}
+
 export interface ToolConformanceResult {
   readonly schemaVersion: 1;
   readonly status: "passed" | "failed";
@@ -127,6 +139,7 @@ export interface ToolConformanceResult {
     readonly events: readonly ToolEventCoverage[];
     readonly faults: readonly ToolFaultCoverage[];
     readonly subscriptions: readonly ToolSubscriptionCoverage[];
+    readonly callbacks: readonly ToolCallbackCoverage[];
     readonly changedStateNamespaces: readonly string[];
   };
   readonly deterministic: boolean;
@@ -365,6 +378,23 @@ function collectCoverage(
       ).length,
     }),
   );
+  const callbacks = manifest.callbacks.map((contract): ToolCallbackCoverage => {
+    const observed = entries.filter(
+      (entry) =>
+        entry.kind === "callback" &&
+        entry.callback.packageId === manifest.id &&
+        entry.callback.callbackId === contract.id,
+    );
+    return {
+      callbackId: contract.id,
+      queued: observed.filter((entry) => entry.kind === "callback" && entry.phase === "queued").length,
+      delivered: observed.filter((entry) => entry.kind === "callback" && entry.phase === "delivered").length,
+      retryScheduled: observed.filter(
+        (entry) => entry.kind === "callback" && entry.phase === "retry_scheduled",
+      ).length,
+      failed: observed.filter((entry) => entry.kind === "callback" && entry.phase === "failed").length,
+    };
+  });
   const changedStateNamespaces = [
     ...new Set(
       entries.flatMap((entry) =>
@@ -372,7 +402,7 @@ function collectCoverage(
       ),
     ),
   ].sort(compareStableStrings);
-  return { operations, events, faults, subscriptions, changedStateNamespaces };
+  return { operations, events, faults, subscriptions, callbacks, changedStateNamespaces };
 }
 
 function coverageViolations(coverage: ToolConformanceResult["coverage"]): ToolConformanceViolation[] {
@@ -425,6 +455,15 @@ function coverageViolations(coverage: ToolConformanceResult["coverage"]): ToolCo
         code: "SUBSCRIPTION_UNCOVERED",
         subject: subscription.subscriptionId,
         message: `subscription ${subscription.subscriptionId} never received an event`,
+      });
+    }
+  }
+  for (const callback of coverage.callbacks) {
+    if (callback.delivered === 0) {
+      violations.push({
+        code: "CALLBACK_UNCOVERED",
+        subject: callback.callbackId,
+        message: `callback ${callback.callbackId} was never delivered successfully`,
       });
     }
   }
@@ -518,6 +557,7 @@ export async function testTool(options: TestToolOptions): Promise<ToolConformanc
       ...(options.agent === undefined ? {} : { agent: options.agent }),
       ...(options.seed === undefined ? {} : { seed: options.seed }),
       ...(options.allowRemoteHttp === undefined ? {} : { allowRemoteHttp: options.allowRemoteHttp }),
+      ...(options.callbackReceivers === undefined ? {} : { callbackReceivers: options.callbackReceivers }),
       ...(options.hostEnvironment === undefined ? {} : { hostEnvironment: options.hostEnvironment }),
       ...(options.signal === undefined ? {} : { signal: options.signal }),
     });

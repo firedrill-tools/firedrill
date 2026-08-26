@@ -35,6 +35,7 @@ export function defineTool(input: ToolDefinitionInput): ToolDefinition {
     operations: input.operations,
     ...(input.subscriptions === undefined ? {} : { subscriptions: input.subscriptions }),
     ...(input.http === undefined ? {} : { http: input.http }),
+    ...(input.callbacks === undefined ? {} : { callbacks: input.callbacks }),
   });
   assertExactHandlers(
     "operation",
@@ -51,11 +52,17 @@ export function defineTool(input: ToolDefinitionInput): ToolDefinition {
     manifest.http.map((route) => route.id),
     Object.keys(behavior.http ?? {}),
   );
+  assertExactHandlers(
+    "callback",
+    manifest.callbacks.map((callback) => callback.id),
+    Object.keys(behavior.callbacks ?? {}),
+  );
 
   return Object.freeze({
     manifest: deepFreeze(manifest),
     operations: behavior.operations,
     subscriptions: behavior.subscriptions ?? {},
     http: behavior.http ?? {},
+    callbacks: behavior.callbacks ?? {},
   });
 }

@@ -74,6 +74,28 @@ export function installSchema(database: Database.Database): void {
 
     CREATE INDEX scheduled_due_idx ON scheduled_events (status, due_us, id);
 
+    CREATE TABLE callback_deliveries (
+      id TEXT PRIMARY KEY,
+      package_id TEXT NOT NULL,
+      callback_id TEXT NOT NULL,
+      receiver_id TEXT NOT NULL,
+      event_package_id TEXT NOT NULL,
+      event_id TEXT NOT NULL,
+      payload_json TEXT NOT NULL,
+      event_sequence INTEGER NOT NULL,
+      due_us INTEGER NOT NULL,
+      correlation_id TEXT NOT NULL,
+      actor_binding_id TEXT NOT NULL,
+      status TEXT NOT NULL CHECK (status IN ('pending', 'in_flight', 'delivered', 'failed')),
+      attempt_count INTEGER NOT NULL DEFAULT 0,
+      retry_delays_json TEXT NOT NULL,
+      CHECK (event_sequence > 0),
+      CHECK (due_us >= 0),
+      CHECK (attempt_count >= 0 AND attempt_count <= 10)
+    ) STRICT;
+
+    CREATE INDEX callback_due_idx ON callback_deliveries (status, due_us, id);
+
     CREATE TABLE idempotency_receipts (
       package_id TEXT NOT NULL,
       operation_id TEXT NOT NULL,

@@ -13,6 +13,7 @@ import {
 } from "@firedrill/contracts";
 import type {
   CorrelationId,
+  CallbackContract,
   ErrorEnvelope,
   EventRef,
   EvidenceEntry,
@@ -81,9 +82,15 @@ interface SubscriptionRuntime {
   readonly handler: ToolSubscriptionHandler;
 }
 
+interface CallbackRuntime {
+  readonly tool: ToolDefinition;
+  readonly contract: CallbackContract;
+}
+
 interface QueuedEvent {
   readonly event: EventRef;
   readonly payload: JsonObject;
+  readonly causeSequence: number;
 }
 
 interface BudgetState {
@@ -158,6 +165,7 @@ export class WorldKernel {
   private readonly events = new Map<string, EventRuntime>();
   private readonly state = new Map<string, StateRuntime>();
   private readonly subscriptions = new Map<string, readonly SubscriptionRuntime[]>();
+  private readonly callbacks = new Map<string, readonly CallbackRuntime[]>();
   private readonly budgets: WorldKernelBudgets;
   private readonly onToolCallBudgetExceeded: WorldKernelOptions["onToolCallBudgetExceeded"];
   private toolCalls = 0;
@@ -249,6 +257,35 @@ export class WorldKernel {
           const packageOrder = compareStableStrings(left.tool.manifest.id, right.tool.manifest.id);
           return packageOrder === 0
             ? compareStableStrings(left.subscriptionId, right.subscriptionId)
+            : packageOrder;
+        }),
+      );
+    }
+
+    const pendingCallbacks = new Map<string, CallbackRuntime[]>();
+    for (const tool of options.tools) {
+      for (const contract of tool.manifest.callbacks) {
+        const key = eventKey({ packageId: tool.manifest.id, eventId: contract.eventId });
+        if (!this.events.has(key)) {
+          throw new TypeError(
+            `Tool package ${tool.manifest.id} callback ${contract.id} references unavailable event ${contract.eventId}`,
+          );
+        }
+        if (tool.callbacks[contract.id] === undefined) {
+          throw new TypeError(`Tool package ${tool.manifest.id} has no callback codec for ${contract.id}`);
+        }
+        const callbacks = pendingCallbacks.get(key) ?? [];
+        callbacks.push({ tool, contract });
+        pendingCallbacks.set(key, callbacks);
+      }
+    }
+    for (const [key, callbacks] of pendingCallbacks) {
+      this.callbacks.set(
+        key,
+        [...callbacks].sort((left, right) => {
+          const packageOrder = compareStableStrings(left.tool.manifest.id, right.tool.manifest.id);
+          return packageOrder === 0
+            ? compareStableStrings(left.contract.id, right.contract.id)
             : packageOrder;
         }),
       );
@@ -819,8 +856,13 @@ export class WorldKernel {
           count("events", this.budgets.maxEvents, "EVENT");
           const normalized = validateEvent(eventId, payload);
           const event = { packageId, eventId };
-          transaction.appendEvidence({ kind: "event", event, phase: "emitted", payload: normalized });
-          queue.push({ event, payload: normalized });
+          const causeSequence = transaction.appendEvidence({
+            kind: "event",
+            event,
+            phase: "emitted",
+            payload: normalized,
+          });
+          queue.push({ event, payload: normalized, causeSequence });
         },
         scheduleAt: (eventId, payload, virtualTimeUs) => {
           requireCapability("clock.schedule");
@@ -854,6 +896,18 @@ export class WorldKernel {
       const queued = queue[index];
       index += 1;
       if (queued === undefined) continue;
+      for (const callback of this.callbacks.get(eventKey(queued.event)) ?? []) {
+        transaction.enqueueCallback({
+          callback: { packageId: callback.tool.manifest.id, callbackId: callback.contract.id },
+          receiverId: callback.contract.receiverId,
+          event: queued.event,
+          payload: queued.payload,
+          eventSequence: queued.causeSequence,
+          dueUs: transaction.virtualTimeUs,
+          actorBindingId: actor.bindingId,
+          retryDelaysUs: callback.contract.retry.delaysUs,
+        });
+      }
       for (const subscription of this.subscriptions.get(eventKey(queued.event)) ?? []) {
         const context = this.createContext(
           subscription.tool,
@@ -940,7 +994,13 @@ export class WorldKernel {
           );
         }
         const budget: BudgetState = { stateMutations: 0, events: 1, randomDraws: 0 };
-        const queue: QueuedEvent[] = [{ event: claimed.event, payload: claimed.payload }];
+        const queue: QueuedEvent[] = [
+          {
+            event: claimed.event,
+            payload: claimed.payload,
+            causeSequence: transaction.primarySequence,
+          },
+        ];
         this.dispatchQueue(queue, actor, claimed.correlationId, transaction, budget);
         return {
           value: undefined,

@@ -1,6 +1,7 @@
 import { z } from "zod";
 import {
   ActorIdSchema,
+  CallbackRefSchema,
   EventRefSchema,
   OperationRefSchema,
   PackageIdSchema,
@@ -32,6 +33,7 @@ export const AssertionKindSchema = z.enum([
   "operation.arguments",
   "operation.denied",
   "event.count",
+  "callback.count",
 ]);
 
 const AssertionBase = {
@@ -136,6 +138,18 @@ export const EventCountAssertionSchema = z
   })
   .strict();
 
+export const CallbackCountAssertionSchema = z
+  .object({
+    ...AssertionBase,
+    kind: z.literal("callback.count"),
+    callback: CallbackRefSchema,
+    phase: z
+      .enum(["queued", "attempt_started", "delivered", "retry_scheduled", "failed", "recovered"])
+      .default("delivered"),
+    comparison: NumericComparisonSchema,
+  })
+  .strict();
+
 export const AssertionDefinitionSchema = z.discriminatedUnion("kind", [
   StateValueAssertionSchema,
   StateCountAssertionSchema,
@@ -144,6 +158,7 @@ export const AssertionDefinitionSchema = z.discriminatedUnion("kind", [
   OperationArgumentsAssertionSchema,
   OperationDeniedAssertionSchema,
   EventCountAssertionSchema,
+  CallbackCountAssertionSchema,
 ]);
 
 export const AssertionStatusSchema = z.enum(["passed", "failed", "inconclusive", "invalid"]);
@@ -170,6 +185,13 @@ export const AssertionLocationSchema = z.discriminatedUnion("subject", [
       subject: z.literal("event"),
       event: EventRefSchema,
       phase: z.enum(["emitted", "scheduled", "handled", "failed"]),
+    })
+    .strict(),
+  z
+    .object({
+      subject: z.literal("callback"),
+      callback: CallbackRefSchema,
+      phase: z.enum(["queued", "attempt_started", "delivered", "retry_scheduled", "failed", "recovered"]),
     })
     .strict(),
 ]);

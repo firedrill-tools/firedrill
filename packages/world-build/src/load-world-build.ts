@@ -6,6 +6,7 @@ import type { Diagnostic, ToolPackageManifest } from "@firedrill/contracts";
 import { defineTool } from "@firedrill/tool-sdk";
 import type {
   ToolBehaviorDefinition,
+  ToolCallbackCodec,
   ToolHttpRouteCodec,
   ToolOperationHandler,
   ToolSubscriptionHandler,
@@ -106,8 +107,12 @@ function behaviorExport(value: unknown): ToolBehaviorDefinition {
   }
   const record = value as Record<string, unknown>;
   const keys = Object.keys(record);
-  if (keys.some((key) => key !== "operations" && key !== "subscriptions" && key !== "http")) {
-    throw new TypeError("Tool export accepts only operations, subscriptions, and http");
+  if (
+    keys.some(
+      (key) => key !== "operations" && key !== "subscriptions" && key !== "http" && key !== "callbacks",
+    )
+  ) {
+    throw new TypeError("Tool export accepts only operations, subscriptions, http, and callbacks");
   }
   if (
     typeof record.operations !== "object" ||
@@ -130,6 +135,12 @@ function behaviorExport(value: unknown): ToolBehaviorDefinition {
   ) {
     throw new TypeError("Tool export http must be an object");
   }
+  if (
+    record.callbacks !== undefined &&
+    (typeof record.callbacks !== "object" || record.callbacks === null || Array.isArray(record.callbacks))
+  ) {
+    throw new TypeError("Tool export callbacks must be an object");
+  }
   return {
     operations: record.operations as Readonly<Record<string, ToolOperationHandler>>,
     ...(record.subscriptions === undefined
@@ -141,6 +152,11 @@ function behaviorExport(value: unknown): ToolBehaviorDefinition {
       ? {}
       : {
           http: record.http as Readonly<Record<string, ToolHttpRouteCodec>>,
+        }),
+    ...(record.callbacks === undefined
+      ? {}
+      : {
+          callbacks: record.callbacks as Readonly<Record<string, ToolCallbackCodec>>,
         }),
   };
 }
@@ -199,6 +215,7 @@ async function loadTool(input: {
         operations: behavior.operations,
         ...(behavior.subscriptions === undefined ? {} : { subscriptions: behavior.subscriptions }),
         ...(behavior.http === undefined ? {} : { http: behavior.http }),
+        ...(behavior.callbacks === undefined ? {} : { callbacks: behavior.callbacks }),
       }),
     };
   } catch (error) {

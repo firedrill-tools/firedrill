@@ -3,6 +3,8 @@ import { AssertionResultSchema } from "./assertions.js";
 import {
   ActorBindingIdSchema,
   ActorIdSchema,
+  CallbackDeliveryIdSchema,
+  CallbackRefSchema,
   CorrelationIdSchema,
   EventRefSchema,
   OperationRefSchema,
@@ -64,6 +66,57 @@ export const EventEvidenceSchema = EvidenceBaseSchema.extend({
   subscriptionId: StableIdSchema.optional(),
 }).passthrough();
 
+export const CallbackRequestEvidenceSchema = z
+  .object({
+    method: z.enum(["POST", "PUT"]),
+    path: z.string().min(1).max(512),
+    bodyHash: Sha256Schema,
+    bodyBytes: z.number().int().nonnegative().safe(),
+    signature: z.discriminatedUnion("kind", [
+      z.object({ kind: z.literal("none") }).strict(),
+      z
+        .object({
+          kind: z.literal("hmac-sha256"),
+          header: z.string().min(1).max(128),
+        })
+        .strict(),
+    ]),
+  })
+  .strict();
+
+export const CallbackResponseEvidenceSchema = z
+  .object({
+    status: z.number().int().min(100).max(599),
+    body: z.string().max(65_536),
+    bodyHash: Sha256Schema,
+    bodyBytes: z.number().int().nonnegative().max(65_536),
+  })
+  .strict();
+
+export const CallbackErrorEvidenceSchema = z
+  .object({
+    code: z.string().regex(/^framework\.[A-Z][A-Z0-9_]*$/),
+    message: z.string().min(1).max(1_000),
+    retryable: z.boolean(),
+  })
+  .strict();
+
+export const CallbackEvidenceSchema = EvidenceBaseSchema.extend({
+  kind: z.literal("callback"),
+  callback: CallbackRefSchema,
+  deliveryId: CallbackDeliveryIdSchema,
+  receiverId: StableIdSchema,
+  event: EventRefSchema,
+  phase: z.enum(["queued", "attempt_started", "delivered", "retry_scheduled", "failed", "recovered"]),
+  attempt: z.number().int().positive().max(10).optional(),
+  idempotencyKey: z.string().min(1).max(128),
+  scheduledForUs: VirtualTimeSchema.optional(),
+  request: CallbackRequestEvidenceSchema.optional(),
+  response: CallbackResponseEvidenceSchema.optional(),
+  error: CallbackErrorEvidenceSchema.optional(),
+  durationMs: z.number().finite().nonnegative().max(60_000).optional(),
+}).passthrough();
+
 export const FaultEvidenceSchema = EvidenceBaseSchema.extend({
   kind: z.literal("fault"),
   packageId: PackageIdSchema,
@@ -114,6 +167,7 @@ export const EvidenceEntrySchema = z
     OperationEvidenceSchema,
     StateChangeEvidenceSchema,
     EventEvidenceSchema,
+    CallbackEvidenceSchema,
     FaultEvidenceSchema,
     RandomEvidenceSchema,
     ClockEvidenceSchema,
@@ -195,6 +249,50 @@ export const EvidenceEntrySchema = z
         });
       }
     }
+    if (entry.kind === "callback") {
+      if (
+        (entry.phase === "queued" || entry.phase === "retry_scheduled" || entry.phase === "recovered") &&
+        entry.scheduledForUs === undefined
+      ) {
+        context.addIssue({
+          code: "custom",
+          path: ["scheduledForUs"],
+          message: `${entry.phase} callback evidence requires a scheduled time`,
+        });
+      }
+      if (entry.phase !== "queued" && entry.attempt === undefined) {
+        context.addIssue({
+          code: "custom",
+          path: ["attempt"],
+          message: `${entry.phase} callback evidence requires an attempt number`,
+        });
+      }
+      if (entry.phase === "attempt_started" && entry.request === undefined) {
+        context.addIssue({
+          code: "custom",
+          path: ["request"],
+          message: "attempted callback evidence requires request metadata",
+        });
+      }
+      if (entry.phase === "delivered" && entry.response === undefined) {
+        context.addIssue({
+          code: "custom",
+          path: ["response"],
+          message: "delivered callback evidence requires a response",
+        });
+      }
+      if (
+        (entry.phase === "retry_scheduled" || entry.phase === "failed") &&
+        entry.response === undefined &&
+        entry.error === undefined
+      ) {
+        context.addIssue({
+          code: "custom",
+          path: ["error"],
+          message: `${entry.phase} callback evidence requires a response or error`,
+        });
+      }
+    }
   });
 
 export const EvidencePageSchema = z
@@ -223,6 +321,10 @@ export type EvidencePage = z.infer<typeof EvidencePageSchema>;
 export type OperationEvidence = z.infer<typeof OperationEvidenceSchema>;
 export type StateChangeEvidence = z.infer<typeof StateChangeEvidenceSchema>;
 export type EventEvidence = z.infer<typeof EventEvidenceSchema>;
+export type CallbackEvidence = z.infer<typeof CallbackEvidenceSchema>;
+export type CallbackRequestEvidence = z.infer<typeof CallbackRequestEvidenceSchema>;
+export type CallbackResponseEvidence = z.infer<typeof CallbackResponseEvidenceSchema>;
+export type CallbackErrorEvidence = z.infer<typeof CallbackErrorEvidenceSchema>;
 export type FaultEvidence = z.infer<typeof FaultEvidenceSchema>;
 export type RandomEvidence = z.infer<typeof RandomEvidenceSchema>;
 export type ClockEvidence = z.infer<typeof ClockEvidenceSchema>;

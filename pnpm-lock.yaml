@@ -257,6 +257,9 @@ importers:
       '@firedrill/world-kernel':
         specifier: workspace:*
         version: link:../world-kernel
+      '@firedrill/world-store':
+        specifier: workspace:*
+        version: link:../world-store
     devDependencies:
       '@firedrill/world-store-sqlite':
         specifier: workspace:*

@@ -1,4 +1,6 @@
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { createServer } from "node:http";
+import type { Server } from "node:http";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
@@ -14,6 +16,7 @@ import {
 } from "../src/index.js";
 
 const directories: string[] = [];
+const callbackServers: Server[] = [];
 
 function repository(): string {
   const root = mkdtempSync(join(tmpdir(), "firedrill-sdk-"));
@@ -198,6 +201,85 @@ function addSecondDrillAndSuite(root: string): void {
   );
 }
 
+function addApplicationCallback(root: string): void {
+  const toolPath = join(root, "world", "records.tool.json");
+  const declaration = JSON.parse(readFileSync(toolPath, "utf8")) as {
+    manifest: Record<string, unknown> & { capabilities: string[] };
+  };
+  declaration.manifest.capabilities.push("event.emit");
+  declaration.manifest.events = [
+    {
+      id: "record.set",
+      payloadSchema: {
+        type: "object",
+        required: ["value"],
+        properties: { value: { type: "integer" } },
+        additionalProperties: false,
+      },
+    },
+  ];
+  declaration.manifest.callbacks = [
+    {
+      id: "notify-application",
+      eventId: "record.set",
+      receiverId: "application",
+      method: "POST",
+      path: "/callbacks/records",
+      idempotencyHeader: "Idempotency-Key",
+    },
+  ];
+  writeFileSync(toolPath, `${JSON.stringify(declaration)}\n`);
+  writeFileSync(
+    join(root, "world", "records.js"),
+    [
+      "export default {",
+      '  operations: { "records.set": (input, context) => {',
+      "    const value = { value: Number(input.value) };",
+      '    context.state.put("records", "primary", value);',
+      '    context.events.emit("record.set", value);',
+      "    return value;",
+      "  } },",
+      "  callbacks: {",
+      '    "notify-application": { encode: ({ deliveryId, payload }) => ({',
+      '      body: { kind: "json", value: { deliveryId, ...payload } },',
+      "    }) },",
+      "  },",
+      "};",
+      "",
+    ].join("\n"),
+  );
+  const drillPath = join(root, "world", "set-record.drill.json");
+  const drill = JSON.parse(readFileSync(drillPath, "utf8")) as { assertions: unknown[] };
+  drill.assertions.push({
+    id: "application-notified",
+    kind: "callback.count",
+    callback: { packageId: "record-store", callbackId: "notify-application" },
+    phase: "delivered",
+    comparison: { operator: "equals", value: 1 },
+  });
+  writeFileSync(drillPath, `${JSON.stringify(drill)}\n`);
+}
+
+async function startCallbackReceiver(received: unknown[]): Promise<string> {
+  const server = createServer((request, response) => {
+    const chunks: Buffer[] = [];
+    request.on("data", (chunk: Buffer) => chunks.push(chunk));
+    request.on("end", () => {
+      received.push(JSON.parse(Buffer.concat(chunks).toString("utf8")));
+      response.writeHead(204);
+      response.end();
+    });
+  });
+  callbackServers.push(server);
+  await new Promise<void>((resolvePromise, reject) => {
+    server.once("error", reject);
+    server.listen(0, "127.0.0.1", resolvePromise);
+  });
+  const address = server.address();
+  if (address === null || typeof address === "string") throw new Error("callback receiver did not bind");
+  return `http://127.0.0.1:${String(address.port)}`;
+}
+
 function addConformanceSuite(root: string): void {
   writeFileSync(
     join(root, "world", "record-store-conformance.suite.json"),
@@ -219,7 +301,16 @@ function setValueAgent({ task, binding }: Parameters<AgentCallback>[0]) {
   return { status: result?.outcome.status ?? "missing" };
 }
 
-afterEach(() => {
+afterEach(async () => {
+  await Promise.all(
+    callbackServers.splice(0).map(
+      (server) =>
+        new Promise<void>((resolvePromise) => {
+          server.close(() => resolvePromise());
+          server.closeAllConnections();
+        }),
+    ),
+  );
   for (const directory of directories.splice(0)) {
     if (directory.startsWith(`${tmpdir()}/firedrill-sdk-`)) {
       rmSync(directory, { force: true, recursive: true });
@@ -291,6 +382,57 @@ describe("repository-level TypeScript API", () => {
     expect(result).toMatchObject({
       verdict: "failed",
       drills: [{ trials: [{ result: { status: "sealed", verdict: "failed" } }] }],
+    });
+  });
+
+  it("delivers repository-defined callbacks through the primary runDrills API", async () => {
+    const root = repository();
+    addApplicationCallback(root);
+    const received: unknown[] = [];
+    const baseUrl = await startCallbackReceiver(received);
+    const result = await runDrills({
+      root,
+      drill: "set-record",
+      agent: setValueAgent,
+      callbackReceivers: { application: { baseUrl } },
+    });
+
+    expect(result.verdict).toBe("passed");
+    expect(received).toEqual([expect.objectContaining({ value: 7 })]);
+    const trial = result.drills[0]?.trials[0];
+    expect(trial?.result.assertionResults).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ assertionId: "application-notified", status: "passed", actual: 1 }),
+      ]),
+    );
+    expect(trial?.evidence.filter((entry) => entry.kind === "callback").map((entry) => entry.phase)).toEqual([
+      "queued",
+      "attempt_started",
+      "delivered",
+    ]);
+    expect(readFileSync(trial?.report.files.html ?? "", "utf8")).toContain("notify-application");
+  });
+
+  it("rejects unsafe and unknown callback receiver configuration as a setup error", async () => {
+    await expect(
+      runDrills({
+        root: repository(),
+        callbackReceivers: { application: { baseUrl: "https://example.com" } },
+      }),
+    ).rejects.toMatchObject({
+      code: "framework.INVALID_ARGUMENT",
+      message: "callback receiver application must be a credential-free loopback HTTP origin",
+    });
+
+    await expect(
+      runDrills({
+        root: repository(),
+        callbackReceivers: { typo: { baseUrl: "http://127.0.0.1:4319" } },
+      }),
+    ).rejects.toMatchObject({
+      code: "framework.INVALID_ARGUMENT",
+      message: "callback receiver typo is not declared by a selected Tool",
+      details: { available: [] },
     });
   });
 
@@ -500,6 +642,41 @@ describe("repository-level TypeScript API", () => {
     for (const run of result.runs) {
       expect(existsSync(run.drills[0]?.trials[0]?.report.files.html ?? "")).toBe(true);
     }
+  });
+
+  it("requires declared callbacks to be delivered by Tool conformance drills", async () => {
+    const root = repository();
+    addApplicationCallback(root);
+    addConformanceSuite(root);
+    const received: unknown[] = [];
+    const baseUrl = await startCallbackReceiver(received);
+
+    const result = await testTool({
+      root,
+      toolId: "record-store",
+      agent: setValueAgent,
+      callbackReceivers: { application: { baseUrl } },
+    });
+
+    expect(result.status).toBe("passed");
+    expect(result.coverage.callbacks).toEqual([
+      {
+        callbackId: "notify-application",
+        queued: 1,
+        delivered: 1,
+        retryScheduled: 0,
+        failed: 0,
+      },
+    ]);
+    expect(received).toHaveLength(2);
+
+    const uncovered = await testTool({ root, toolId: "record-store", agent: setValueAgent });
+    expect(uncovered.status).toBe("failed");
+    expect(uncovered.violations).toContainEqual({
+      code: "CALLBACK_UNCOVERED",
+      subject: "notify-application",
+      message: "callback notify-application was never delivered successfully",
+    });
   });
 
   it("fails conformance when a declared operation has no behavioral coverage", async () => {

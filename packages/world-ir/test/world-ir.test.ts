@@ -172,6 +172,29 @@ describe("canonical world IR", () => {
     expect(messages).toMatch(/unknown event/);
   });
 
+  it("rejects a callback assertion that does not resolve to a declared Tool callback", () => {
+    const invalid = structuredClone(world) as Record<string, unknown>;
+    invalid.drills = [
+      {
+        ...world.drills[0],
+        assertions: [
+          {
+            id: "application-notified",
+            kind: "callback.count",
+            callback: { packageId: "reservations", callbackId: "missing" },
+            phase: "delivered",
+            comparison: { operator: "equals", value: 1 },
+          },
+        ],
+      },
+    ];
+    const result = CanonicalWorldIrSchema.safeParse(invalid);
+    expect(result.success).toBe(false);
+    expect(result.error?.issues.map((issue) => issue.message)).toContain(
+      "assertion references unknown callback reservations.missing",
+    );
+  });
+
   it("requires canonical ordering rather than making array order part of identity by accident", () => {
     const extraTool = { ...tool, id: "audit", operations: [{ ...tool.operations[0], id: "entries.add" }] };
     const result = CanonicalWorldIrSchema.safeParse({ ...world, tools: [tool, extraTool] });

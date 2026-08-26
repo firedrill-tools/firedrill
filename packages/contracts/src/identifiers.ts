@@ -30,6 +30,7 @@ export const TransactionIdSchema = executionId("txn");
 export const WorldInstanceIdSchema = executionId("world");
 export const SnapshotIdSchema = executionId("snap");
 export const ScheduledEventIdSchema = executionId("pending");
+export const CallbackDeliveryIdSchema = executionId("delivery");
 export const CorrelationIdSchema = executionId("corr");
 export const ActorBindingIdSchema = executionId("actor");
 export const ActorIdSchema = StableIdSchema;
@@ -48,6 +49,13 @@ export const EventRefSchema = z
   })
   .strict();
 
+export const CallbackRefSchema = z
+  .object({
+    packageId: PackageIdSchema,
+    callbackId: StableIdSchema,
+  })
+  .strict();
+
 export type StableId = z.infer<typeof StableIdSchema>;
 export type PackageId = z.infer<typeof PackageIdSchema>;
 export type NodePackageName = z.infer<typeof NodePackageNameSchema>;
@@ -62,8 +70,10 @@ export type TransactionId = z.infer<typeof TransactionIdSchema>;
 export type WorldInstanceId = z.infer<typeof WorldInstanceIdSchema>;
 export type SnapshotId = z.infer<typeof SnapshotIdSchema>;
 export type ScheduledEventId = z.infer<typeof ScheduledEventIdSchema>;
+export type CallbackDeliveryId = z.infer<typeof CallbackDeliveryIdSchema>;
 export type CorrelationId = z.infer<typeof CorrelationIdSchema>;
 export type ActorBindingId = z.infer<typeof ActorBindingIdSchema>;
 export type ActorId = z.infer<typeof ActorIdSchema>;
 export type OperationRef = z.infer<typeof OperationRefSchema>;
 export type EventRef = z.infer<typeof EventRefSchema>;
+export type CallbackRef = z.infer<typeof CallbackRefSchema>;

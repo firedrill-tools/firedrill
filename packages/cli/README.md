@@ -14,6 +14,7 @@ firedrill init --path firedrill-agent
 firedrill agent           # optional Claude Agent SDK authoring assistant
 firedrill run --suite pr  # run a repository-owned suite
 firedrill run --watch     # rerun after source or agent changes
+firedrill run my-drill --callback-receiver application=http://127.0.0.1:4319
 firedrill report verify .firedrill/reports/<run-id>
 firedrill compare <baseline-report> <candidate-report>
 firedrill tool inspect my-tool
@@ -30,9 +31,11 @@ Choose a module, command, local HTTP, or caller-owned target based on how the ag
 
 Add `--json` for stable machine-readable output; watch mode emits one complete JSON object per cycle. Select drills with `--suite`, repeatable `--tag`, `--filter`, and deterministic `--shard`. Bound local work with `--trials`, `--retries`, and `--concurrency`.
 
+For callbacks from the synthetic world into the local application, repeat `--callback-receiver <id>=<loopback-origin>` for each repository-declared receiver. If its contract uses HMAC signing, add `--callback-secret-env <id>=<variable>`; the CLI reads the secret from that variable without putting it in the command, source, or report. The same options work with `tool test` and `tool contribute` so declared callbacks are covered by conformance.
+
 Use `report verify` to check a received local bundle's manifest, exact files, hashes, schemas, identities, evidence ordering, and generated projections entirely offline. This detects corruption and internal inconsistency; an unsigned local report does not prove authorship. A report's reproduction command recompiles current repository source and reruns the drill with the recorded seed; its displayed build hash tells you which source revision must be restored for an exact reproduction. `compare` verifies both bundles and states whether inputs are exact, merely descriptive, or incompatible before reporting deltas. Exit codes are `0` for pass, `1` for a source/run/assertion failure, and `2` for invalid CLI usage. Commands never prompt, upload source, or contact a hosted service.
 
-`tool inspect` shows a selected Tool's origin, normalized manifest, and locked artifact without importing its behavior. A Tool may be authored in the repository or supplied by an installed package explicitly listed under `toolPackages` in `firedrill.json`. `tool validate` loads the selected behavior with the developer's local authority and checks its exact handler surface. `tool test` reuses an ordinary `<tool-id>-conformance` drill suite, runs it twice against one immutable build, and fails on drill failures, non-reproducible hashes, or uncovered operations, declared errors, events, faults, and subscriptions.
+`tool inspect` shows a selected Tool's origin, normalized manifest, and locked artifact without importing its behavior. A Tool may be authored in the repository or supplied by an installed package explicitly listed under `toolPackages` in `firedrill.json`. `tool validate` loads the selected behavior with the developer's local authority and checks its exact handler surface. `tool test` reuses an ordinary `<tool-id>-conformance` drill suite, runs it twice against one immutable build, and fails on drill failures, non-reproducible hashes, or uncovered operations, declared errors, events, faults, subscriptions, and callbacks.
 
 After conformance passes, `tool contribute` can prepare a new, non-overwriting review directory for Tool source owned by the current repository. It contains only the Tool declaration, its exact behavior source closure, checksums, normalized manifest, license, and a payload-free conformance summary. It requires explicit source-rights/customer-data/Apache-2.0 attestation and blocks common credential patterns. Installed dependencies must be contributed from their own source repository. Nothing is uploaded and no pull request is opened.
 

@@ -70,6 +70,16 @@ export function normalizeManifest(input: ToolPackageManifest): ToolPackageManife
         },
       }))
       .sort((left, right) => compareStableStrings(left.id, right.id)),
+    callbacks: input.callbacks
+      .map((callback) => ({
+        ...callback,
+        idempotencyHeader: callback.idempotencyHeader.toLowerCase(),
+        signature:
+          callback.signature.kind === "hmac-sha256"
+            ? { ...callback.signature, header: callback.signature.header.toLowerCase() }
+            : callback.signature,
+      }))
+      .sort((left, right) => compareStableStrings(left.id, right.id)),
   });
 }
 

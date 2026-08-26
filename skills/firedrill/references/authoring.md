@@ -166,6 +166,20 @@ export default {
 
 Validate optional wire fields deliberately rather than relying only on coercion. Route codecs receive bounded path/query/header/body data but no `ToolContext`, so they cannot own state. Firedrill removes the declared synthetic credential before calling the decoder. Every declared Tool error must have a route status mapping. Unsupported routes fail closed; never add a successful placeholder for behavior that is not implemented. Run `firedrill plan --json` to inspect method, path, auth kind, and operation fidelity before executing the agent.
 
+### Optional callback into the application
+
+Use a callback when a committed world event must make an asynchronous HTTP request to the application under test. This is not an agent-facing API. Declare an abstract receiver id and static path in the Tool manifest, then add a pure event-to-request codec under the matching callback id. Never put the receiver URL or signing secret in repository source.
+
+At run time, map the receiver explicitly:
+
+```sh
+firedrill run <drill-id> \
+  --callback-receiver application=http://127.0.0.1:4319 \
+  --callback-secret-env application=CALLBACK_SECRET
+```
+
+Use `callback.count` to assert durable delivery evidence. Retry delays use virtual time; the framework owns signing, idempotency, retry scheduling, crash recovery, and evidence. Read `docs/callbacks.md` for the exact source shape and constraints.
+
 `idempotency` describes the operation's call contract:
 
 - `none` rejects a supplied idempotency key;

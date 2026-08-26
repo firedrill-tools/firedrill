@@ -7,6 +7,7 @@ import {
   rmSync,
   writeFileSync,
 } from "node:fs";
+import { createHmac } from "node:crypto";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createServer } from "node:http";
@@ -152,6 +153,65 @@ function addConformanceSuite(root: string): void {
       drills: ["read-note"],
     })}\n`,
   );
+}
+
+function addApplicationCallback(root: string): void {
+  const declarationPath = join(root, "firedrill", "notes.tool.json");
+  const declaration = JSON.parse(readFileSync(declarationPath, "utf8")) as {
+    manifest: Record<string, unknown> & { capabilities: string[] };
+  };
+  declaration.manifest.capabilities.push("event.emit");
+  declaration.manifest.events = [
+    {
+      id: "note.read",
+      payloadSchema: {
+        type: "object",
+        required: ["text"],
+        properties: { text: { type: "string" } },
+        additionalProperties: false,
+      },
+    },
+  ];
+  declaration.manifest.callbacks = [
+    {
+      id: "notify-application",
+      eventId: "note.read",
+      receiverId: "application",
+      method: "POST",
+      path: "/callbacks/notes",
+      idempotencyHeader: "Idempotency-Key",
+      signature: { kind: "hmac-sha256", header: "X-Firedrill-Signature", prefix: "sha256=" },
+    },
+  ];
+  writeFileSync(declarationPath, `${JSON.stringify(declaration)}\n`);
+  writeFileSync(
+    join(root, "firedrill", "notes.js"),
+    [
+      "export default {",
+      '  operations: { "notes.read": (_input, context) => {',
+      '    const value = { text: "ready" };',
+      '    context.events.emit("note.read", value);',
+      "    return value;",
+      "  } },",
+      "  callbacks: {",
+      '    "notify-application": { encode: ({ deliveryId, payload }) => ({',
+      '      body: { kind: "json", value: { deliveryId, ...payload } },',
+      "    }) },",
+      "  },",
+      "};",
+      "",
+    ].join("\n"),
+  );
+  const drillPath = join(root, "firedrill", "read-note.drill.json");
+  const drill = JSON.parse(readFileSync(drillPath, "utf8")) as { assertions: unknown[] };
+  drill.assertions.push({
+    id: "application-notified",
+    kind: "callback.count",
+    callback: { packageId: "note-store", callbackId: "notify-application" },
+    phase: "delivered",
+    comparison: { operator: "equals", value: 1 },
+  });
+  writeFileSync(drillPath, `${JSON.stringify(drill)}\n`);
 }
 
 function installNotePack(root: string, lifecycle: "active" | "deprecated" | "revoked"): void {
@@ -923,6 +983,97 @@ describe("local CLI front door", () => {
     const defaultRun = await invoke(repository(), []);
     expect(defaultRun.code).toBe(0);
     expect(defaultRun.stdout).toMatch(/PASSED {2}read-note[\s\S]*HTML report:/);
+  });
+
+  it("routes signed world callbacks through explicit local receiver bindings", async () => {
+    const root = repository();
+    addApplicationCallback(root);
+    const received: Array<{
+      body: Buffer;
+      headers: Readonly<Record<string, string | readonly string[] | undefined>>;
+    }> = [];
+    const server = createServer((request, response) => {
+      const chunks: Buffer[] = [];
+      request.on("data", (chunk: Buffer) => chunks.push(chunk));
+      request.on("end", () => {
+        received.push({ body: Buffer.concat(chunks), headers: request.headers });
+        response.writeHead(204);
+        response.end();
+      });
+    });
+    await new Promise<void>((resolve, reject) => {
+      server.once("error", reject);
+      server.listen(0, "127.0.0.1", resolve);
+    });
+    const address = server.address() as AddressInfo;
+    const secret = "local-test-secret";
+    try {
+      const result = await invoke(
+        root,
+        [
+          "run",
+          "read-note",
+          "--callback-receiver",
+          `application=http://127.0.0.1:${String(address.port)}`,
+          "--callback-secret-env",
+          "application=CALLBACK_SECRET",
+          "--json",
+        ],
+        { CALLBACK_SECRET: secret },
+      );
+      expect(result.code, `${result.stdout}\n${result.stderr}`).toBe(0);
+      expect(JSON.parse(result.stdout)).toMatchObject({
+        verdict: "passed",
+        drills: [
+          {
+            trials: [
+              {
+                result: {
+                  assertionResults: [
+                    { assertionId: "read-once", status: "passed" },
+                    { assertionId: "application-notified", status: "passed", actual: 1 },
+                  ],
+                },
+              },
+            ],
+          },
+        ],
+      });
+      expect(received).toHaveLength(1);
+      const delivery = received[0];
+      expect(delivery).toBeDefined();
+      expect(delivery?.headers["idempotency-key"]).toMatch(/^delivery_/);
+      expect(delivery?.headers["x-firedrill-signature"]).toBe(
+        `sha256=${createHmac("sha256", secret)
+          .update(delivery?.body ?? Buffer.alloc(0))
+          .digest("hex")}`,
+      );
+      expect(JSON.parse(delivery?.body.toString("utf8") ?? "null")).toMatchObject({ text: "ready" });
+    } finally {
+      await new Promise<void>((resolve, reject) =>
+        server.close((error) => (error === undefined ? resolve() : reject(error))),
+      );
+    }
+  });
+
+  it("rejects unsafe or incomplete callback receiver configuration before a drill starts", async () => {
+    const root = repository();
+    expect(
+      (await invoke(root, ["run", "--callback-receiver", "application=https://example.com", "--json"])).code,
+    ).toBe(2);
+    const missingSecret = await invoke(root, [
+      "run",
+      "--callback-receiver",
+      "application=http://127.0.0.1:3000",
+      "--callback-secret-env",
+      "application=CALLBACK_SECRET",
+      "--json",
+    ]);
+    expect(missingSecret.code).toBe(2);
+    expect(JSON.parse(missingSecret.stdout)).toMatchObject({
+      code: "framework.INVALID_ARGUMENT",
+      message: "callback receiver application requires environment variable CALLBACK_SECRET",
+    });
   });
 
   it("selects named suites and stable shards through the public command", async () => {

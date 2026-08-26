@@ -34,7 +34,8 @@
   "dependencies": {
     "@firedrill/contracts": "workspace:*",
     "@firedrill/tool-sdk": "workspace:*",
-    "@firedrill/world-kernel": "workspace:*"
+    "@firedrill/world-kernel": "workspace:*",
+    "@firedrill/world-store": "workspace:*"
   },
   "devDependencies": {
     "@firedrill/tool-sdk": "workspace:*",

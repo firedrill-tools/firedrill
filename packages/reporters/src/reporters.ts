@@ -554,6 +554,8 @@ function evidenceRows(evidence: readonly EvidenceEntry[]): string {
       else if (entry.kind === "state_change")
         subject = `${entry.packageId}.${entry.namespace}/${entry.rowId}`;
       else if (entry.kind === "event") subject = `${entry.event.packageId}.${entry.event.eventId}`;
+      else if (entry.kind === "callback")
+        subject = `${entry.callback.packageId}.${entry.callback.callbackId} · ${entry.phase}`;
       else if (entry.kind === "fault") subject = `${entry.packageId}.${entry.faultId}`;
       else if (entry.kind === "clock") subject = `${entry.fromUs} → ${entry.toUs} μs`;
       else if (entry.kind === "random") subject = `${entry.packageId} draw ${entry.draw}`;

@@ -134,6 +134,31 @@ function evidence(): readonly EvidenceEntry[] {
         },
       },
     }),
+    EvidenceEntrySchema.parse({
+      schemaVersion: 1,
+      kind: "callback",
+      sequence: 6,
+      transactionId: "txn_assert06",
+      transactionIndex: 0,
+      transactionSize: 1,
+      virtualTimeUs: 100,
+      causeSequence: 4,
+      correlationId: "corr_assert06",
+      callback: { packageId: "catalog", callbackId: "notify-application" },
+      deliveryId: "delivery_assert06",
+      receiverId: "application",
+      event: { packageId: "catalog", eventId: "record.changed" },
+      phase: "delivered",
+      attempt: 1,
+      idempotencyKey: "delivery_assert06",
+      response: {
+        status: 204,
+        body: "",
+        bodyHash: `sha256:${"b".repeat(64)}`,
+        bodyBytes: 0,
+      },
+      durationMs: 3,
+    }),
   ];
 }
 
@@ -158,11 +183,14 @@ describe("deterministic assertion evaluation", () => {
     const index = new AssertionEvidenceIndex(entries.slice(0, 2));
     index.append(entries.slice(2));
 
-    expect(index.lastSequence()).toBe(5);
+    expect(index.lastSequence()).toBe(6);
     expect(index.all()).toEqual(entries);
     expect(index.operation(operation.update).map((entry) => entry.sequence)).toEqual([3]);
     expect(index.stateSequences("catalog", "records", "one")).toEqual([1]);
     expect(index.event({ packageId: "catalog", eventId: "record.changed" }, "emitted")).toHaveLength(1);
+    expect(
+      index.callback({ packageId: "catalog", callbackId: "notify-application" }, "delivered"),
+    ).toHaveLength(1);
     const lastEntry = entries.at(-1);
     if (lastEntry === undefined) throw new Error("evidence fixture must not be empty");
     expect(() => index.append([lastEntry])).toThrow(/strictly ordered/);
@@ -217,10 +245,16 @@ describe("deterministic assertion evaluation", () => {
         event: { packageId: "catalog", eventId: "record.changed" },
         comparison: { operator: "equals", value: 1 },
       },
+      {
+        id: "callback-delivered",
+        kind: "callback.count",
+        callback: { packageId: "catalog", callbackId: "notify-application" },
+        comparison: { operator: "equals", value: 1 },
+      },
     ].map((assertion) => AssertionDefinitionSchema.parse(assertion));
 
     const results = evaluateAssertions({ assertions, state: stateReader(records), evidence: evidence() });
-    expect(results).toHaveLength(7);
+    expect(results).toHaveLength(8);
     expect(results.every((item) => item.status === "passed")).toBe(true);
     expect(results.every((item) => item.diff.matched)).toBe(true);
     expect(results.find((item) => item.assertionId === "value-matches")).toMatchObject({
@@ -238,14 +272,18 @@ describe("deterministic assertion evaluation", () => {
       subject: "event",
       phase: "emitted",
     });
+    expect(results.find((item) => item.assertionId === "callback-delivered")?.location).toMatchObject({
+      subject: "callback",
+      phase: "delivered",
+    });
   });
 
   it("does not treat missing values, reordered calls, or a later success as passing", () => {
     const withSuccessfulRemove = [
       ...evidence(),
       operationEntry({
-        sequence: 6,
-        callId: "call_assert06",
+        sequence: 7,
+        callId: "call_assert07",
         operation: operation.remove,
         arguments: { id: "two" },
         outcome: { status: "ok", value: { removed: true } },

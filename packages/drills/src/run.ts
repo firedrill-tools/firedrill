@@ -30,7 +30,8 @@ import {
   WorldInstanceIdSchema,
 } from "@firedrill/contracts";
 import { startCliWorldBinding } from "@firedrill/protocol-cli";
-import { startHttpWorldBinding } from "@firedrill/protocol-http";
+import { CallbackDispatcher, startHttpWorldBinding } from "@firedrill/protocol-http";
+import type { CallbackReceiver } from "@firedrill/protocol-http";
 import { startMcpWorldBinding } from "@firedrill/protocol-mcp";
 import type { LoadedWorldBuild } from "@firedrill/world-build";
 import { trajectoryHash } from "@firedrill/world-ir";
@@ -65,6 +66,8 @@ export interface RunDrillTrialOptions {
   readonly externalHandler?: TargetHandler;
   readonly hostEnvironment?: Readonly<Record<string, string | undefined>>;
   readonly allowRemoteHttp?: boolean;
+  /** Local application endpoints that receive world-emitted callbacks during this trial. */
+  readonly callbackReceivers?: Readonly<Record<string, CallbackReceiver>>;
   /** Cooperatively cancels target execution and prevents later trials from starting. */
   readonly signal?: AbortSignal;
 }
@@ -185,6 +188,44 @@ async function closeBindings(bindings: readonly WorldBinding[]): Promise<void> {
     }
   }
   if (failures.length > 0) throw new AggregateError(failures, "failed to close world bindings");
+}
+
+interface CallbackPump {
+  flush(): Promise<void>;
+  close(): Promise<void>;
+}
+
+function startCallbackPump(dispatcher: CallbackDispatcher): CallbackPump {
+  let active: Promise<void> | undefined;
+  let failure: unknown;
+  const tick = () => {
+    if (active !== undefined || failure !== undefined) return;
+    active = dispatcher
+      .dispatchDue()
+      .then(() => undefined)
+      .catch((error: unknown) => {
+        failure = error;
+      })
+      .finally(() => {
+        active = undefined;
+      });
+  };
+  const timer = setInterval(tick, 5);
+  timer.unref();
+  tick();
+  return {
+    async flush() {
+      await active;
+      if (failure !== undefined) throw failure;
+      await dispatcher.dispatchDue();
+    },
+    async close() {
+      clearInterval(timer);
+      await active;
+      if (failure !== undefined) throw failure;
+      await dispatcher.dispatchDue();
+    },
+  };
 }
 
 async function worldBindings(
@@ -356,6 +397,7 @@ export async function runDrillTrial(options: RunDrillTrialOptions): Promise<Dril
   let store: SqliteWorldStore | undefined;
   let evidenceIndex: AssertionEvidenceIndex | undefined;
   let kernel: WorldKernel | undefined;
+  let callbackPump: CallbackPump | undefined;
   let bindings: readonly WorldBinding[] = [];
   let activeClient: BoundWorldClient | undefined;
   let issuedToolCalls = 0;
@@ -403,6 +445,13 @@ export async function runDrillTrial(options: RunDrillTrialOptions): Promise<Dril
     const runEvidence = new AssertionEvidenceIndex();
     evidenceIndex = runEvidence;
     kernel = world.kernel;
+    const callbackDispatcher = new CallbackDispatcher({
+      store: world.store,
+      tools: options.build.tools,
+      receivers: options.callbackReceivers ?? {},
+    });
+    callbackDispatcher.recoverInFlight();
+    callbackPump = startCallbackPump(callbackDispatcher);
     startedAtVirtualUs = store.metadata().virtualTimeUs;
     const horizonAt = startedAtVirtualUs + drill.timeline.horizonUs;
     if (!Number.isSafeInteger(horizonAt)) {
@@ -440,32 +489,50 @@ export async function runDrillTrial(options: RunDrillTrialOptions): Promise<Dril
       checkpoints.push(checkpoint);
       return checkpoint;
     };
-    const advanceTo = (toUs: number): boolean => {
-      const before = processedEvents;
-      const advanced = world.kernel.advanceTime(toUs, {
-        correlationId: CorrelationIdSchema.parse(
-          `corr_clock_${suffix}_${String(before + 1).padStart(6, "0")}`,
-        ),
-        maxEvents: drill.timeline.maxEvents - processedEvents,
-        ...(drill.timeline.invariants.length === 0
-          ? {}
-          : {
-              afterScheduledEvent: (checkpoint: { readonly processed: number }) => {
-                processedEvents = before + checkpoint.processed;
-                const verified = verify("after_event");
-                const shouldStop = drill.timeline.stopOnInvariantFailure && verified.verdict === "failed";
-                if (shouldStop) stoppedByInvariant = true;
-                return !shouldStop;
-              },
-            }),
-      });
-      processedEvents = before + advanced.scheduledEventsProcessed;
-      const failure = advanced.failures[0];
-      if (failure !== undefined) {
-        if (failure.error.code === "world.EVENT_BUDGET_EXCEEDED") eventBudgetExhausted = true;
-        throw new RunEnvelopeError(failure.error);
+    const advanceTo = async (toUs: number): Promise<boolean> => {
+      for (;;) {
+        await callbackPump?.flush();
+        if (stoppedByInvariant) return false;
+        const currentUs = world.store.metadata().virtualTimeUs;
+        if (currentUs >= toUs) return true;
+        const callbackDueUs = callbackDispatcher.nextDueUs();
+        const stepUs =
+          callbackDueUs !== null && callbackDueUs > currentUs && callbackDueUs < toUs ? callbackDueUs : toUs;
+        const before = processedEvents;
+        let stoppedForCallback = false;
+        const advanced = world.kernel.advanceTime(stepUs, {
+          correlationId: CorrelationIdSchema.parse(
+            `corr_clock_${suffix}_${String(before + 1).padStart(6, "0")}`,
+          ),
+          maxEvents: drill.timeline.maxEvents - processedEvents,
+          afterScheduledEvent: (checkpoint: { readonly processed: number }) => {
+            processedEvents = before + checkpoint.processed;
+            if (drill.timeline.invariants.length > 0) {
+              const verified = verify("after_event");
+              const shouldStop = drill.timeline.stopOnInvariantFailure && verified.verdict === "failed";
+              if (shouldStop) {
+                stoppedByInvariant = true;
+                return false;
+              }
+            }
+            const dueUs = callbackDispatcher.nextDueUs();
+            stoppedForCallback = dueUs !== null && dueUs <= world.store.metadata().virtualTimeUs;
+            return !stoppedForCallback;
+          },
+        });
+        processedEvents = before + advanced.scheduledEventsProcessed;
+        const failure = advanced.failures[0];
+        if (failure !== undefined) {
+          if (failure.error.code === "world.EVENT_BUDGET_EXCEEDED") eventBudgetExhausted = true;
+          throw new RunEnvelopeError(failure.error);
+        }
+        await callbackPump?.flush();
+        if (stoppedByInvariant) return false;
+        if (advanced.reachedUs >= toUs) return true;
+        if (!advanced.stoppedEarly && !stoppedForCallback) {
+          throw new Error("world clock did not reach its requested time or expose pending callback work");
+        }
       }
-      return !advanced.stoppedEarly;
     };
 
     for (const interaction of expandDrillInteractions(drill.timeline)) {
@@ -480,7 +547,7 @@ export async function runDrillTrial(options: RunDrillTrialOptions): Promise<Dril
           issues: [],
         });
       }
-      if (!advanceTo(scheduledAtVirtualUs)) break;
+      if (!(await advanceTo(scheduledAtVirtualUs))) break;
       const actorClient = world.clients.get(interaction.actorId);
       if (actorClient === undefined) {
         throw new DrillSetupError(
@@ -530,6 +597,7 @@ export async function runDrillTrial(options: RunDrillTrialOptions): Promise<Dril
             ),
           })
         : invokedTargetResult;
+      await callbackPump.flush();
       interactions.push({
         schemaVersion: 1,
         interactionId: interaction.id,
@@ -602,7 +670,7 @@ export async function runDrillTrial(options: RunDrillTrialOptions): Promise<Dril
     }
 
     if (!stoppedByTarget && !stoppedByInvariant) {
-      advanceTo(horizonAt);
+      await advanceTo(horizonAt);
       if (drill.timeline.invariants.length > 0 && !stoppedByInvariant) {
         const horizon = verify("horizon");
         if (drill.timeline.stopOnInvariantFailure && horizon.verdict === "failed") {
@@ -611,6 +679,7 @@ export async function runDrillTrial(options: RunDrillTrialOptions): Promise<Dril
       }
     }
 
+    await callbackPump.flush();
     const finalCheckpoint = verify("final");
     const assertionResults = finalCheckpoint.assertionResults;
     const checkpointFailure = checkpoints.some((checkpoint) => checkpoint.verdict === "failed");
@@ -707,7 +776,13 @@ export async function runDrillTrial(options: RunDrillTrialOptions): Promise<Dril
       // A primary runner result already exists. Binding close failures are handled
       // before sealing on the success path and must not turn the API into a rejection.
     } finally {
-      store?.close();
+      try {
+        await callbackPump?.close();
+      } catch {
+        // Any dispatch failure reached the main result path through flush().
+      } finally {
+        store?.close();
+      }
     }
   }
 }

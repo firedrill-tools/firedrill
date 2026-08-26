@@ -62,6 +62,7 @@ interface ToolIndexes {
   readonly packages: ReadonlyMap<string, ToolPackageManifest>;
   readonly operations: ReadonlySet<string>;
   readonly events: ReadonlySet<string>;
+  readonly callbacks: ReadonlySet<string>;
   readonly state: ReadonlySet<string>;
   readonly faults: ReadonlySet<string>;
 }
@@ -78,6 +79,9 @@ function indexTools(tools: readonly ToolPackageManifest[]): ToolIndexes {
       tools.flatMap((tool) =>
         tool.events.map((event) => eventKey({ packageId: tool.id, eventId: event.id })),
       ),
+    ),
+    callbacks: new Set(
+      tools.flatMap((tool) => tool.callbacks.map((callback) => `${tool.id}\u0000${callback.id}`)),
     ),
     state: new Set(tools.flatMap((tool) => tool.state.map((state) => `${tool.id}\u0000${state.namespace}`))),
     faults: new Set(tools.flatMap((tool) => tool.faults.map((fault) => `${tool.id}\u0000${fault.id}`))),
@@ -106,6 +110,16 @@ function validateAssertion(
         code: "custom",
         path,
         message: `assertion references unknown event ${assertion.event.packageId}.${assertion.event.eventId}`,
+      });
+    }
+    return;
+  }
+  if (assertion.kind === "callback.count") {
+    if (!indexes.callbacks.has(`${assertion.callback.packageId}\u0000${assertion.callback.callbackId}`)) {
+      context.addIssue({
+        code: "custom",
+        path,
+        message: `assertion references unknown callback ${assertion.callback.packageId}.${assertion.callback.callbackId}`,
       });
     }
     return;

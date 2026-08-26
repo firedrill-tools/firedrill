@@ -1,4 +1,6 @@
 import type {
+  CallbackEvidence,
+  CallbackRef,
   EventEvidence,
   EventRef,
   EvidenceEntry,
@@ -13,6 +15,10 @@ function operationKey(operation: OperationRef): string {
 
 function eventKey(event: EventRef, phase: EventEvidence["phase"]): string {
   return `${event.packageId}\u0000${event.eventId}\u0000${phase}`;
+}
+
+function callbackKey(callback: CallbackRef, phase: CallbackEvidence["phase"]): string {
+  return `${callback.packageId}\u0000${callback.callbackId}\u0000${phase}`;
 }
 
 function stateKey(packageId: string, namespace: string, rowId?: string): string {
@@ -30,6 +36,7 @@ export class AssertionEvidenceIndex {
   private readonly operationsByKey = new Map<string, OperationEvidence[]>();
   private readonly stateSequencesByKey = new Map<string, number[]>();
   private readonly eventsByKey = new Map<string, EventEvidence[]>();
+  private readonly callbacksByKey = new Map<string, CallbackEvidence[]>();
 
   constructor(entries: readonly EvidenceEntry[] = []) {
     this.append(entries);
@@ -64,6 +71,11 @@ export class AssertionEvidenceIndex {
         const values = this.eventsByKey.get(key) ?? [];
         values.push(entry);
         this.eventsByKey.set(key, values);
+      } else if (entry.kind === "callback") {
+        const key = callbackKey(entry.callback, entry.phase);
+        const values = this.callbacksByKey.get(key) ?? [];
+        values.push(entry);
+        this.callbacksByKey.set(key, values);
       }
     }
   }
@@ -90,5 +102,9 @@ export class AssertionEvidenceIndex {
 
   event(event: EventRef, phase: EventEvidence["phase"]): readonly EventEvidence[] {
     return this.eventsByKey.get(eventKey(event, phase)) ?? [];
+  }
+
+  callback(callback: CallbackRef, phase: CallbackEvidence["phase"]): readonly CallbackEvidence[] {
+    return this.callbacksByKey.get(callbackKey(callback, phase)) ?? [];
   }
 }

@@ -108,14 +108,14 @@ Use `firedrill compare <baseline-report> <candidate-report>` only after checking
 
 Add 3–5 drills covering the highest-risk state changes, permissions, retries/idempotency, provider failures, scheduled consequences, and safety invariants. Use tags and a `*.suite.yaml` only when selection policy is useful. Use timeline workloads for repeated actors and long virtual time; do not create a second runner.
 
-For a reusable Tool, add a `<tool-id>-conformance.suite.yaml`, then run `firedrill tool inspect`, `firedrill tool validate`, and `firedrill tool test`. Cover every declared operation, declared error, event, fault, and subscription. Tool conformance proves deterministic Tool behavior, so use a deterministic probe target or caller-owned harness for that suite; do not make conformance depend on stochastic model wording or tool selection. Keep separate drills exercising the real model-backed agent. Do not create another conformance DSL.
+For a reusable Tool, add a `<tool-id>-conformance.suite.yaml`, then run `firedrill tool inspect`, `firedrill tool validate`, and `firedrill tool test`. Cover every declared operation, declared error, event, fault, subscription, and callback. Tool conformance proves deterministic Tool behavior, so use a deterministic probe target or caller-owned harness for that suite; do not make conformance depend on stochastic model wording or tool selection. Keep separate drills exercising the real model-backed agent. Do not create another conformance DSL.
 
 ## Rules
 
 - Prefer a user-owned Tool over a fake vendor-specific abstraction.
 - Reuse a compatible, approved Tool package when one is actually present; never pretend a registry command or package exists.
 - Never edit an installed Tool package. Select it in `firedrill.json`; contribute changes from its owned source repository.
-- Assert on state, calls, events, time, and errors. Treat response text as supporting evidence, not ground truth.
+- Assert on state, calls, events, callbacks, time, and errors. Treat response text as supporting evidence, not ground truth.
 - Keep fixtures deterministic. Never make network calls from Tool behavior.
 - Never read, copy, move, or commit secrets. Map only explicitly required host environment variables.
 - Keep model/provider credentials owned by the customer's agent process. Firedrill bindings carry only synthetic-world connection material.

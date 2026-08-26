@@ -27,6 +27,7 @@ import type {
   VirtualTime,
 } from "@firedrill/contracts";
 import type {
+  CallbackDelivery,
   CommittedWorldTransaction,
   ScheduledEvent,
   StateScanOptions,
@@ -39,7 +40,13 @@ import type {
 import Database from "better-sqlite3";
 import { decodeObject, decodeStoredCount, encodeJson, hashFile, hashJson } from "./codec.js";
 import { assertIntegrity, assertSupportedSchema, configureDatabase, installSchema } from "./schema.js";
-import { SqliteWorldTransaction, scheduledEvent } from "./sqlite-transaction.js";
+import {
+  CALLBACK_COLUMNS,
+  SqliteWorldTransaction,
+  callbackDelivery,
+  scheduledEvent,
+} from "./sqlite-transaction.js";
+import type { CallbackRow } from "./sqlite-transaction.js";
 import type { CreateSqliteWorldOptions, ForkSqliteWorldOptions } from "./types.js";
 
 interface EvidenceRow {
@@ -368,6 +375,40 @@ export class SqliteWorldStore implements WorldStore {
             )
             .all(status) as ScheduledRow[]);
     return rows.map(scheduledEvent);
+  }
+
+  nextCallbackDelivery(atOrBeforeUs?: VirtualTime): CallbackDelivery | null {
+    this.assertOpen();
+    const row =
+      atOrBeforeUs === undefined
+        ? (this.database
+            .prepare(
+              `SELECT ${CALLBACK_COLUMNS} FROM callback_deliveries
+               WHERE status = 'pending' ORDER BY due_us, id LIMIT 1`,
+            )
+            .get() as CallbackRow | undefined)
+        : (this.database
+            .prepare(
+              `SELECT ${CALLBACK_COLUMNS} FROM callback_deliveries
+               WHERE status = 'pending' AND due_us <= ? ORDER BY due_us, id LIMIT 1`,
+            )
+            .get(VirtualTimeSchema.parse(atOrBeforeUs)) as CallbackRow | undefined);
+    return row === undefined ? null : callbackDelivery(row);
+  }
+
+  listCallbackDeliveries(status?: CallbackDelivery["status"]): readonly CallbackDelivery[] {
+    this.assertOpen();
+    const rows =
+      status === undefined
+        ? (this.database
+            .prepare(`SELECT ${CALLBACK_COLUMNS} FROM callback_deliveries ORDER BY due_us, id`)
+            .all() as CallbackRow[])
+        : (this.database
+            .prepare(
+              `SELECT ${CALLBACK_COLUMNS} FROM callback_deliveries WHERE status = ? ORDER BY due_us, id`,
+            )
+            .all(status) as CallbackRow[]);
+    return rows.map(callbackDelivery);
   }
 
   stateHash(): string {

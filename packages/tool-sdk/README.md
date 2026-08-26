@@ -8,6 +8,8 @@ One behavior definition can be reached through direct, HTTP, MCP, or CLI binding
 
 When an existing client expects a particular HTTP shape, the Tool manifest may declare a wire route and the behavior module may provide its matching `decode` and `encode` codec. The decoder maps bounded path/query/header/body input to one semantic operation call. The encoder maps that operation outcome to a response body and headers; the manifest fixes its success and declared-error status codes. Codecs cannot mutate Tool state because they receive no `ToolContext`. Put all authorization decisions, mutations, emitted events, scheduled work, and cross-Tool consequences in the operation handler.
 
+A Tool callback models the reverse direction: an emitted world event becomes an HTTP request to the application under test. Its codec only maps the typed event payload to headers and a body. The callback contract and runtime own receiver identity, path, signing, idempotency, retries, timeout, and evidence. The codec has no state or network authority.
+
 An operation's `idempotency` value is part of its caller contract: `none` rejects any supplied key, `optional` accepts but does not require one, and `required` requires a key on direct/HTTP calls. The MCP adapter derives a stable request key for required operations when the caller does not provide one explicitly.
 
 This package is pre-release. Its public handler contract has been exercised by multiple unrelated worlds and a clean packed-package consumer. Filesystem discovery, source compilation, locked artifact creation, and executable module loading are deliberately owned by `@firedrill/compiler` and `@firedrill/world-build`, not this package.

@@ -1,4 +1,5 @@
 import type {
+  CallbackDeliveryId,
   EventRef,
   HttpMethod,
   JsonObject,
@@ -7,6 +8,7 @@ import type {
   OperationOutcome,
   OperationRef,
   ToolPackageManifest,
+  VirtualTime,
 } from "@firedrill/contracts";
 import type { ToolFailureOptions } from "./failure.js";
 
@@ -110,6 +112,26 @@ export interface ToolHttpOperationResult {
   readonly outcome: OperationOutcome;
 }
 
+export interface ToolCallbackEvent {
+  readonly callbackId: string;
+  readonly deliveryId: CallbackDeliveryId;
+  readonly receiverId: string;
+  readonly event: EventRef;
+  readonly payload: Readonly<JsonObject>;
+  readonly virtualTimeUs: VirtualTime;
+  readonly attempt: number;
+}
+
+export interface ToolCallbackRequest {
+  readonly headers?: Readonly<Record<string, string>>;
+  readonly body: ToolHttpResponseBody;
+}
+
+/** Pure event-to-request codec. Delivery, retries, signatures, and evidence remain framework-owned. */
+export interface ToolCallbackCodec {
+  encode(event: ToolCallbackEvent): ToolCallbackRequest;
+}
+
 /** Pure wire codec around one semantic operation. State and side effects remain in the operation handler. */
 export interface ToolHttpRouteCodec {
   decode(request: ToolHttpRequest): ToolHttpOperationInput;
@@ -121,6 +143,7 @@ export interface ToolDefinition {
   readonly operations: Readonly<Record<string, ToolOperationHandler>>;
   readonly subscriptions: Readonly<Record<string, ToolSubscriptionHandler>>;
   readonly http: Readonly<Record<string, ToolHttpRouteCodec>>;
+  readonly callbacks: Readonly<Record<string, ToolCallbackCodec>>;
 }
 
 export interface ToolDefinitionInput {
@@ -128,6 +151,7 @@ export interface ToolDefinitionInput {
   readonly operations: Readonly<Record<string, ToolOperationHandler>>;
   readonly subscriptions?: Readonly<Record<string, ToolSubscriptionHandler>>;
   readonly http?: Readonly<Record<string, ToolHttpRouteCodec>>;
+  readonly callbacks?: Readonly<Record<string, ToolCallbackCodec>>;
 }
 
 /** Executable Tool behavior stored separately from its declarative, compiler-validated manifest. */
@@ -135,4 +159,5 @@ export interface ToolBehaviorDefinition {
   readonly operations: Readonly<Record<string, ToolOperationHandler>>;
   readonly subscriptions?: Readonly<Record<string, ToolSubscriptionHandler>>;
   readonly http?: Readonly<Record<string, ToolHttpRouteCodec>>;
+  readonly callbacks?: Readonly<Record<string, ToolCallbackCodec>>;
 }

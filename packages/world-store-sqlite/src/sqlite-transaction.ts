@@ -1,6 +1,11 @@
 import {
   ActorIdSchema,
   ActorBindingIdSchema,
+  CallbackDeliveryIdSchema,
+  CallbackErrorEvidenceSchema,
+  CallbackRefSchema,
+  CallbackRequestEvidenceSchema,
+  CallbackResponseEvidenceSchema,
   CorrelationIdSchema,
   EventRefSchema,
   EvidenceEntrySchema,
@@ -15,6 +20,9 @@ import {
 } from "@firedrill/contracts";
 import type {
   ActorBindingId,
+  CallbackDeliveryId,
+  CallbackErrorEvidence,
+  CallbackRequestEvidence,
   CorrelationId,
   EvidenceEntry,
   JsonObject,
@@ -27,6 +35,9 @@ import type {
   VirtualTime,
 } from "@firedrill/contracts";
 import type {
+  CallbackAttemptSettlement,
+  CallbackDelivery,
+  CallbackTransition,
   EvidenceDraft,
   IdempotencyReceipt,
   ScheduledEvent,
@@ -70,6 +81,23 @@ interface ScheduledRow {
   status: ScheduledEvent["status"];
 }
 
+export interface CallbackRow {
+  id: string;
+  package_id: string;
+  callback_id: string;
+  receiver_id: string;
+  event_package_id: string;
+  event_id: string;
+  payload_json: string;
+  event_sequence: number;
+  due_us: number;
+  correlation_id: string;
+  actor_binding_id: string;
+  status: CallbackDelivery["status"];
+  attempt_count: number;
+  retry_delays_json: string;
+}
+
 type InternalEvidenceDraft =
   | EvidenceDraft
   | {
@@ -95,6 +123,8 @@ const UINT64_MASK = 0xffff_ffff_ffff_ffffn;
 const SPLITMIX_INCREMENT = 0x9e37_79b9_7f4a_7c15n;
 const MIX_1 = 0xbf58_476d_1ce4_e5b9n;
 const MIX_2 = 0x94d0_49bb_1331_11ebn;
+export const CALLBACK_COLUMNS =
+  "id, package_id, callback_id, receiver_id, event_package_id, event_id, payload_json, event_sequence, due_us, correlation_id, actor_binding_id, status, attempt_count, retry_delays_json";
 
 function normalizeLimit(limit: number | undefined): number {
   if (limit === undefined) return 1_000;
@@ -126,6 +156,37 @@ export function scheduledEvent(row: ScheduledRow): ScheduledEvent {
   };
 }
 
+function retryDelays(value: string): readonly VirtualTime[] {
+  const decoded = JSON.parse(value) as unknown;
+  if (!Array.isArray(decoded) || decoded.length > 9) {
+    throw new TypeError("stored callback retry delays are invalid");
+  }
+  return Object.freeze(decoded.map((delay) => VirtualTimeSchema.parse(delay)));
+}
+
+export function callbackDelivery(row: CallbackRow): CallbackDelivery {
+  if (!Number.isSafeInteger(row.event_sequence) || row.event_sequence < 1) {
+    throw new TypeError("stored callback event sequence is invalid");
+  }
+  if (!Number.isSafeInteger(row.attempt_count) || row.attempt_count < 0 || row.attempt_count > 10) {
+    throw new TypeError("stored callback attempt count is invalid");
+  }
+  return {
+    id: CallbackDeliveryIdSchema.parse(row.id),
+    callback: CallbackRefSchema.parse({ packageId: row.package_id, callbackId: row.callback_id }),
+    receiverId: StableIdSchema.parse(row.receiver_id),
+    event: EventRefSchema.parse({ packageId: row.event_package_id, eventId: row.event_id }),
+    payload: decodeObject(row.payload_json),
+    eventSequence: row.event_sequence,
+    dueUs: VirtualTimeSchema.parse(row.due_us),
+    correlationId: CorrelationIdSchema.parse(row.correlation_id),
+    actorBindingId: ActorBindingIdSchema.parse(row.actor_binding_id),
+    status: row.status,
+    attemptCount: row.attempt_count,
+    retryDelaysUs: retryDelays(row.retry_delays_json),
+  };
+}
+
 function removeCause(draft: InternalEvidenceDraft): Record<string, unknown> {
   const copy: Record<string, unknown> = { ...draft };
   delete copy.causeSequence;
@@ -138,6 +199,7 @@ export class SqliteWorldTransaction implements WorldTransaction {
   private currentVirtualTimeUs: VirtualTime;
   private readonly secondaryEvidence: InternalEvidenceDraft[] = [];
   private scheduledEventCount = 0;
+  private callbackDeliveryCount = 0;
 
   constructor(
     private readonly database: Database.Database,
@@ -341,9 +403,10 @@ export class SqliteWorldTransaction implements WorldTransaction {
       );
   }
 
-  appendEvidence(draft: EvidenceDraft): void {
+  appendEvidence(draft: EvidenceDraft): number {
     this.assertActive();
     this.secondaryEvidence.push(draft);
+    return this.primarySequence + this.secondaryEvidence.length;
   }
 
   scheduleEvent(
@@ -412,6 +475,298 @@ export class SqliteWorldTransaction implements WorldTransaction {
     return scheduledEvent({ ...row, status });
   }
 
+  enqueueCallback(input: {
+    readonly callback: CallbackDelivery["callback"];
+    readonly receiverId: StableId;
+    readonly event: CallbackDelivery["event"];
+    readonly payload: JsonObject;
+    readonly eventSequence: number;
+    readonly dueUs: VirtualTime;
+    readonly actorBindingId: ActorBindingId;
+    readonly retryDelaysUs: readonly VirtualTime[];
+  }): CallbackDeliveryId {
+    this.assertActive();
+    const callback = CallbackRefSchema.parse(input.callback);
+    const receiverId = StableIdSchema.parse(input.receiverId);
+    const event = EventRefSchema.parse(input.event);
+    const payload = JsonObjectSchema.parse(input.payload);
+    const dueUs = VirtualTimeSchema.parse(input.dueUs);
+    const actorBindingId = ActorBindingIdSchema.parse(input.actorBindingId);
+    const retryDelaysUs = input.retryDelaysUs.map((delay) => VirtualTimeSchema.parse(delay));
+    if (retryDelaysUs.length > 9) throw new RangeError("a callback supports at most nine retries");
+    if (!Number.isSafeInteger(input.eventSequence) || input.eventSequence < 1) {
+      throw new RangeError("callback event sequence must be a positive safe integer");
+    }
+    const evidenceSequence = this.primarySequence + this.secondaryEvidence.length + 1;
+    if (input.eventSequence >= evidenceSequence) {
+      throw new RangeError("callback event evidence must precede callback queue evidence");
+    }
+    if (dueUs < this.virtualTimeUs) throw new RangeError("cannot queue a callback in the past");
+
+    this.callbackDeliveryCount += 1;
+    const id = CallbackDeliveryIdSchema.parse(
+      `delivery_${this.primarySequence.toString(36).padStart(8, "0")}_${String(this.callbackDeliveryCount).padStart(4, "0")}`,
+    );
+    this.database
+      .prepare(
+        `INSERT INTO callback_deliveries
+         (id, package_id, callback_id, receiver_id, event_package_id, event_id, payload_json,
+          event_sequence, due_us, correlation_id, actor_binding_id, status, attempt_count,
+          retry_delays_json)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', 0, ?)`,
+      )
+      .run(
+        id,
+        callback.packageId,
+        callback.callbackId,
+        receiverId,
+        event.packageId,
+        event.eventId,
+        encodeJson(payload),
+        input.eventSequence,
+        dueUs,
+        this.correlationId,
+        actorBindingId,
+        encodeJson(retryDelaysUs),
+      );
+    this.secondaryEvidence.push({
+      kind: "callback",
+      callback,
+      deliveryId: id,
+      receiverId,
+      event,
+      phase: "queued",
+      idempotencyKey: id,
+      scheduledForUs: dueUs,
+      causeSequence: input.eventSequence,
+    });
+    return id;
+  }
+
+  startCallbackAttempt(id: CallbackDeliveryId, request: CallbackRequestEvidence): CallbackTransition {
+    this.assertActive();
+    const deliveryId = CallbackDeliveryIdSchema.parse(id);
+    const parsedRequest = CallbackRequestEvidenceSchema.parse(request);
+    const delivery = this.requireCallback(deliveryId);
+    if (delivery.status !== "pending") {
+      throw new Error(`callback delivery ${deliveryId} is already ${delivery.status}`);
+    }
+    if (delivery.dueUs > this.virtualTimeUs) {
+      throw new Error(`callback delivery ${deliveryId} is not due`);
+    }
+    const attempt = delivery.attemptCount + 1;
+    if (attempt > delivery.retryDelaysUs.length + 1) {
+      throw new Error(`callback delivery ${deliveryId} has exhausted its attempts`);
+    }
+    const changed = this.database
+      .prepare(
+        "UPDATE callback_deliveries SET status = 'in_flight', attempt_count = ? WHERE id = ? AND status = 'pending'",
+      )
+      .run(attempt, deliveryId);
+    if (changed.changes !== 1) throw new Error(`callback delivery ${deliveryId} could not be claimed`);
+    const evidence = {
+      kind: "callback",
+      callback: delivery.callback,
+      deliveryId,
+      receiverId: delivery.receiverId,
+      event: delivery.event,
+      phase: "attempt_started",
+      attempt,
+      idempotencyKey: deliveryId,
+      request: parsedRequest,
+      causeSequence: delivery.eventSequence,
+    } as const;
+    return { delivery: { ...delivery, status: "in_flight", attemptCount: attempt }, evidence };
+  }
+
+  failCallbackDelivery(id: CallbackDeliveryId, error: CallbackErrorEvidence): CallbackTransition {
+    this.assertActive();
+    const deliveryId = CallbackDeliveryIdSchema.parse(id);
+    const delivery = this.requireCallback(deliveryId);
+    if (delivery.status !== "pending") {
+      throw new Error(`callback delivery ${deliveryId} is ${delivery.status}, not pending`);
+    }
+    const parsedError = CallbackErrorEvidenceSchema.parse(error);
+    const attempt = delivery.attemptCount + 1;
+    const changed = this.database
+      .prepare(
+        "UPDATE callback_deliveries SET status = 'failed', attempt_count = ? WHERE id = ? AND status = 'pending'",
+      )
+      .run(attempt, deliveryId);
+    if (changed.changes !== 1) throw new Error(`callback delivery ${deliveryId} could not be failed`);
+    const evidence = {
+      kind: "callback",
+      callback: delivery.callback,
+      deliveryId,
+      receiverId: delivery.receiverId,
+      event: delivery.event,
+      phase: "failed",
+      attempt,
+      idempotencyKey: deliveryId,
+      error: parsedError,
+      durationMs: 0,
+      causeSequence: delivery.eventSequence,
+    } as const;
+    return { delivery: { ...delivery, status: "failed", attemptCount: attempt }, evidence };
+  }
+
+  settleCallbackAttempt(id: CallbackDeliveryId, settlement: CallbackAttemptSettlement): CallbackTransition {
+    this.assertActive();
+    const deliveryId = CallbackDeliveryIdSchema.parse(id);
+    const delivery = this.requireCallback(deliveryId);
+    if (delivery.status !== "in_flight") {
+      throw new Error(`callback delivery ${deliveryId} is ${delivery.status}, not in flight`);
+    }
+    if (settlement.attempt !== delivery.attemptCount) {
+      throw new Error(`callback delivery ${deliveryId} attempt does not match the active attempt`);
+    }
+    if (
+      !Number.isFinite(settlement.durationMs) ||
+      settlement.durationMs < 0 ||
+      settlement.durationMs > 60_000
+    ) {
+      throw new RangeError("callback duration must be from 0 through 60000 milliseconds");
+    }
+
+    if (settlement.status === "delivered") {
+      const response = CallbackResponseEvidenceSchema.parse(settlement.response);
+      if (response.status < 200 || response.status > 299) {
+        throw new TypeError("only a 2xx callback response can be marked delivered");
+      }
+      this.updateCallbackStatus(deliveryId, "in_flight", "delivered");
+      const evidence = {
+        kind: "callback",
+        callback: delivery.callback,
+        deliveryId,
+        receiverId: delivery.receiverId,
+        event: delivery.event,
+        phase: "delivered",
+        attempt: settlement.attempt,
+        idempotencyKey: deliveryId,
+        response,
+        durationMs: settlement.durationMs,
+        causeSequence: delivery.eventSequence,
+      } as const;
+      return { delivery: { ...delivery, status: "delivered" }, evidence };
+    }
+
+    const response =
+      settlement.response === undefined
+        ? undefined
+        : CallbackResponseEvidenceSchema.parse(settlement.response);
+    const error =
+      settlement.error === undefined ? undefined : CallbackErrorEvidenceSchema.parse(settlement.error);
+    if (response === undefined && error === undefined) {
+      throw new TypeError("a failed callback attempt requires a response or an error");
+    }
+
+    if (settlement.status === "retry_scheduled") {
+      const retryDelay = delivery.retryDelaysUs[settlement.attempt - 1];
+      if (retryDelay === undefined) {
+        throw new Error(`callback delivery ${deliveryId} has no retry remaining`);
+      }
+      const expectedNextAttemptUs = VirtualTimeSchema.parse(this.virtualTimeUs + retryDelay);
+      const nextAttemptUs = VirtualTimeSchema.parse(settlement.nextAttemptUs);
+      if (nextAttemptUs !== expectedNextAttemptUs) {
+        throw new Error(
+          `callback delivery ${deliveryId} retry must be scheduled for ${String(expectedNextAttemptUs)}`,
+        );
+      }
+      const changed = this.database
+        .prepare(
+          "UPDATE callback_deliveries SET status = 'pending', due_us = ? WHERE id = ? AND status = 'in_flight'",
+        )
+        .run(nextAttemptUs, deliveryId);
+      if (changed.changes !== 1) throw new Error(`callback delivery ${deliveryId} could not be retried`);
+      const evidence = {
+        kind: "callback",
+        callback: delivery.callback,
+        deliveryId,
+        receiverId: delivery.receiverId,
+        event: delivery.event,
+        phase: "retry_scheduled",
+        attempt: settlement.attempt,
+        idempotencyKey: deliveryId,
+        scheduledForUs: nextAttemptUs,
+        ...(response === undefined ? {} : { response }),
+        ...(error === undefined ? {} : { error }),
+        durationMs: settlement.durationMs,
+        causeSequence: delivery.eventSequence,
+      } as const;
+      return { delivery: { ...delivery, status: "pending", dueUs: nextAttemptUs }, evidence };
+    }
+
+    this.updateCallbackStatus(deliveryId, "in_flight", "failed");
+    const evidence = {
+      kind: "callback",
+      callback: delivery.callback,
+      deliveryId,
+      receiverId: delivery.receiverId,
+      event: delivery.event,
+      phase: "failed",
+      attempt: settlement.attempt,
+      idempotencyKey: deliveryId,
+      ...(response === undefined ? {} : { response }),
+      ...(error === undefined ? {} : { error }),
+      durationMs: settlement.durationMs,
+      causeSequence: delivery.eventSequence,
+    } as const;
+    return { delivery: { ...delivery, status: "failed" }, evidence };
+  }
+
+  recoverCallbackAttempt(id: CallbackDeliveryId): CallbackTransition {
+    this.assertActive();
+    const deliveryId = CallbackDeliveryIdSchema.parse(id);
+    const delivery = this.requireCallback(deliveryId);
+    if (delivery.status !== "in_flight") {
+      throw new Error(`callback delivery ${deliveryId} is ${delivery.status}, not in flight`);
+    }
+    const retryDelay = delivery.retryDelaysUs[delivery.attemptCount - 1];
+    if (retryDelay !== undefined) {
+      const dueUs = VirtualTimeSchema.parse(this.virtualTimeUs + retryDelay);
+      const changed = this.database
+        .prepare(
+          "UPDATE callback_deliveries SET status = 'pending', due_us = ? WHERE id = ? AND status = 'in_flight'",
+        )
+        .run(dueUs, deliveryId);
+      if (changed.changes !== 1) throw new Error(`callback delivery ${deliveryId} could not be recovered`);
+      const evidence = {
+        kind: "callback",
+        callback: delivery.callback,
+        deliveryId,
+        receiverId: delivery.receiverId,
+        event: delivery.event,
+        phase: "recovered",
+        attempt: delivery.attemptCount,
+        idempotencyKey: deliveryId,
+        scheduledForUs: dueUs,
+        causeSequence: delivery.eventSequence,
+      } as const;
+      return { delivery: { ...delivery, status: "pending", dueUs }, evidence };
+    }
+
+    this.updateCallbackStatus(deliveryId, "in_flight", "failed");
+    const error = CallbackErrorEvidenceSchema.parse({
+      code: "framework.CALLBACK_OUTCOME_UNKNOWN",
+      message: "callback outcome is unknown after the local process stopped during its final attempt",
+      retryable: false,
+    });
+    const evidence = {
+      kind: "callback",
+      callback: delivery.callback,
+      deliveryId,
+      receiverId: delivery.receiverId,
+      event: delivery.event,
+      phase: "failed",
+      attempt: delivery.attemptCount,
+      idempotencyKey: deliveryId,
+      error,
+      durationMs: 0,
+      causeSequence: delivery.eventSequence,
+    } as const;
+    return { delivery: { ...delivery, status: "failed" }, evidence };
+  }
+
   finish<T>(value: T, primary: EvidenceDraft): { value: T; evidence: readonly EvidenceEntry[] } {
     this.assertActive();
     const drafts: readonly InternalEvidenceDraft[] = [primary, ...this.secondaryEvidence];
@@ -465,6 +820,27 @@ export class SqliteWorldTransaction implements WorldTransaction {
     this.assertActive();
     const changed = this.database.prepare("UPDATE world_meta SET value = ? WHERE key = ?").run(value, key);
     if (changed.changes !== 1) throw new Error(`world metadata ${key} is missing`);
+  }
+
+  private requireCallback(id: CallbackDeliveryId): CallbackDelivery {
+    const row = this.database
+      .prepare(`SELECT ${CALLBACK_COLUMNS} FROM callback_deliveries WHERE id = ?`)
+      .get(id) as CallbackRow | undefined;
+    if (row === undefined) throw new Error(`callback delivery ${id} does not exist`);
+    return callbackDelivery(row);
+  }
+
+  private updateCallbackStatus(
+    id: CallbackDeliveryId,
+    expected: CallbackDelivery["status"],
+    status: CallbackDelivery["status"],
+  ): void {
+    const changed = this.database
+      .prepare("UPDATE callback_deliveries SET status = ? WHERE id = ? AND status = ?")
+      .run(status, id, expected);
+    if (changed.changes !== 1) {
+      throw new Error(`callback delivery ${id} did not transition from ${expected} to ${status}`);
+    }
   }
 
   private assertActive(): void {

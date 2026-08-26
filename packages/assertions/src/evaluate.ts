@@ -390,6 +390,21 @@ function evaluateOne(
     });
   }
 
+  if (assertion.kind === "callback.count") {
+    const callbacks = evidence.callback(assertion.callback, assertion.phase);
+    const matched = compareNumber(callbacks.length, assertion.comparison);
+    return result({
+      assertion,
+      matched,
+      message: matched ? "callback count matched" : "callback count did not match",
+      expected: assertion.comparison,
+      actual: callbacks.length,
+      location: { subject: "callback", callback: assertion.callback, phase: assertion.phase },
+      operator: assertion.comparison.operator,
+      evidenceSequences: callbacks.map((entry) => entry.sequence),
+    });
+  }
+
   const events = evidence.event(assertion.event, assertion.phase);
   const matched = compareNumber(events.length, assertion.comparison);
   return result({

@@ -10,6 +10,7 @@ import {
   PackageIdSchema,
   SemverSchema,
   StableIdSchema,
+  VirtualTimeSchema,
 } from "./identifiers.js";
 import { ErrorEnvelopeSchema } from "./errors.js";
 import { JsonObjectSchema, JsonValueSchema } from "./json.js";
@@ -254,6 +255,55 @@ export const HttpRouteContractSchema = z
     }
   });
 
+const CallbackPathSchema = HttpPathTemplateSchema.refine(
+  (path) => httpPathSegments(path).every((segment) => httpPathParameter(segment) === undefined),
+  "callback paths must be static; encode dynamic identifiers in the body or headers",
+);
+
+export const CallbackSignatureSchema = z.discriminatedUnion("kind", [
+  z.object({ kind: z.literal("none") }).strict(),
+  z
+    .object({
+      kind: z.literal("hmac-sha256"),
+      header: z.string().min(1).max(128).regex(HTTP_NAME),
+      prefix: z.string().max(32).default("sha256="),
+    })
+    .strict(),
+]);
+
+export const CallbackRetryPolicySchema = z
+  .object({
+    /** One delay per retry; an empty list means one attempt with no retry. */
+    delaysUs: z.array(VirtualTimeSchema).max(9).default([]),
+  })
+  .strict();
+
+export const CallbackContractSchema = z
+  .object({
+    id: StableIdSchema,
+    eventId: EventIdSchema,
+    receiverId: StableIdSchema,
+    method: z.enum(["POST", "PUT"]),
+    path: CallbackPathSchema,
+    idempotencyHeader: z.string().min(1).max(128).regex(HTTP_NAME),
+    signature: CallbackSignatureSchema.default({ kind: "none" }),
+    retry: CallbackRetryPolicySchema.default({ delaysUs: [] }),
+    timeoutMs: z.number().int().min(100).max(30_000).default(5_000),
+  })
+  .strict()
+  .superRefine((callback, context) => {
+    if (
+      callback.signature.kind === "hmac-sha256" &&
+      callback.signature.header.toLowerCase() === callback.idempotencyHeader.toLowerCase()
+    ) {
+      context.addIssue({
+        code: "custom",
+        path: ["signature", "header"],
+        message: "signature and idempotency headers must be different",
+      });
+    }
+  });
+
 export const ToolPackageManifestSchema = z
   .object({
     schemaVersion: z.literal(1),
@@ -267,6 +317,7 @@ export const ToolPackageManifestSchema = z
     faults: z.array(ToolFaultContractSchema).default([]),
     subscriptions: z.array(ToolSubscriptionContractSchema).default([]),
     http: z.array(HttpRouteContractSchema).default([]),
+    callbacks: z.array(CallbackContractSchema).default([]),
   })
   .strict()
   .superRefine((manifest, context) => {
@@ -305,6 +356,7 @@ export const ToolPackageManifestSchema = z
       ["faults", manifest.faults.map((fault) => fault.id)],
       ["subscriptions", manifest.subscriptions.map((subscription) => subscription.id)],
       ["http", manifest.http.map((route) => route.id)],
+      ["callbacks", manifest.callbacks.map((callback) => callback.id)],
     ] as const) {
       if (new Set(values).size !== values.length) {
         context.addIssue({
@@ -360,6 +412,16 @@ export const ToolPackageManifestSchema = z
             message: `HTTP route overlaps ${other.method} ${other.path}`,
           });
         }
+      }
+    }
+    const eventIds = new Set(manifest.events.map((event) => event.id));
+    for (const [callbackIndex, callback] of manifest.callbacks.entries()) {
+      if (!eventIds.has(callback.eventId)) {
+        context.addIssue({
+          code: "custom",
+          path: ["callbacks", callbackIndex, "eventId"],
+          message: `callback references unknown event ${callback.eventId}`,
+        });
       }
     }
   });
@@ -428,6 +490,9 @@ export type HttpMethod = z.infer<typeof HttpMethodSchema>;
 export type HttpPathTemplate = z.infer<typeof HttpPathTemplateSchema>;
 export type HttpRouteAuth = z.infer<typeof HttpRouteAuthSchema>;
 export type HttpRouteContract = z.infer<typeof HttpRouteContractSchema>;
+export type CallbackSignature = z.infer<typeof CallbackSignatureSchema>;
+export type CallbackRetryPolicy = z.infer<typeof CallbackRetryPolicySchema>;
+export type CallbackContract = z.infer<typeof CallbackContractSchema>;
 export type ToolPackageManifest = z.infer<typeof ToolPackageManifestSchema>;
 export type OperationInvocation = z.infer<typeof OperationInvocationSchema>;
 export type OperationOutcome = z.infer<typeof OperationOutcomeSchema>;

@@ -52,6 +52,10 @@ function stableEvidenceEntry(entry: EvidenceEntry): unknown {
     const { worldInstanceId: _worldInstanceId, snapshotId: _snapshotId, ...lifecycle } = stable;
     return lifecycle;
   }
+  if (entry.kind === "callback") {
+    const { durationMs: _durationMs, ...callback } = stable;
+    return callback;
+  }
   return stable;
 }
 

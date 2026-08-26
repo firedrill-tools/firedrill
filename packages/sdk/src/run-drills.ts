@@ -22,7 +22,12 @@ import {
   StableIdSchema,
   compareStableStrings,
 } from "@firedrill/contracts";
-import type { DrillExecution, DrillTrialHookContext, TargetExecutionContext } from "@firedrill/drills";
+import type {
+  CallbackReceiver,
+  DrillExecution,
+  DrillTrialHookContext,
+  TargetExecutionContext,
+} from "@firedrill/drills";
 import { runDrill } from "@firedrill/drills";
 import type { WrittenLocalReport } from "@firedrill/reporters";
 import { verifyLocalReport, writeLocalReport } from "@firedrill/reporters";
@@ -122,6 +127,8 @@ export interface RunDrillsOptions {
   readonly reportDirectory?: string;
   /** Explicit opt-in for a target URL outside loopback. */
   readonly allowRemoteHttp?: boolean;
+  /** Runtime-local application endpoints for callbacks emitted by the synthetic world. */
+  readonly callbackReceivers?: Readonly<Record<string, CallbackReceiver>>;
   /** Only target-declared names are copied from this environment. */
   readonly hostEnvironment?: Readonly<Record<string, string | undefined>>;
   readonly signal?: AbortSignal;
@@ -264,6 +271,7 @@ interface ValidatedRunOptions {
   readonly tags: readonly StableId[];
   readonly filter?: string;
   readonly shard?: DrillShard;
+  readonly callbackReceivers?: Readonly<Record<string, CallbackReceiver>>;
 }
 
 function drillShardIndex(drillId: string, total: number): number {
@@ -341,7 +349,89 @@ function selectedDrills(build: LoadedWorldBuild, options: RunDrillsOptions, vali
   return { drills, suite };
 }
 
+function validatedCallbackReceivers(
+  value: RunDrillsOptions["callbackReceivers"],
+): Readonly<Record<string, CallbackReceiver>> | undefined {
+  if (value === undefined) return undefined;
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    throw new FiredrillProjectError("framework.INVALID_ARGUMENT", "callbackReceivers must be an object");
+  }
+  const entries = Object.entries(value);
+  if (entries.length > 64) {
+    throw new FiredrillProjectError(
+      "framework.INVALID_ARGUMENT",
+      "callbackReceivers supports at most 64 local receivers",
+    );
+  }
+  const receivers: Record<string, CallbackReceiver> = {};
+  for (const [receiverId, candidate] of entries) {
+    if (!StableIdSchema.safeParse(receiverId).success) {
+      throw new FiredrillProjectError(
+        "framework.INVALID_ARGUMENT",
+        `callback receiver ${receiverId} is not a valid Firedrill id`,
+      );
+    }
+    if (typeof candidate !== "object" || candidate === null || Array.isArray(candidate)) {
+      throw new FiredrillProjectError(
+        "framework.INVALID_ARGUMENT",
+        `callback receiver ${receiverId} must contain a loopback baseUrl`,
+      );
+    }
+    const record = candidate as unknown as Record<string, unknown>;
+    if (Object.keys(record).some((key) => key !== "baseUrl" && key !== "secret")) {
+      throw new FiredrillProjectError(
+        "framework.INVALID_ARGUMENT",
+        `callback receiver ${receiverId} contains an unsupported option`,
+      );
+    }
+    if (typeof record.baseUrl !== "string") {
+      throw new FiredrillProjectError(
+        "framework.INVALID_ARGUMENT",
+        `callback receiver ${receiverId} must contain a loopback baseUrl`,
+      );
+    }
+    let url: URL;
+    try {
+      url = new URL(record.baseUrl);
+    } catch {
+      throw new FiredrillProjectError(
+        "framework.INVALID_ARGUMENT",
+        `callback receiver ${receiverId} has an invalid origin`,
+      );
+    }
+    if (
+      url.protocol !== "http:" ||
+      !["127.0.0.1", "localhost", "[::1]", "::1"].includes(url.hostname) ||
+      url.username.length > 0 ||
+      url.password.length > 0 ||
+      url.search.length > 0 ||
+      url.hash.length > 0 ||
+      (url.pathname !== "" && url.pathname !== "/")
+    ) {
+      throw new FiredrillProjectError(
+        "framework.INVALID_ARGUMENT",
+        `callback receiver ${receiverId} must be a credential-free loopback HTTP origin`,
+      );
+    }
+    if (
+      record.secret !== undefined &&
+      (typeof record.secret !== "string" || record.secret.length === 0 || record.secret.length > 65_536)
+    ) {
+      throw new FiredrillProjectError(
+        "framework.INVALID_ARGUMENT",
+        `callback receiver ${receiverId} secret must contain from 1 through 65536 characters`,
+      );
+    }
+    receivers[receiverId] = {
+      baseUrl: url.origin,
+      ...(typeof record.secret === "string" ? { secret: record.secret } : {}),
+    };
+  }
+  return Object.freeze(receivers);
+}
+
 function validateOptions(options: RunDrillsOptions): ValidatedRunOptions {
+  const callbackReceivers = validatedCallbackReceivers(options.callbackReceivers);
   if (
     options.drill !== undefined &&
     (options.suite !== undefined ||
@@ -408,6 +498,7 @@ function validateOptions(options: RunDrillsOptions): ValidatedRunOptions {
       tags,
       ...(filter === undefined ? {} : { filter }),
       ...(parsedShard?.success ? { shard: parsedShard.data } : {}),
+      ...(callbackReceivers === undefined ? {} : { callbackReceivers }),
     };
   }
   const parsedSeed = SeedSchema.safeParse(options.seed);
@@ -419,6 +510,7 @@ function validateOptions(options: RunDrillsOptions): ValidatedRunOptions {
     tags,
     ...(filter === undefined ? {} : { filter }),
     ...(parsedShard?.success ? { shard: parsedShard.data } : {}),
+    ...(callbackReceivers === undefined ? {} : { callbackReceivers }),
   };
 }
 
@@ -492,6 +584,21 @@ export async function runDrills(options: RunDrillsOptions = {}): Promise<RunDril
   const validated = validateOptions(options);
   const preparedBuild = await executableBuild(root, options.buildHash);
   const build = preparedBuild.build;
+  if (validated.callbackReceivers !== undefined) {
+    const declaredReceivers = new Set(
+      build.worldIr.tools.flatMap((tool) => tool.callbacks.map((callback) => callback.receiverId)),
+    );
+    const unknown = Object.keys(validated.callbackReceivers).filter(
+      (receiverId) => !declaredReceivers.has(receiverId),
+    );
+    if (unknown.length > 0) {
+      throw new FiredrillProjectError(
+        "framework.INVALID_ARGUMENT",
+        `callback receiver ${unknown[0]} is not declared by a selected Tool`,
+        { details: { available: [...declaredReceivers].sort(compareStableStrings) } },
+      );
+    }
+  }
   const selected = selectedDrills(build, options, validated);
   const drills = selected.drills;
   if (options.agent !== undefined) {
@@ -549,6 +656,9 @@ export async function runDrills(options: RunDrillsOptions = {}): Promise<RunDril
           }),
       ...(options.hostEnvironment === undefined ? {} : { hostEnvironment: options.hostEnvironment }),
       ...(options.allowRemoteHttp === undefined ? {} : { allowRemoteHttp: options.allowRemoteHttp }),
+      ...(validated.callbackReceivers === undefined
+        ? {}
+        : { callbackReceivers: validated.callbackReceivers }),
       ...(options.signal === undefined ? {} : { signal: options.signal }),
       ...(options.hooks?.beforeTrial === undefined
         ? {}

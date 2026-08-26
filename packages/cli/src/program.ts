@@ -3,8 +3,9 @@ import { resolve } from "node:path";
 import type { CompileWorldResult } from "@firedrill/compiler";
 import { compileWorld, formatWorldSources } from "@firedrill/compiler";
 import type { Diagnostic } from "@firedrill/contracts";
-import { SeedSchema, Sha256Schema } from "@firedrill/contracts";
+import { SeedSchema, Sha256Schema, StableIdSchema } from "@firedrill/contracts";
 import type {
+  CallbackReceiver,
   LocalRunComparison,
   ToolConformanceResult,
   ToolInspection,
@@ -78,6 +79,8 @@ interface ParsedArguments {
   readonly shard?: { readonly index: number; readonly total: number };
   readonly root: string;
   readonly reportDirectory?: string;
+  readonly callbackReceiverOrigins?: Readonly<Record<string, string>>;
+  readonly callbackSecretEnvironment?: Readonly<Record<string, string>>;
   readonly contributionOutput?: string;
   readonly buildHash?: string;
   readonly seed?: string;
@@ -100,7 +103,7 @@ agent through its declared target, then verifies state and tool-call consequence
 
 Usage:
   firedrill agent [--prompt <task>] [--model <model>] [--effort <level>] [--max-turns <count>] [--max-budget-usd <amount>] [--timeout-ms <milliseconds>] [--json] [--root <path>]
-  firedrill [run] [drill-id] [--suite <id>] [--tag <tag>] [--filter <text>] [--shard <index>/<total>] [--trials <count>] [--retries <count>] [--concurrency <count>] [--seed <seed>] [--build-hash <hash>] [--report-dir <path>] [--watch] [--json] [--root <path>]
+  firedrill [run] [drill-id] [--suite <id>] [--tag <tag>] [--filter <text>] [--shard <index>/<total>] [--trials <count>] [--retries <count>] [--concurrency <count>] [--seed <seed>] [--build-hash <hash>] [--report-dir <path>] [--callback-receiver <id>=<origin>] [--callback-secret-env <id>=<variable>] [--watch] [--json] [--root <path>]
   firedrill validate [--json] [--root <path>]
   firedrill plan [--json] [--root <path>]
   firedrill build [--json] [--root <path>]
@@ -110,8 +113,8 @@ Usage:
   firedrill init [--path <firedrill-agent|coding-agent|template|manual>] [--json] [--root <path>]
   firedrill tool inspect <tool-id> [--json] [--root <path>]
   firedrill tool validate <tool-id> [--json] [--root <path>]
-  firedrill tool test <tool-id> [--suite <id>] [--seed <seed>] [--json] [--root <path>]
-  firedrill tool contribute <tool-id> --accept-apache-2.0 [--output <path>] [--suite <id>] [--seed <seed>] [--json] [--root <path>]
+  firedrill tool test <tool-id> [--suite <id>] [--seed <seed>] [--callback-receiver <id>=<origin>] [--callback-secret-env <id>=<variable>] [--json] [--root <path>]
+  firedrill tool contribute <tool-id> --accept-apache-2.0 [--output <path>] [--suite <id>] [--seed <seed>] [--callback-receiver <id>=<origin>] [--callback-secret-env <id>=<variable>] [--json] [--root <path>]
   firedrill world tools [--json]
   firedrill world call <tool-id> <operation-id> [--input <json-object>] [--idempotency-key <key>] [--json]
 
@@ -139,6 +142,10 @@ Run options:
   --seed <seed>         Set the first unsigned 64-bit seed; later trials increment it
   --build-hash <hash>   Run an existing immutable build instead of compiling current source
   --report-dir <path>   Write per-trial report bundles beneath this directory
+  --callback-receiver <id>=<origin>
+                        Route a world callback to a loopback HTTP origin; repeat per receiver
+  --callback-secret-env <id>=<variable>
+                        Read that receiver's signing secret from an environment variable
   --watch               Rerun after repository changes; JSON mode emits one object per line
 
 Tool contribution options:
@@ -177,12 +184,19 @@ Usage:
   firedrill [run] [drill-id] [--suite <id>] [--tag <tag>] [--filter <text>]
             [--shard <index>/<total>] [--trials <count>] [--retries <count>]
             [--concurrency <count>] [--seed <seed>] [--build-hash <hash>]
-            [--report-dir <path>] [--watch] [--json] [--root <path>]
+            [--report-dir <path>] [--callback-receiver <id>=<origin>]
+            [--callback-secret-env <id>=<variable>]
+            [--watch] [--json] [--root <path>]
 
 With no drill or suite, Firedrill runs every drill. Each trial gets an isolated
 world and terminal, JSON, JUnit, and self-contained HTML evidence. Exit 0 means
 every selected drill passed; exit 1 means a completed failure or runtime failure;
 exit 2 means the command or selection is invalid.
+
+Callbacks are opt-in runtime bindings. Repository source names a receiver id;
+--callback-receiver maps it to a loopback HTTP origin. Use
+--callback-secret-env when the callback contract requires HMAC signing. Secrets
+are read from the environment and never written to source or reports.
 `,
   validate: `Validate Firedrill source without executing Tool modules
 
@@ -257,13 +271,16 @@ const TOOL_HELP = `Inspect and prove selected Tool behavior
 Usage:
   firedrill tool inspect <tool-id> [--json] [--root <path>]
   firedrill tool validate <tool-id> [--json] [--root <path>]
-  firedrill tool test <tool-id> [--suite <id>] [--seed <seed>] [--json] [--root <path>]
+  firedrill tool test <tool-id> [--suite <id>] [--seed <seed>]
+            [--callback-receiver <id>=<origin>] [--callback-secret-env <id>=<variable>]
+            [--json] [--root <path>]
   firedrill tool contribute <tool-id> --accept-apache-2.0 [--output <path>]
 
 A selected Tool can come from this repository or from an installed package named
 once in firedrill.json under toolPackages. inspect never executes behavior.
 validate and test execute the selected module locally with your authority. test
 runs ordinary conformance drills twice and checks coverage and determinism.
+Callback Tools use the same explicit local receiver bindings as firedrill run.
 contribute is only for source owned by this repository; it never uploads source.
 `;
 
@@ -296,16 +313,19 @@ the developer's authority.
   test: `Run a Tool's selected conformance drills twice
 
 Usage:
-  firedrill tool test <tool-id> [--suite <id>] [--seed <seed>] [--json] [--root <path>]
+  firedrill tool test <tool-id> [--suite <id>] [--seed <seed>]
+            [--callback-receiver <id>=<origin>] [--callback-secret-env <id>=<variable>]
+            [--json] [--root <path>]
 
 The result must pass both runs, reproduce state and trajectory with the same seed,
-and exercise every declared operation, error, event, fault, and subscription.
+and exercise every declared operation, error, event, fault, subscription, and callback.
 `,
   contribute: `Prepare a local, reviewable Tool contribution bundle
 
 Usage:
   firedrill tool contribute <tool-id> --accept-apache-2.0 [--output <path>]
-            [--suite <id>] [--seed <seed>] [--json] [--root <path>]
+            [--suite <id>] [--seed <seed>] [--callback-receiver <id>=<origin>]
+            [--callback-secret-env <id>=<variable>] [--json] [--root <path>]
 
 The Tool must be authored in this repository; installed dependencies cannot be
 repackaged from a consumer project. The attestation confirms source rights,
@@ -388,6 +408,8 @@ function parseArguments(arguments_: readonly string[], cwd: string): ParsedArgum
   let filter: string | undefined;
   let shard: { index: number; total: number } | undefined;
   let reportDirectory: string | undefined;
+  const callbackReceiverOrigins: Record<string, string> = {};
+  const callbackSecretEnvironment: Record<string, string> = {};
   let contributionOutput: string | undefined;
   let buildHash: string | undefined;
   let seed: string | undefined;
@@ -432,6 +454,74 @@ function parseArguments(arguments_: readonly string[], cwd: string): ParsedArgum
         return { root, watch, json, check, help, error: "--report-dir requires a path" };
       }
       reportDirectory = resolve(cwd, value);
+      index += 1;
+      continue;
+    }
+    if (argument === "--callback-receiver") {
+      const value = arguments_[index + 1];
+      const separator = value?.indexOf("=") ?? -1;
+      const receiverId = separator > 0 ? value?.slice(0, separator) : undefined;
+      const origin = separator > 0 ? value?.slice(separator + 1) : undefined;
+      if (
+        receiverId === undefined ||
+        origin === undefined ||
+        origin.length === 0 ||
+        !StableIdSchema.safeParse(receiverId).success
+      ) {
+        return {
+          root,
+          watch,
+          json,
+          check,
+          help,
+          error: "--callback-receiver requires <receiver-id>=<loopback-origin>",
+        };
+      }
+      if (callbackReceiverOrigins[receiverId] !== undefined) {
+        return {
+          root,
+          watch,
+          json,
+          check,
+          help,
+          error: `callback receiver ${receiverId} was configured more than once`,
+        };
+      }
+      callbackReceiverOrigins[receiverId] = origin;
+      index += 1;
+      continue;
+    }
+    if (argument === "--callback-secret-env") {
+      const value = arguments_[index + 1];
+      const separator = value?.indexOf("=") ?? -1;
+      const receiverId = separator > 0 ? value?.slice(0, separator) : undefined;
+      const environmentVariable = separator > 0 ? value?.slice(separator + 1) : undefined;
+      if (
+        receiverId === undefined ||
+        environmentVariable === undefined ||
+        !StableIdSchema.safeParse(receiverId).success ||
+        !/^[A-Za-z_][A-Za-z0-9_]*$/.test(environmentVariable)
+      ) {
+        return {
+          root,
+          watch,
+          json,
+          check,
+          help,
+          error: "--callback-secret-env requires <receiver-id>=<environment-variable>",
+        };
+      }
+      if (callbackSecretEnvironment[receiverId] !== undefined) {
+        return {
+          root,
+          watch,
+          json,
+          check,
+          help,
+          error: `callback secret for ${receiverId} was configured more than once`,
+        };
+      }
+      callbackSecretEnvironment[receiverId] = environmentVariable;
       index += 1;
       continue;
     }
@@ -830,6 +920,8 @@ function parseArguments(arguments_: readonly string[], cwd: string): ParsedArgum
     ...(shard === undefined ? {} : { shard }),
     root,
     ...(reportDirectory === undefined ? {} : { reportDirectory }),
+    ...(Object.keys(callbackReceiverOrigins).length === 0 ? {} : { callbackReceiverOrigins }),
+    ...(Object.keys(callbackSecretEnvironment).length === 0 ? {} : { callbackSecretEnvironment }),
     ...(contributionOutput === undefined ? {} : { contributionOutput }),
     ...(buildHash === undefined ? {} : { buildHash }),
     ...(seed === undefined ? {} : { seed }),
@@ -848,6 +940,52 @@ function parseArguments(arguments_: readonly string[], cwd: string): ParsedArgum
 function location(diagnostic: Diagnostic): string {
   if (diagnostic.span === undefined) return "firedrill";
   return `${diagnostic.span.path}:${diagnostic.span.start.line}:${diagnostic.span.start.column}`;
+}
+
+function resolveCallbackReceivers(
+  parsed: ParsedArguments,
+  environment: Readonly<Record<string, string | undefined>>,
+): { readonly receivers?: Readonly<Record<string, CallbackReceiver>>; readonly error?: string } {
+  const origins = parsed.callbackReceiverOrigins ?? {};
+  const secretVariables = parsed.callbackSecretEnvironment ?? {};
+  for (const receiverId of Object.keys(secretVariables)) {
+    if (origins[receiverId] === undefined) {
+      return { error: `--callback-secret-env for ${receiverId} requires a matching --callback-receiver` };
+    }
+  }
+  const receivers: Record<string, CallbackReceiver> = {};
+  for (const [receiverId, baseUrl] of Object.entries(origins)) {
+    let url: URL;
+    try {
+      url = new URL(baseUrl);
+    } catch {
+      return { error: `callback receiver ${receiverId} has an invalid origin` };
+    }
+    if (
+      url.protocol !== "http:" ||
+      !["127.0.0.1", "localhost", "[::1]", "::1"].includes(url.hostname) ||
+      url.username.length > 0 ||
+      url.password.length > 0 ||
+      url.search.length > 0 ||
+      url.hash.length > 0 ||
+      (url.pathname !== "" && url.pathname !== "/")
+    ) {
+      return {
+        error: `callback receiver ${receiverId} must be a credential-free loopback HTTP origin`,
+      };
+    }
+    const variable = secretVariables[receiverId];
+    if (variable === undefined) {
+      receivers[receiverId] = { baseUrl: url.origin };
+      continue;
+    }
+    const secret = environment[variable];
+    if (secret === undefined || secret.length === 0) {
+      return { error: `callback receiver ${receiverId} requires environment variable ${variable}` };
+    }
+    receivers[receiverId] = { baseUrl: url.origin, secret };
+  }
+  return Object.keys(receivers).length === 0 ? {} : { receivers: Object.freeze(receivers) };
 }
 
 function writeDiagnostics(io: CliIo, diagnostics: readonly Diagnostic[]): void {
@@ -1082,7 +1220,7 @@ function writeToolInspection(io: CliIo, inspection: ToolInspection): void {
   );
   io.stdout.write(`Artifact ${inspection.artifact.artifactHash}\n`);
   io.stdout.write(
-    `${manifest.operations.length} operation${manifest.operations.length === 1 ? "" : "s"}; ${manifest.http.length} HTTP route${manifest.http.length === 1 ? "" : "s"}; ${manifest.state.length} state namespace${manifest.state.length === 1 ? "" : "s"}; ${manifest.events.length} event${manifest.events.length === 1 ? "" : "s"}; ${manifest.faults.length} fault${manifest.faults.length === 1 ? "" : "s"}; ${manifest.subscriptions.length} subscription${manifest.subscriptions.length === 1 ? "" : "s"}\n`,
+    `${manifest.operations.length} operation${manifest.operations.length === 1 ? "" : "s"}; ${manifest.http.length} HTTP route${manifest.http.length === 1 ? "" : "s"}; ${manifest.state.length} state namespace${manifest.state.length === 1 ? "" : "s"}; ${manifest.events.length} event${manifest.events.length === 1 ? "" : "s"}; ${manifest.callbacks.length} callback${manifest.callbacks.length === 1 ? "" : "s"}; ${manifest.faults.length} fault${manifest.faults.length === 1 ? "" : "s"}; ${manifest.subscriptions.length} subscription${manifest.subscriptions.length === 1 ? "" : "s"}\n`,
   );
   for (const operation of manifest.operations) {
     io.stdout.write(`  ${operation.id} — ${operation.fidelity}\n`);
@@ -1177,6 +1315,8 @@ async function toolCommand(parsed: ParsedArguments, io: CliIo): Promise<number> 
       }
       return 0;
     }
+    const callbacks = resolveCallbackReceivers(parsed, io.environment ?? process.env);
+    if (callbacks.error !== undefined) return writeUsageFailure(parsed, io, callbacks.error);
     if (parsed.toolCommand === "contribute") {
       const result = await prepareToolContribution({
         root: parsed.root,
@@ -1185,6 +1325,8 @@ async function toolCommand(parsed: ParsedArguments, io: CliIo): Promise<number> 
         ...(parsed.suite === undefined ? {} : { suite: parsed.suite }),
         ...(parsed.seed === undefined ? {} : { seed: parsed.seed }),
         ...(parsed.contributionOutput === undefined ? {} : { outputDirectory: parsed.contributionOutput }),
+        ...(callbacks.receivers === undefined ? {} : { callbackReceivers: callbacks.receivers }),
+        hostEnvironment: io.environment ?? process.env,
         ...(io.signal === undefined ? {} : { signal: io.signal }),
       });
       if (parsed.json) {
@@ -1206,6 +1348,8 @@ async function toolCommand(parsed: ParsedArguments, io: CliIo): Promise<number> 
       toolId: parsed.toolId,
       ...(parsed.suite === undefined ? {} : { suite: parsed.suite }),
       ...(parsed.seed === undefined ? {} : { seed: parsed.seed }),
+      ...(callbacks.receivers === undefined ? {} : { callbackReceivers: callbacks.receivers }),
+      hostEnvironment: io.environment ?? process.env,
       ...(io.signal === undefined ? {} : { signal: io.signal }),
     });
     if (parsed.json) writeJson(io, summarizedConformance(result));
@@ -1254,6 +1398,8 @@ async function toolCommand(parsed: ParsedArguments, io: CliIo): Promise<number> 
 }
 
 async function runCommand(parsed: ParsedArguments, io: CliIo): Promise<number> {
+  const callbacks = resolveCallbackReceivers(parsed, io.environment ?? process.env);
+  if (callbacks.error !== undefined) return writeUsageFailure(parsed, io, callbacks.error);
   try {
     const execution = await runDrills({
       root: parsed.root,
@@ -1268,6 +1414,8 @@ async function runCommand(parsed: ParsedArguments, io: CliIo): Promise<number> {
       ...(parsed.seed === undefined ? {} : { seed: parsed.seed }),
       ...(parsed.buildHash === undefined ? {} : { buildHash: parsed.buildHash }),
       ...(parsed.reportDirectory === undefined ? {} : { reportDirectory: parsed.reportDirectory }),
+      ...(callbacks.receivers === undefined ? {} : { callbackReceivers: callbacks.receivers }),
+      hostEnvironment: io.environment ?? process.env,
       ...(io.signal === undefined ? {} : { signal: io.signal }),
     });
     if (!parsed.json && execution.diagnostics.length > 0) {
@@ -1764,7 +1912,7 @@ export async function runCli(arguments_: readonly string[], io: CliIo): Promise<
       return writeUsageFailure(
         parsed,
         io,
-        "drill selection, retry, concurrency, build, and report options are only valid with run",
+        "drill selection, retry, concurrency, build, report, and callback options are only valid with run",
       );
     }
     if (command !== "run" && !toolExecution && (parsed.suite !== undefined || parsed.seed !== undefined)) {
@@ -1772,6 +1920,17 @@ export async function runCli(arguments_: readonly string[], io: CliIo): Promise<
         parsed,
         io,
         "--suite and --seed are only valid with run, tool test, or tool contribute",
+      );
+    }
+    if (
+      command !== "run" &&
+      !toolExecution &&
+      (parsed.callbackReceiverOrigins !== undefined || parsed.callbackSecretEnvironment !== undefined)
+    ) {
+      return writeUsageFailure(
+        parsed,
+        io,
+        "callback options are only valid with run, tool test, or tool contribute",
       );
     }
     const toolContribution = command === "tool" && parsed.toolCommand === "contribute";
