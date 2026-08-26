@@ -68,6 +68,75 @@ function createStore(
   });
 }
 
+function createScopedResetStore(directory: string) {
+  return SqliteWorldStore.create({
+    filePath: join(directory, "scoped-world.sqlite"),
+    worldInstanceId: "world_scoped01",
+    buildHash: HASH_A,
+    packageLockHash: HASH_B,
+    seed: "73",
+    virtualTimeUs: 1_000,
+    correlationId: "corr_scoped_create",
+    actors: [
+      {
+        bindingId: "actor_primary",
+        actorId: "developer",
+        attributes: {},
+        grants: [
+          { packageId: "calendar", operationId: "events.create" },
+          { packageId: "messaging", operationId: "messages.send" },
+        ],
+      },
+    ],
+    state: [
+      {
+        packageId: "calendar",
+        namespace: "events",
+        rowId: "event_0",
+        value: { title: "Baseline calendar" },
+      },
+      {
+        packageId: "messaging",
+        namespace: "messages",
+        rowId: "message_0",
+        value: { text: "Baseline message" },
+      },
+    ],
+    activeFaults: [
+      { packageId: "calendar", faultId: "slow-write" },
+      { packageId: "messaging", faultId: "delayed-send" },
+    ],
+  });
+}
+
+function enqueuePackageCallback(
+  store: SqliteWorldStore,
+  packageId: "calendar" | "messaging",
+): CallbackDeliveryId {
+  return store.transact(`corr_${packageId}_callback`, (transaction) => {
+    const payload = { itemId: `${packageId}_1` };
+    const deliveryId = transaction.enqueueCallback({
+      callback: { packageId, callbackId: "notify-application" },
+      receiverId: "application",
+      event: { packageId, eventId: "item.changed" },
+      payload,
+      eventSequence: transaction.primarySequence,
+      dueUs: transaction.virtualTimeUs,
+      actorBindingId: "actor_primary",
+      retryDelaysUs: [1_000],
+    });
+    return {
+      value: deliveryId,
+      primary: {
+        kind: "event",
+        event: { packageId, eventId: "item.changed" },
+        phase: "emitted",
+        payload,
+      },
+    };
+  }).value;
+}
+
 function enqueueReminder(
   store: SqliteWorldStore,
   retryDelaysUs: readonly VirtualTime[] = [1_000],
@@ -490,6 +559,232 @@ describe("SQLite snapshots, reset, and fork", () => {
 
     const secondSnapshotId = store.createSnapshot(join(directory, "after-reset.sqlite"), "corr_snap002");
     expect(secondSnapshotId).not.toBe(firstSnapshotId);
+    store.close();
+  });
+
+  it("restores selected Tool-owned runtime state without rewinding unrelated Tools or global time", () => {
+    const directory = temporaryDirectory();
+    const store = createScopedResetStore(directory);
+    const scheduled = store.transact("corr_scoped_baseline", (transaction) => {
+      const calendarEvent = transaction.scheduleEvent(
+        { packageId: "calendar", eventId: "reminder.due" },
+        { id: "calendar_1" },
+        5_000,
+        "actor_primary",
+      );
+      const messagingEvent = transaction.scheduleEvent(
+        { packageId: "messaging", eventId: "delivery.due" },
+        { id: "message_1" },
+        6_000,
+        "actor_primary",
+      );
+      transaction.putIdempotencyReceipt(INVOCATION, "sha256:calendar-baseline", SUCCESS);
+      transaction.putIdempotencyReceipt(
+        {
+          ...INVOCATION,
+          callId: "call_message01",
+          operation: { packageId: "messaging", operationId: "messages.send" },
+          idempotencyKey: "message-request-1",
+        },
+        "sha256:message-baseline",
+        { status: "ok", value: { id: "message_1" } },
+      );
+      return {
+        value: { calendarEvent, messagingEvent },
+        primary: { kind: "clock", fromUs: 1_000, toUs: 1_000, reason: "explicit" },
+      };
+    }).value;
+    const calendarCallback = enqueuePackageCallback(store, "calendar");
+    const messagingCallback = enqueuePackageCallback(store, "messaging");
+    const snapshotPath = join(directory, "scoped-baseline.sqlite");
+    store.createSnapshot(snapshotPath, "corr_scoped_snapshot");
+
+    store.transact("corr_scoped_mutate", (transaction) => {
+      transaction.putState("calendar", "events", "event_0", { title: "Changed calendar" });
+      transaction.putState("calendar", "events", "runtime-only", { title: "Remove me" });
+      transaction.putState("messaging", "messages", "message_0", { text: "Changed message" });
+      transaction.claimScheduledEvent(scheduled.calendarEvent, "fired");
+      transaction.claimScheduledEvent(scheduled.messagingEvent, "fired");
+      transaction.nextRandomU64("calendar");
+      transaction.setVirtualTime(9_000);
+      transaction.putIdempotencyReceipt(
+        { ...INVOCATION, callId: "call_store02", idempotencyKey: "request-runtime" },
+        "sha256:calendar-runtime",
+        { status: "ok", value: { id: "event_runtime" } },
+      );
+      return {
+        value: undefined,
+        primary: { kind: "clock", fromUs: 1_000, toUs: 9_000, reason: "explicit" },
+      };
+    });
+    store.transact("corr_calendar_started", (transaction) =>
+      callbackResult(transaction.startCallbackAttempt(calendarCallback, CALLBACK_REQUEST)),
+    );
+    store.transact("corr_calendar_failed", (transaction) =>
+      callbackResult(
+        transaction.settleCallbackAttempt(calendarCallback, {
+          status: "failed",
+          attempt: 1,
+          error: { code: "framework.CALLBACK_REJECTED", message: "rejected", retryable: false },
+          durationMs: 1,
+        }),
+      ),
+    );
+    store.transact("corr_message_started", (transaction) =>
+      callbackResult(transaction.startCallbackAttempt(messagingCallback, CALLBACK_REQUEST)),
+    );
+    store.transact("corr_message_done", (transaction) =>
+      callbackResult(
+        transaction.settleCallbackAttempt(messagingCallback, {
+          status: "delivered",
+          attempt: 1,
+          response: CALLBACK_RESPONSE,
+          durationMs: 1,
+        }),
+      ),
+    );
+
+    const summary = store.resetPackagesFromSnapshot(
+      snapshotPath,
+      ["calendar", "calendar"],
+      "corr_scoped_reset",
+    );
+
+    expect(summary).toEqual({
+      packages: ["calendar"],
+      stateChanges: 2,
+      activeFaultsRestored: 1,
+      scheduledEventsRestored: 1,
+      callbacksRestored: 1,
+      idempotencyReceiptsRestored: 1,
+    });
+    expect(store.readState("calendar", "events", "event_0")?.value.title).toBe("Baseline calendar");
+    expect(store.readState("calendar", "events", "runtime-only")).toBeNull();
+    expect(store.readState("messaging", "messages", "message_0")?.value.text).toBe("Changed message");
+    expect(store.listScheduledEvents("pending").map((event) => event.id)).toEqual([scheduled.calendarEvent]);
+    expect(store.listScheduledEvents("fired").map((event) => event.id)).toEqual([scheduled.messagingEvent]);
+    expect(store.listCallbackDeliveries("pending").map((delivery) => delivery.id)).toEqual([
+      calendarCallback,
+    ]);
+    expect(store.listCallbackDeliveries("delivered").map((delivery) => delivery.id)).toEqual([
+      messagingCallback,
+    ]);
+    expect(store.metadata()).toMatchObject({ virtualTimeUs: 9_000, randomDraws: 1 });
+    const receipts = store.transact("corr_scoped_inspect", (transaction) => ({
+      value: {
+        baseline: transaction.getIdempotencyReceipt(INVOCATION),
+        runtime: transaction.getIdempotencyReceipt({
+          ...INVOCATION,
+          callId: "call_store02",
+          idempotencyKey: "request-runtime",
+        }),
+        faults: transaction.activeFaultIds("calendar"),
+      },
+      primary: { kind: "clock", fromUs: 9_000, toUs: 9_000, reason: "explicit" },
+    })).value;
+    expect(receipts).toMatchObject({
+      baseline: { requestHash: "sha256:calendar-baseline" },
+      runtime: null,
+      faults: ["slow-write"],
+    });
+    expect(
+      store
+        .readEvidence()
+        .filter((entry) => entry.kind === "lifecycle" && entry.action === "world_reset")
+        .at(-1),
+    ).toMatchObject({
+      details: { scope: "packages", packages: ["calendar"], stateChanges: 2 },
+    });
+    store.close();
+  });
+
+  it("rejects package reset from another world or while a selected callback is in flight", () => {
+    const directory = temporaryDirectory();
+    const store = createScopedResetStore(directory);
+    const callback = enqueuePackageCallback(store, "calendar");
+    const snapshotPath = join(directory, "scoped-safe.sqlite");
+    store.createSnapshot(snapshotPath, "corr_scoped_safe");
+    store.transact("corr_scoped_started", (transaction) =>
+      callbackResult(transaction.startCallbackAttempt(callback, CALLBACK_REQUEST)),
+    );
+    const stateHash = store.stateHash();
+    const evidenceHash = store.evidenceHash();
+    expect(() => store.resetPackagesFromSnapshot(snapshotPath, ["calendar"], "corr_scoped_inflight")).toThrow(
+      /while callback .* is in flight/,
+    );
+    expect(store.stateHash()).toBe(stateHash);
+    expect(store.evidenceHash()).toBe(evidenceHash);
+    store.transact("corr_scoped_recover", (transaction) =>
+      callbackResult(transaction.recoverCallbackAttempt(callback)),
+    );
+
+    const other = createStore(directory, "other.sqlite");
+    const otherSnapshot = join(directory, "other-baseline.sqlite");
+    other.createSnapshot(otherSnapshot, "corr_other_snapshot");
+    other.close();
+    expect(() => store.resetPackagesFromSnapshot(otherSnapshot, ["calendar"], "corr_scoped_other")).toThrow(
+      /different world instance/,
+    );
+    store.close();
+  });
+
+  it("rejects a whole-world reset while a callback outcome is unknown", () => {
+    const directory = temporaryDirectory();
+    const store = createScopedResetStore(directory);
+    const callback = enqueuePackageCallback(store, "calendar");
+    const snapshotPath = join(directory, "whole-world-safe.sqlite");
+    store.createSnapshot(snapshotPath, "corr_whole_safe");
+    store.transact("corr_whole_started", (transaction) =>
+      callbackResult(transaction.startCallbackAttempt(callback, CALLBACK_REQUEST)),
+    );
+    const stateHash = store.stateHash();
+    const evidenceHash = store.evidenceHash();
+
+    expect(() => store.resetFromSnapshot(snapshotPath, "corr_whole_inflight")).toThrow(
+      /while callback .* is in flight/,
+    );
+    expect(store.stateHash()).toBe(stateHash);
+    expect(store.evidenceHash()).toBe(evidenceHash);
+    expect(store.listCallbackDeliveries("in_flight")).toHaveLength(1);
+    store.close();
+  });
+
+  it("rolls back every selected resource when a scoped restore cannot commit", () => {
+    const directory = temporaryDirectory();
+    const store = createScopedResetStore(directory);
+    const calendarCallback = enqueuePackageCallback(store, "calendar");
+    const messagingCallback = enqueuePackageCallback(store, "messaging");
+    const snapshotPath = join(directory, "conflicting-scoped-baseline.sqlite");
+    store.createSnapshot(snapshotPath, "corr_conflict_snapshot");
+    store.transact("corr_conflict_mutate", (transaction) => {
+      transaction.putState("calendar", "events", "event_0", { title: "Must survive failure" });
+      return {
+        value: undefined,
+        primary: { kind: "clock", fromUs: 1_000, toUs: 1_000, reason: "explicit" },
+      };
+    });
+
+    const baseline = new Database(snapshotPath);
+    baseline.prepare("DELETE FROM callback_deliveries WHERE id = ?").run(messagingCallback);
+    baseline
+      .prepare("UPDATE callback_deliveries SET id = ? WHERE id = ?")
+      .run(messagingCallback, calendarCallback);
+    baseline.close();
+    const beforeState = store.stateHash();
+    const beforeEvidence = store.evidenceHash();
+
+    expect(() => store.resetPackagesFromSnapshot(snapshotPath, ["calendar"], "corr_conflict_reset")).toThrow(
+      /UNIQUE constraint failed/,
+    );
+    expect(store.stateHash()).toBe(beforeState);
+    expect(store.evidenceHash()).toBe(beforeEvidence);
+    expect(store.readState("calendar", "events", "event_0")?.value).toEqual({
+      title: "Must survive failure",
+    });
+    expect(store.listCallbackDeliveries().map((delivery) => delivery.id)).toEqual([
+      calendarCallback,
+      messagingCallback,
+    ]);
     store.close();
   });
 

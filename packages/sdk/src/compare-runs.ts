@@ -1,7 +1,7 @@
 import { resolve } from "node:path";
 import { LocalReportVerificationError, compareLocalReports } from "@firedrill/reporters";
 import type { LocalRunComparison } from "@firedrill/reporters";
-import { FiredrillProjectError } from "./run-drills.js";
+import { FiredrillProjectError } from "./project-error.js";
 
 export interface CompareRunsOptions {
   readonly baselineReport: string;

@@ -69,6 +69,8 @@ Each target declares `direct`, `http`, `mcp`, or `cli` bindings. Adapt the agent
 
 When the synthetic world must call back into the application under test, a Tool can declare a durable callback driven by one of its events. The repository names an abstract receiver; the CLI or SDK maps it to a local application origin at run time. See [callbacks](docs/callbacks.md) for delivery, signatures, virtual-time retries, evidence, and assertions.
 
+Custom test harnesses and the local inspector can use the high-level [`createLocalWorld()` control API](docs/local-world-control.md) to call Tools, inspect state and pending work, advance virtual time, and reset the complete world or selected Tool packages. This control handle is separate from the actor-scoped binding supplied to the agent.
+
 The agent process continues to own its model/provider configuration and secrets. Firedrill supplies only per-trial synthetic-world connection values. A command target may opt into individual host variables with `environmentFromHost`; every unlisted host secret is withheld.
 
 ```ts

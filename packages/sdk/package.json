@@ -37,7 +37,9 @@
     "@firedrill/drills": "workspace:*",
     "@firedrill/reporters": "workspace:*",
     "@firedrill/world-build": "workspace:*",
-    "@firedrill/world-kernel": "workspace:*"
+    "@firedrill/world-kernel": "workspace:*",
+    "@firedrill/world-store": "workspace:*",
+    "@firedrill/world-store-sqlite": "workspace:*"
   },
   "devDependencies": {
     "typescript": "5.9.3",

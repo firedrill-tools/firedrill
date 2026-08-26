@@ -7,6 +7,8 @@ import {
   CorrelationIdSchema,
   EvidenceEntrySchema,
   JsonObjectSchema,
+  OperationIdSchema,
+  OperationOutcomeSchema,
   OperationRefSchema,
   PackageIdSchema,
   SeedSchema,
@@ -16,6 +18,7 @@ import {
   VirtualTimeSchema,
   WorldInstanceIdSchema,
   canonicalJson,
+  compareStableStrings,
 } from "@firedrill/contracts";
 import type {
   CorrelationId,
@@ -29,6 +32,7 @@ import type {
 import type {
   CallbackDelivery,
   CommittedWorldTransaction,
+  PackageResetSummary,
   ScheduledEvent,
   StateScanOptions,
   StoredStateRecord,
@@ -70,6 +74,21 @@ interface ScheduledRow {
   actor_binding_id: string;
   cause_sequence: number;
   status: ScheduledEvent["status"];
+}
+
+interface FaultRow {
+  package_id: string;
+  fault_id: string;
+}
+
+interface ReceiptRestoreRow {
+  package_id: string;
+  operation_id: string;
+  actor_binding_id: string;
+  idempotency_key: string;
+  request_hash: string;
+  outcome_json: string;
+  first_sequence: number;
 }
 
 function normalizeLimit(limit: number | undefined): number {
@@ -480,6 +499,12 @@ export class SqliteWorldStore implements WorldStore {
 
   resetFromSnapshot(sourcePath: string, correlationId: CorrelationId): void {
     this.assertOpen();
+    const inFlight = this.database
+      .prepare("SELECT id FROM callback_deliveries WHERE status = 'in_flight' ORDER BY id LIMIT 1")
+      .get() as { id: string } | undefined;
+    if (inFlight !== undefined) {
+      throw new Error(`cannot reset the world while callback ${inFlight.id} is in flight`);
+    }
     const source = resolve(sourcePath);
     if (source === this.filePath) throw new Error("reset source must differ from the active database");
     const parsedCorrelation = CorrelationIdSchema.parse(correlationId);
@@ -569,6 +594,271 @@ export class SqliteWorldStore implements WorldStore {
     } finally {
       safeRemoveDatabase(temporary);
       if (!this.closed) safeRemoveDatabase(backup);
+    }
+  }
+
+  resetPackagesFromSnapshot(
+    sourcePath: string,
+    packageIds: readonly PackageId[],
+    correlationId: CorrelationId,
+  ): PackageResetSummary {
+    this.assertOpen();
+    const source = resolve(sourcePath);
+    if (source === this.filePath)
+      throw new Error("package reset source must differ from the active database");
+    const packages = [...new Set(packageIds.map((packageId) => PackageIdSchema.parse(packageId)))].sort(
+      compareStableStrings,
+    );
+    if (packages.length === 0) throw new RangeError("package reset requires at least one Tool package");
+    if (packages.length > 256) throw new RangeError("package reset supports at most 256 Tool packages");
+    const parsedCorrelation = CorrelationIdSchema.parse(correlationId);
+    const currentMetadata = this.metadata();
+    for (const packageId of packages) {
+      const inFlight = this.database
+        .prepare(
+          `SELECT id FROM callback_deliveries
+           WHERE status = 'in_flight' AND (package_id = ? OR event_package_id = ?) LIMIT 1`,
+        )
+        .get(packageId, packageId) as { id: string } | undefined;
+      if (inFlight !== undefined) {
+        throw new Error(`cannot reset Tool package ${packageId} while callback ${inFlight.id} is in flight`);
+      }
+    }
+
+    const baseline = new Database(source, { readonly: true, fileMustExist: true });
+    try {
+      assertSupportedSchema(baseline);
+      assertIntegrity(baseline);
+      const baselineMeta = (key: string): string => {
+        const row = baseline.prepare("SELECT value FROM world_meta WHERE key = ?").get(key) as
+          | { value: string }
+          | undefined;
+        if (row === undefined) throw new Error(`reset snapshot metadata ${key} is missing`);
+        return row.value;
+      };
+      const baselineWorldId = WorldInstanceIdSchema.parse(baselineMeta("world_instance_id"));
+      const baselineBuildHash = Sha256Schema.parse(baselineMeta("build_hash"));
+      const baselinePackageLockHash = Sha256Schema.parse(baselineMeta("package_lock_hash"));
+      if (baselineWorldId !== currentMetadata.worldInstanceId) {
+        throw new Error("package reset snapshot belongs to a different world instance");
+      }
+      if (baselineBuildHash !== currentMetadata.buildHash) {
+        throw new Error("package reset snapshot belongs to a different world build");
+      }
+      if (baselinePackageLockHash !== currentMetadata.packageLockHash) {
+        throw new Error("package reset snapshot belongs to a different Tool package lock");
+      }
+
+      const baselineState: StateRow[] = [];
+      const baselineFaults: FaultRow[] = [];
+      const baselineEvents = new Map<string, ScheduledRow>();
+      const baselineCallbacks = new Map<string, CallbackRow>();
+      const baselineReceipts: ReceiptRestoreRow[] = [];
+      for (const packageId of packages) {
+        baselineState.push(
+          ...(baseline
+            .prepare(
+              "SELECT package_id, namespace, row_id, value_json FROM world_state WHERE package_id = ? ORDER BY namespace, row_id",
+            )
+            .all(packageId) as StateRow[]),
+        );
+        baselineFaults.push(
+          ...(baseline
+            .prepare("SELECT package_id, fault_id FROM active_faults WHERE package_id = ? ORDER BY fault_id")
+            .all(packageId) as FaultRow[]),
+        );
+        for (const row of baseline
+          .prepare(
+            `SELECT id, package_id, event_id, payload_json, due_us, correlation_id,
+                    actor_binding_id, cause_sequence, status
+             FROM scheduled_events WHERE package_id = ? ORDER BY id`,
+          )
+          .all(packageId) as ScheduledRow[]) {
+          baselineEvents.set(row.id, row);
+        }
+        for (const row of baseline
+          .prepare(
+            `SELECT ${CALLBACK_COLUMNS} FROM callback_deliveries
+             WHERE package_id = ? OR event_package_id = ? ORDER BY id`,
+          )
+          .all(packageId, packageId) as CallbackRow[]) {
+          baselineCallbacks.set(row.id, row);
+        }
+        baselineReceipts.push(
+          ...(baseline
+            .prepare(
+              `SELECT package_id, operation_id, actor_binding_id, idempotency_key,
+                      request_hash, outcome_json, first_sequence
+               FROM idempotency_receipts WHERE package_id = ?
+               ORDER BY operation_id, actor_binding_id, idempotency_key`,
+            )
+            .all(packageId) as ReceiptRestoreRow[]),
+        );
+      }
+
+      const normalizedState = baselineState.map(stateRecord);
+      const normalizedFaults = baselineFaults.map((row) => ({
+        packageId: PackageIdSchema.parse(row.package_id),
+        faultId: StableIdSchema.parse(row.fault_id),
+      }));
+      const normalizedEvents = [...baselineEvents.values()].map(scheduledEvent);
+      const normalizedCallbacks = [...baselineCallbacks.values()].map(callbackDelivery);
+      const normalizedReceipts = baselineReceipts.map((row) => ({
+        packageId: PackageIdSchema.parse(row.package_id),
+        operationId: OperationIdSchema.parse(row.operation_id),
+        actorBindingId: ActorBindingIdSchema.parse(row.actor_binding_id),
+        idempotencyKey: row.idempotency_key,
+        requestHash: row.request_hash,
+        outcome: OperationOutcomeSchema.parse(JSON.parse(row.outcome_json)),
+        firstSequence: decodeStoredCount(String(row.first_sequence), "idempotency receipt sequence"),
+      }));
+
+      return this.transact(parsedCorrelation, (transaction) => {
+        const baselineByStateKey = new Map(
+          normalizedState.map((record) => [
+            `${record.packageId}\u0000${record.namespace}\u0000${record.rowId}`,
+            record,
+          ]),
+        );
+        const currentState: StoredStateRecord[] = [];
+        for (const packageId of packages) {
+          currentState.push(
+            ...(
+              this.database
+                .prepare(
+                  "SELECT package_id, namespace, row_id, value_json FROM world_state WHERE package_id = ? ORDER BY namespace, row_id",
+                )
+                .all(packageId) as StateRow[]
+            ).map(stateRecord),
+          );
+        }
+        const currentByStateKey = new Map(
+          currentState.map((record) => [
+            `${record.packageId}\u0000${record.namespace}\u0000${record.rowId}`,
+            record,
+          ]),
+        );
+        let stateChanges = 0;
+        for (const [key, record] of currentByStateKey) {
+          if (baselineByStateKey.has(key)) continue;
+          if (transaction.deleteState(record.packageId, record.namespace, record.rowId)) stateChanges += 1;
+        }
+        for (const [key, record] of baselineByStateKey) {
+          const current = currentByStateKey.get(key);
+          if (current !== undefined && canonicalJson(current.value) === canonicalJson(record.value)) continue;
+          transaction.putState(record.packageId, record.namespace, record.rowId, record.value);
+          stateChanges += 1;
+        }
+
+        const deleteOwned = (table: string, packageId: PackageId) => {
+          this.database.prepare(`DELETE FROM ${table} WHERE package_id = ?`).run(packageId);
+        };
+        for (const packageId of packages) {
+          deleteOwned("active_faults", packageId);
+          deleteOwned("scheduled_events", packageId);
+          deleteOwned("idempotency_receipts", packageId);
+          this.database
+            .prepare("DELETE FROM callback_deliveries WHERE package_id = ? OR event_package_id = ?")
+            .run(packageId, packageId);
+        }
+
+        const insertFault = this.database.prepare(
+          "INSERT INTO active_faults (package_id, fault_id) VALUES (?, ?)",
+        );
+        for (const fault of normalizedFaults) insertFault.run(fault.packageId, fault.faultId);
+
+        const insertEvent = this.database.prepare(
+          `INSERT INTO scheduled_events
+           (id, package_id, event_id, payload_json, due_us, correlation_id,
+            actor_binding_id, cause_sequence, status)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        );
+        for (const event of normalizedEvents) {
+          insertEvent.run(
+            event.id,
+            event.event.packageId,
+            event.event.eventId,
+            encodeJson(event.payload),
+            event.dueUs,
+            event.correlationId,
+            event.actorBindingId,
+            event.causeSequence,
+            event.status,
+          );
+        }
+
+        const insertCallback = this.database.prepare(
+          `INSERT INTO callback_deliveries
+           (id, package_id, callback_id, receiver_id, event_package_id, event_id, payload_json,
+            event_sequence, due_us, correlation_id, actor_binding_id, status, attempt_count,
+            retry_delays_json)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        );
+        for (const callback of normalizedCallbacks) {
+          insertCallback.run(
+            callback.id,
+            callback.callback.packageId,
+            callback.callback.callbackId,
+            callback.receiverId,
+            callback.event.packageId,
+            callback.event.eventId,
+            encodeJson(callback.payload),
+            callback.eventSequence,
+            callback.dueUs,
+            callback.correlationId,
+            callback.actorBindingId,
+            callback.status,
+            callback.attemptCount,
+            encodeJson([...callback.retryDelaysUs]),
+          );
+        }
+
+        const insertReceipt = this.database.prepare(
+          `INSERT INTO idempotency_receipts
+           (package_id, operation_id, actor_binding_id, idempotency_key,
+            request_hash, outcome_json, first_sequence)
+           VALUES (?, ?, ?, ?, ?, ?, ?)`,
+        );
+        for (const receipt of normalizedReceipts) {
+          insertReceipt.run(
+            receipt.packageId,
+            receipt.operationId,
+            receipt.actorBindingId,
+            receipt.idempotencyKey,
+            receipt.requestHash,
+            encodeJson(receipt.outcome as JsonValue),
+            receipt.firstSequence,
+          );
+        }
+
+        const summary: PackageResetSummary = {
+          packages,
+          stateChanges,
+          activeFaultsRestored: normalizedFaults.length,
+          scheduledEventsRestored: normalizedEvents.length,
+          callbacksRestored: normalizedCallbacks.length,
+          idempotencyReceiptsRestored: normalizedReceipts.length,
+        };
+        return {
+          value: summary,
+          primary: {
+            kind: "lifecycle",
+            action: "world_reset",
+            worldInstanceId: currentMetadata.worldInstanceId,
+            details: {
+              scope: "packages",
+              packages: [...packages],
+              stateChanges,
+              activeFaultsRestored: normalizedFaults.length,
+              scheduledEventsRestored: normalizedEvents.length,
+              callbacksRestored: normalizedCallbacks.length,
+              idempotencyReceiptsRestored: normalizedReceipts.length,
+            },
+          },
+        };
+      }).value;
+    } finally {
+      baseline.close();
     }
   }
 

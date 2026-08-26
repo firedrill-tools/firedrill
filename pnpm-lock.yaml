@@ -338,6 +338,12 @@ importers:
       '@firedrill/world-kernel':
         specifier: workspace:*
         version: link:../world-kernel
+      '@firedrill/world-store':
+        specifier: workspace:*
+        version: link:../world-store
+      '@firedrill/world-store-sqlite':
+        specifier: workspace:*
+        version: link:../world-store-sqlite
     devDependencies:
       typescript:
         specifier: 5.9.3

@@ -1,12 +1,10 @@
 import { createHash } from "node:crypto";
 import { join, resolve } from "node:path";
-import { compileWorld } from "@firedrill/compiler";
 import type {
   ActorId,
   Diagnostic,
   DrillShard,
   EvidenceEntry,
-  JsonObject,
   JsonValue,
   RunId,
   RunResult,
@@ -15,13 +13,7 @@ import type {
   StableId,
   TargetInvocation,
 } from "@firedrill/contracts";
-import {
-  DrillShardSchema,
-  SeedSchema,
-  Sha256Schema,
-  StableIdSchema,
-  compareStableStrings,
-} from "@firedrill/contracts";
+import { DrillShardSchema, SeedSchema, StableIdSchema, compareStableStrings } from "@firedrill/contracts";
 import type {
   CallbackReceiver,
   DrillExecution,
@@ -32,46 +24,9 @@ import { runDrill } from "@firedrill/drills";
 import type { WrittenLocalReport } from "@firedrill/reporters";
 import { verifyLocalReport, writeLocalReport } from "@firedrill/reporters";
 import type { LoadedWorldBuild } from "@firedrill/world-build";
-import { loadWorldBuild } from "@firedrill/world-build";
 import type { BoundWorldClient } from "@firedrill/world-kernel";
-
-export type FiredrillProjectErrorCode =
-  | "framework.AGENT_CALLBACK_UNUSED"
-  | "framework.BUILD_HASH_MISMATCH"
-  | "framework.BUILD_INVALID"
-  | "framework.DRILL_NOT_FOUND"
-  | "framework.INTERNAL_ERROR"
-  | "framework.INVALID_ARGUMENT"
-  | "framework.NO_DRILLS"
-  | "framework.NO_DRILLS_SELECTED"
-  | "framework.REPORT_INVALID"
-  | "framework.SUITE_NOT_FOUND"
-  | "framework.SOURCE_INVALID"
-  | "framework.TOOL_CONFORMANCE_FAILED"
-  | "framework.TOOL_CONFORMANCE_SUITE_REQUIRED"
-  | "framework.TOOL_CONTRIBUTION_ATTESTATION_REQUIRED"
-  | "framework.TOOL_CONTRIBUTION_EXISTS"
-  | "framework.TOOL_CONTRIBUTION_SOURCE_REQUIRED"
-  | "framework.TOOL_CONTRIBUTION_UNSAFE"
-  | "framework.TOOL_NOT_FOUND";
-
-export class FiredrillProjectError extends Error {
-  readonly code: FiredrillProjectErrorCode;
-  readonly diagnostics: readonly Diagnostic[];
-  readonly details: JsonObject;
-
-  constructor(
-    code: FiredrillProjectErrorCode,
-    message: string,
-    options: { readonly diagnostics?: readonly Diagnostic[]; readonly details?: JsonObject } = {},
-  ) {
-    super(message);
-    this.name = "FiredrillProjectError";
-    this.code = code;
-    this.diagnostics = options.diagnostics ?? [];
-    this.details = options.details ?? {};
-  }
-}
+import { prepareExecutableBuild } from "./project-build.js";
+import { FiredrillProjectError } from "./project-error.js";
 
 export interface AgentBinding {
   /** Environment variables understood by subprocesses and standard protocol clients. */
@@ -215,55 +170,6 @@ export interface RunDrillsHooks {
     context: RunDrillContext &
       DrillTrialHookContext & { readonly execution: DrillExecution["trials"][number] },
   ) => void | Promise<void>;
-}
-
-async function executableBuild(
-  root: string,
-  buildHash?: string,
-): Promise<{ readonly build: LoadedWorldBuild; readonly diagnostics: readonly Diagnostic[] }> {
-  if (buildHash !== undefined) {
-    const parsed = Sha256Schema.safeParse(buildHash);
-    if (!parsed.success) {
-      throw new FiredrillProjectError(
-        "framework.INVALID_ARGUMENT",
-        "buildHash must be a sha256:<64 lowercase hex> value",
-      );
-    }
-    const directory = join(root, ".firedrill", "builds", parsed.data.slice("sha256:".length));
-    const loaded = await loadWorldBuild(directory);
-    if (loaded.status === "failed") {
-      throw new FiredrillProjectError("framework.BUILD_INVALID", "the requested build is unavailable", {
-        diagnostics: loaded.diagnostics,
-        details: { buildHash: parsed.data },
-      });
-    }
-    if (loaded.build.manifest.buildHash !== parsed.data) {
-      throw new FiredrillProjectError(
-        "framework.BUILD_HASH_MISMATCH",
-        "the loaded build does not match buildHash",
-        { details: { expected: parsed.data, actual: loaded.build.manifest.buildHash } },
-      );
-    }
-    return { build: loaded.build, diagnostics: [] };
-  }
-
-  const compiled = await compileWorld({ repositoryRoot: root, materialize: true });
-  if (compiled.status === "failed") {
-    throw new FiredrillProjectError("framework.SOURCE_INVALID", "Firedrill source is invalid", {
-      diagnostics: compiled.diagnostics,
-    });
-  }
-  const directory = compiled.build.buildDirectory;
-  if (directory === undefined) {
-    throw new FiredrillProjectError("framework.BUILD_INVALID", "the compiler produced no executable build");
-  }
-  const loaded = await loadWorldBuild(directory);
-  if (loaded.status === "failed") {
-    throw new FiredrillProjectError("framework.BUILD_INVALID", "the compiled build failed verification", {
-      diagnostics: loaded.diagnostics,
-    });
-  }
-  return { build: loaded.build, diagnostics: compiled.diagnostics };
 }
 
 interface ValidatedRunOptions {
@@ -582,7 +488,7 @@ function drillStatistics(
 export async function runDrills(options: RunDrillsOptions = {}): Promise<RunDrillsResult> {
   const root = resolve(options.root ?? process.cwd());
   const validated = validateOptions(options);
-  const preparedBuild = await executableBuild(root, options.buildHash);
+  const preparedBuild = await prepareExecutableBuild(root, options.buildHash);
   const build = preparedBuild.build;
   if (validated.callbackReceivers !== undefined) {
     const declaredReceivers = new Set(

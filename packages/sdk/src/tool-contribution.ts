@@ -4,7 +4,7 @@ import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { Sha256 } from "@firedrill/contracts";
 import { compareStableStrings } from "@firedrill/contracts";
-import { FiredrillProjectError } from "./run-drills.js";
+import { FiredrillProjectError } from "./project-error.js";
 import { inspectTool, testTool } from "./tool-authoring.js";
 import type { TestToolOptions, ToolConformanceResult } from "./tool-authoring.js";
 

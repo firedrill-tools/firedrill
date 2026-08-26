@@ -1,7 +1,7 @@
 import { resolve } from "node:path";
 import type { VerifiedLocalReport } from "@firedrill/reporters";
 import { LocalReportVerificationError, verifyLocalReport } from "@firedrill/reporters";
-import { FiredrillProjectError } from "./run-drills.js";
+import { FiredrillProjectError } from "./project-error.js";
 
 export interface VerifyReportOptions {
   /** Directory containing a Firedrill local report bundle. */

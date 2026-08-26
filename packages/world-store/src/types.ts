@@ -276,7 +276,21 @@ export interface WorldStore {
   evidenceHash(): string;
   createSnapshot(destinationPath: string, correlationId: CorrelationId): SnapshotId;
   resetFromSnapshot(sourcePath: string, correlationId: CorrelationId): void;
+  resetPackagesFromSnapshot(
+    sourcePath: string,
+    packageIds: readonly PackageId[],
+    correlationId: CorrelationId,
+  ): PackageResetSummary;
   close(): void;
+}
+
+export interface PackageResetSummary {
+  readonly packages: readonly PackageId[];
+  readonly stateChanges: number;
+  readonly activeFaultsRestored: number;
+  readonly scheduledEventsRestored: number;
+  readonly callbacksRestored: number;
+  readonly idempotencyReceiptsRestored: number;
 }
 
 export interface WorldStoreFailure {

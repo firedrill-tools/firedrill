@@ -14,7 +14,8 @@ import type {
 import { loadWorldBuild } from "@firedrill/world-build";
 import type { LoadedWorldBuild } from "@firedrill/world-build";
 import type { CallbackReceiver } from "@firedrill/drills";
-import { FiredrillProjectError, runDrills } from "./run-drills.js";
+import { FiredrillProjectError } from "./project-error.js";
+import { runDrills } from "./run-drills.js";
 import type { AgentCallback, RunDrillsResult } from "./run-drills.js";
 
 export interface ToolInspection {
