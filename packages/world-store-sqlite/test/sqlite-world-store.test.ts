@@ -10,7 +10,7 @@ import type {
 import type { CallbackTransition, WorldTransaction } from "@firedrill/world-store";
 import Database from "better-sqlite3";
 import { afterEach, describe, expect, it } from "vitest";
-import { SqliteWorldStore } from "../src/index.js";
+import { SqliteWorldReader, SqliteWorldStore } from "../src/index.js";
 
 const HASH_A = `sha256:${"a".repeat(64)}` as const;
 const HASH_B = `sha256:${"b".repeat(64)}` as const;
@@ -191,6 +191,42 @@ afterEach(() => {
 });
 
 describe("SQLite world transactions", () => {
+  it("provides a query-only concurrent reader for live inspection", () => {
+    const directory = temporaryDirectory();
+    const store = createStore(directory);
+    const reader = SqliteWorldReader.open(store.filePath);
+
+    expect(reader.metadata().worldInstanceId).toBe("world_store01");
+    expect(reader.listActiveFaults()).toEqual([{ packageId: "calendar", faultId: "slow-write" }]);
+    expect(reader.scanState("calendar", "events")[0]?.value.title).toBe("Existing");
+    expect("transact" in reader).toBe(false);
+
+    store.transact("corr_reader_update", (transaction) => {
+      transaction.putState("calendar", "events", "event_1", {
+        id: "event_1",
+        title: "Visible while writer remains open",
+      });
+      return {
+        value: undefined,
+        primary: {
+          kind: "lifecycle",
+          action: "world_reset",
+          worldInstanceId: "world_store01",
+          details: { scope: "reader-test" },
+        },
+      };
+    });
+
+    expect(reader.readState("calendar", "events", "event_1")?.value.title).toBe(
+      "Visible while writer remains open",
+    );
+    expect(reader.readEvidence().at(-1)?.kind).toBe("state_change");
+
+    reader.close();
+    expect(() => reader.metadata()).toThrow(/reader is closed/);
+    store.close();
+  });
+
   it("atomically commits state, random progress, pending work, receipts, and ordered evidence", () => {
     const directory = temporaryDirectory();
     const store = createStore(directory);

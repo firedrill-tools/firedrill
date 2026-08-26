@@ -32,6 +32,7 @@ import type { LoadedWorldBuild } from "@firedrill/world-build";
 import { BoundWorldClient, WorldKernel } from "@firedrill/world-kernel";
 import type { ClockAdvanceResult, KernelInvocationResult } from "@firedrill/world-kernel";
 import type {
+  ActiveFault,
   CallbackDelivery,
   PackageResetSummary,
   ScheduledEvent,
@@ -130,6 +131,7 @@ export interface LocalWorld {
   evidence(query?: LocalWorldEvidenceQuery): readonly EvidenceEntry[];
   scheduledEvents(status?: ScheduledEvent["status"]): readonly ScheduledEvent[];
   callbacks(status?: CallbackDelivery["status"]): readonly CallbackDelivery[];
+  faults(packageId?: string): readonly ActiveFault[];
   advanceTime(toUs: number, options?: LocalWorldAdvanceOptions): ClockAdvanceResult;
   reset(options?: LocalWorldResetOptions): LocalWorldResetResult;
   close(): void;
@@ -289,6 +291,19 @@ class LocalWorldController implements LocalWorld {
   callbacks(status?: CallbackDelivery["status"]): readonly CallbackDelivery[] {
     this.assertOpen();
     return this.store.listCallbackDeliveries(status);
+  }
+
+  faults(packageId?: string): readonly ActiveFault[] {
+    this.assertOpen();
+    if (packageId === undefined) return this.store.listActiveFaults();
+    const parsed = PackageIdSchema.safeParse(packageId);
+    if (!parsed.success) {
+      throw new FiredrillProjectError(
+        "framework.INVALID_ARGUMENT",
+        "fault query packageId must be a valid Tool package id",
+      );
+    }
+    return this.store.listActiveFaults(parsed.data);
   }
 
   advanceTime(toUs: number, options: LocalWorldAdvanceOptions = {}): ClockAdvanceResult {

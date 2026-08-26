@@ -30,6 +30,7 @@ import type {
   VirtualTime,
 } from "@firedrill/contracts";
 import type {
+  ActiveFault,
   CallbackDelivery,
   CommittedWorldTransaction,
   PackageResetSummary,
@@ -285,6 +286,22 @@ export class SqliteWorldStore implements WorldStore {
         ? {}
         : { parentSnapshotId: SnapshotIdSchema.parse(parentSnapshotId) }),
     };
+  }
+
+  listActiveFaults(packageId?: PackageId): readonly ActiveFault[] {
+    this.assertOpen();
+    const rows =
+      packageId === undefined
+        ? (this.database
+            .prepare("SELECT package_id, fault_id FROM active_faults ORDER BY package_id, fault_id")
+            .all() as FaultRow[])
+        : (this.database
+            .prepare("SELECT package_id, fault_id FROM active_faults WHERE package_id = ? ORDER BY fault_id")
+            .all(PackageIdSchema.parse(packageId)) as FaultRow[]);
+    return rows.map((row) => ({
+      packageId: PackageIdSchema.parse(row.package_id),
+      faultId: StableIdSchema.parse(row.fault_id),
+    }));
   }
 
   transact<T>(

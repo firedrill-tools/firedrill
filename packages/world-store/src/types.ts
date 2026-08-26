@@ -254,13 +254,10 @@ export interface CommittedWorldTransaction<T> {
   readonly evidence: readonly EvidenceEntry[];
 }
 
-export interface WorldStore {
+export interface WorldReader {
   readonly filePath: string;
   metadata(): WorldMetadata;
-  transact<T>(
-    correlationId: CorrelationId,
-    execute: (transaction: WorldTransaction) => WorldTransactionResult<T>,
-  ): CommittedWorldTransaction<T>;
+  listActiveFaults(packageId?: PackageId): readonly ActiveFault[];
   readState(packageId: PackageId, namespace: StableId, rowId: string): StoredStateRecord | null;
   scanState(
     packageId: PackageId,
@@ -268,10 +265,18 @@ export interface WorldStore {
     options?: StateScanOptions,
   ): readonly StoredStateRecord[];
   readEvidence(fromSequence?: number, limit?: number): readonly EvidenceEntry[];
-  nextScheduledEvent(atOrBeforeUs?: VirtualTime): ScheduledEvent | null;
   listScheduledEvents(status?: ScheduledEvent["status"]): readonly ScheduledEvent[];
-  nextCallbackDelivery(atOrBeforeUs?: VirtualTime): CallbackDelivery | null;
   listCallbackDeliveries(status?: CallbackDelivery["status"]): readonly CallbackDelivery[];
+  close(): void;
+}
+
+export interface WorldStore extends WorldReader {
+  transact<T>(
+    correlationId: CorrelationId,
+    execute: (transaction: WorldTransaction) => WorldTransactionResult<T>,
+  ): CommittedWorldTransaction<T>;
+  nextScheduledEvent(atOrBeforeUs?: VirtualTime): ScheduledEvent | null;
+  nextCallbackDelivery(atOrBeforeUs?: VirtualTime): CallbackDelivery | null;
   stateHash(): string;
   evidenceHash(): string;
   createSnapshot(destinationPath: string, correlationId: CorrelationId): SnapshotId;
@@ -281,7 +286,6 @@ export interface WorldStore {
     packageIds: readonly PackageId[],
     correlationId: CorrelationId,
   ): PackageResetSummary;
-  close(): void;
 }
 
 export interface PackageResetSummary {

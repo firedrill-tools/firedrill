@@ -202,6 +202,7 @@ describe("createLocalWorld", () => {
       actors: [{ actorId: "operator" }],
       tools: [{ packageId: "inventory" }, { packageId: "notifications" }],
     });
+    expect(world.faults()).toEqual([]);
     expect(existsSync(world.worldFilePath)).toBe(true);
     expect(existsSync(world.baselineFilePath)).toBe(true);
     expect(world.directoryPath.startsWith(join(root, ".firedrill", "worlds"))).toBe(true);
