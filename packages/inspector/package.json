@@ -1,0 +1,61 @@
+{
+  "name": "@firedrill/inspector",
+  "version": "0.0.0",
+  "description": "Offline local inspector for Firedrill worlds and drill evidence",
+  "license": "Apache-2.0",
+  "engines": {
+    "node": ">=20.19"
+  },
+  "type": "module",
+  "sideEffects": false,
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "licenses",
+    "README.md"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
+  "firedrill": {
+    "layer": "adapter"
+  },
+  "scripts": {
+    "build": "tsx ../../tooling/package-files.mts clean && tsc -p tsconfig.build.json && vite build && tsx ../../tooling/package-files.mts finalize",
+    "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.client.json --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@firedrill/simulation": "workspace:*"
+  },
+  "devDependencies": {
+    "@fontsource-variable/inter": "5.3.0",
+    "@tailwindcss/vite": "4.3.3",
+    "@types/react": "19.2.18",
+    "@types/react-dom": "19.2.4",
+    "@vitejs/plugin-react": "6.1.0",
+    "lucide-react": "1.31.0",
+    "react": "19.2.8",
+    "react-dom": "19.2.8",
+    "tailwindcss": "4.3.3",
+    "typescript": "5.9.3",
+    "vite": "8.2.2",
+    "vitest": "3.2.7"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/firedrill-tools/firedrill.git",
+    "directory": "packages/inspector"
+  },
+  "homepage": "https://firedrill.tools",
+  "bugs": {
+    "url": "https://github.com/firedrill-tools/firedrill/issues"
+  }
+}

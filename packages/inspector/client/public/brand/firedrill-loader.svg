@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="69.5 46.7 382.4 382.4" width="512" height="512" role="img" aria-label="Loading">
+<title>Firedrill — loading</title>
+
+
+<defs>
+  <g id="fd-outer-shape" transform="translate(150.0,85.0) scale(1.4563)"><path d="M92 4 C 108 44, 150 70, 150 122 C 150 172, 116 206, 76 206 C 34 206, 2 174, 2 130 C 2 96, 22 74, 42 54 C 44 78, 54 92, 68 98 C 56 66, 62 32, 92 4 Z"></path></g>
+  <g id="fd-mid-shape" transform="translate(150.0,85.0) scale(1.4563)"><path d="M90 46 C 100 78, 130 100, 130 142 C 130 178, 106 204, 74 204 C 44 204, 22 180, 22 148 C 22 120, 38 100, 52 86 C 55 108, 64 120, 76 124 C 66 98, 70 72, 90 46 Z"></path></g>
+  <g id="fd-core-shape" transform="translate(150.0,85.0) scale(1.4563)"><path d="M84 96 C 90 122, 112 138, 112 166 C 112 190, 94 206, 74 206 C 54 206, 40 190, 40 170 C 40 152, 50 138, 60 130 C 62 146, 70 154, 80 156 C 74 140, 74 116, 84 96 Z"></path></g>
+
+</defs>
+
+<g class="ignite ignite-o"><use class="layer f-outer" href="#fd-outer-shape" fill="#1B2F73"></use></g>
+<g class="ignite ignite-m"><use class="layer f-mid" href="#fd-mid-shape" fill="#3157D5"></use></g>
+<g class="ignite ignite-c"><use class="layer f-core" href="#fd-core-shape" fill="#FFFFFF"></use></g>
+
+
+<ellipse class="spark s1" cx="222" cy="250" rx="6.5" ry="9.5" fill="#5873E1"></ellipse>
+<ellipse class="spark s2" cx="330" cy="232" rx="6.0" ry="9.0" fill="#5873E1"></ellipse>
+<ellipse class="spark s3" cx="290" cy="190" rx="5.5" ry="8.5" fill="#5873E1"></ellipse>
+<ellipse class="spark s4" cx="246" cy="300" rx="7.0" ry="10.5" fill="#5873E1"></ellipse>
+<ellipse class="spark s5" cx="344" cy="290" rx="6.5" ry="9.5" fill="#5873E1"></ellipse>
+<ellipse class="spark s6" cx="268" cy="160" rx="5.0" ry="7.5" fill="#5873E1"></ellipse>
+</svg>

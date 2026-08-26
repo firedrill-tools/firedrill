@@ -1,16 +1,17 @@
 import { randomUUID } from "node:crypto";
-import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
 import type { ErrorEnvelope, RunId, RunResult, StableId } from "@firedrill/contracts";
 import { PackageIdSchema, RunIdSchema, StableIdSchema } from "@firedrill/contracts";
 import { verifyLocalReport } from "@firedrill/reporters";
-import type { AgentCallback, CallbackReceiver, RunDrillsResult } from "@firedrill/sdk";
-import { FiredrillProjectError, runDrills } from "@firedrill/sdk";
+import type { AgentCallback, CallbackReceiver, LocalRunComparison, RunDrillsResult } from "@firedrill/sdk";
+import { compareRuns, FiredrillProjectError, runDrills } from "@firedrill/sdk";
 import type { WorldReader } from "@firedrill/world-store";
 import { SqliteWorldReader } from "@firedrill/world-store-sqlite";
 import type {
   SimulationEvidencePage,
   SimulationProject,
+  SimulationRunComparison,
   SimulationRunDetail,
   SimulationRunList,
   SimulationRunRequest,
@@ -20,6 +21,7 @@ import type {
 } from "./contracts.js";
 import {
   SimulationEvidencePageSchema,
+  SimulationRunComparisonSchema,
   SimulationRunDetailSchema,
   SimulationRunListSchema,
   SimulationRunRequestSchema,
@@ -74,7 +76,7 @@ interface ActiveAttempt {
 
 interface MutableRunRequest {
   readonly requestId: StableId;
-  readonly drillId: StableId;
+  readonly selection: SimulationRunRequest["selection"];
   readonly concurrency: number;
   readonly controller: AbortController;
   readonly runIds: RunId[];
@@ -98,7 +100,7 @@ function publicRequest(request: MutableRunRequest): SimulationRunRequest {
   return SimulationRunRequestSchema.parse({
     schemaVersion: 1,
     requestId: request.requestId,
-    drillId: request.drillId,
+    selection: request.selection,
     status: request.status,
     runIds: request.runIds,
     ...(request.verdict === undefined ? {} : { verdict: request.verdict }),
@@ -161,6 +163,30 @@ function terminalSummary(
 
 function requestId(): StableId {
   return StableIdSchema.parse(`request-${randomUUID().replaceAll("-", "")}`);
+}
+
+function publicComparison(comparison: LocalRunComparison): SimulationRunComparison {
+  const side = (value: LocalRunComparison["baseline"] | LocalRunComparison["candidate"]) => ({
+    runId: value.runId,
+    status: value.status,
+    ...(value.verdict === undefined ? {} : { verdict: value.verdict }),
+    drillId: value.drillId,
+    ...(value.scenarioId === undefined ? {} : { scenarioId: value.scenarioId }),
+    targetId: value.targetId,
+    seed: value.seed,
+    buildHash: value.buildHash,
+    packageLockHash: value.packageLockHash,
+    ...(value.stateHash === undefined ? {} : { stateHash: value.stateHash }),
+    ...(value.trajectoryHash === undefined ? {} : { trajectoryHash: value.trajectoryHash }),
+  });
+  return SimulationRunComparisonSchema.parse({
+    schemaVersion: 1,
+    compatibility: comparison.compatibility,
+    outcome: comparison.outcome,
+    baseline: side(comparison.baseline),
+    candidate: side(comparison.candidate),
+    changes: comparison.changes,
+  });
 }
 
 /** Owns local drill lifecycle while delegating every world/run semantic to the public SDK. */
@@ -229,31 +255,34 @@ export class LocalSimulationSupervisor {
   startRun(input: StartSimulationRun): SimulationRunRequest {
     this.assertOpen();
     const parsed = StartSimulationRunSchema.parse(input);
-    const drill = this.projectValue.drills.find((candidate) => candidate.id === parsed.drillId);
-    if (drill === undefined) {
-      throw new LocalSimulationError(
-        404,
-        "framework.DRILL_NOT_FOUND",
-        `no drill named ${parsed.drillId} exists`,
-        { available: this.projectValue.drills.map((candidate) => candidate.id) },
-      );
-    }
-    const target = this.projectValue.targets.find((candidate) => candidate.id === drill.targetId);
-    if (target === undefined) {
-      throw new LocalSimulationError(
-        422,
-        "framework.BUILD_INVALID",
-        `drill ${drill.id} references unavailable target ${drill.targetId}`,
-      );
-    }
-    if (target.runAvailability === "agent_callback_required") {
+    const selection =
+      "drillId" in parsed
+        ? ({ kind: "drill", id: parsed.drillId } as const)
+        : ({ kind: "suite", id: parsed.suiteId } as const);
+    const selectedDrills = this.selectedDrills(selection);
+    const unavailable = selectedDrills.find((drill) => {
+      const target = this.projectValue.targets.find((candidate) => candidate.id === drill.targetId);
+      if (target === undefined) {
+        throw new LocalSimulationError(
+          422,
+          "framework.BUILD_INVALID",
+          `drill ${drill.id} references unavailable target ${drill.targetId}`,
+        );
+      }
+      return target.runAvailability === "agent_callback_required";
+    });
+    if (unavailable !== undefined) {
       throw new LocalSimulationError(
         409,
         "framework.EXTERNAL_HANDLER_REQUIRED",
-        `drill ${drill.id} uses external target ${target.id}; start the simulation server programmatically with the agent callback`,
+        `drill ${unavailable.id} uses an external target; start the simulation server programmatically with the agent callback`,
       );
     }
-    const concurrency = parsed.concurrency ?? 1;
+    const selectedSuite =
+      selection.kind === "suite"
+        ? this.projectValue.suites.find((candidate) => candidate.id === selection.id)
+        : undefined;
+    const concurrency = parsed.concurrency ?? selectedSuite?.concurrency ?? 1;
     if (this.activeConcurrency() + concurrency > this.maxConcurrency) {
       throw new LocalSimulationError(
         429,
@@ -264,7 +293,7 @@ export class LocalSimulationSupervisor {
     }
     const request: MutableRunRequest = {
       requestId: requestId(),
-      drillId: drill.id,
+      selection,
       concurrency,
       controller: new AbortController(),
       runIds: [],
@@ -391,6 +420,27 @@ export class LocalSimulationSupervisor {
     } finally {
       reader.close();
     }
+  }
+
+  compare(baselineRunId: string, candidateRunId: string): SimulationRunComparison {
+    this.assertOpen();
+    const baseline = this.parseRunId(baselineRunId);
+    const candidate = this.parseRunId(candidateRunId);
+    if (baseline === candidate) {
+      throw new LocalSimulationError(
+        400,
+        "framework.INVALID_ARGUMENT",
+        "baselineRunId and candidateRunId must identify different runs",
+      );
+    }
+    this.report(baseline);
+    this.report(candidate);
+    return publicComparison(
+      compareRuns({
+        baselineReport: join(this.reportDirectory, baseline),
+        candidateReport: join(this.reportDirectory, candidate),
+      }),
+    );
   }
 
   evidence(runId: string, fromSequence = 1, limit = 200): SimulationEvidencePage {
@@ -520,18 +570,16 @@ export class LocalSimulationSupervisor {
   private async execute(request: MutableRunRequest, input: StartSimulationRun): Promise<void> {
     request.status = "running";
     try {
-      const drill = this.projectValue.drills.find((candidate) => candidate.id === request.drillId);
-      const target = this.projectValue.targets.find((candidate) => candidate.id === drill?.targetId);
-      if (drill === undefined || target === undefined) {
-        throw new LocalSimulationError(
-          422,
-          "framework.BUILD_INVALID",
-          "the selected drill or target is unavailable in the pinned build",
-        );
-      }
+      const usesExternalTarget = this.selectedDrills(request.selection).some((drill) =>
+        this.projectValue.targets.some(
+          (target) => target.id === drill.targetId && target.kind === "external",
+        ),
+      );
       const result = await runDrills({
         root: this.repositoryRoot,
-        drill: input.drillId,
+        ...(request.selection.kind === "drill"
+          ? { drill: request.selection.id }
+          : { suite: request.selection.id }),
         buildHash: this.buildHash,
         runDirectory: this.runDirectory,
         reportDirectory: this.reportDirectory,
@@ -539,9 +587,7 @@ export class LocalSimulationSupervisor {
         ...(input.trials === undefined ? {} : { trials: input.trials }),
         ...(input.retries === undefined ? {} : { retries: input.retries }),
         ...(input.concurrency === undefined ? {} : { concurrency: input.concurrency }),
-        ...(target.kind !== "external" || this.options.agent === undefined
-          ? {}
-          : { agent: this.options.agent }),
+        ...(this.options.agent === undefined || !usesExternalTarget ? {} : { agent: this.options.agent }),
         ...(this.options.callbackReceivers === undefined
           ? {}
           : { callbackReceivers: this.options.callbackReceivers }),
@@ -704,6 +750,43 @@ export class LocalSimulationSupervisor {
       if (["completed", "failed", "cancelled"].includes(request.status)) this.requests.delete(id);
       if (this.requests.size <= MAX_REQUEST_HISTORY) return;
     }
+  }
+
+  private selectedDrills(selection: SimulationRunRequest["selection"]): SimulationProject["drills"] {
+    if (selection.kind === "drill") {
+      const drill = this.projectValue.drills.find((candidate) => candidate.id === selection.id);
+      if (drill === undefined) {
+        throw new LocalSimulationError(
+          404,
+          "framework.DRILL_NOT_FOUND",
+          `no drill named ${selection.id} exists`,
+          { available: this.projectValue.drills.map((candidate) => candidate.id) },
+        );
+      }
+      return [drill];
+    }
+    const suite = this.projectValue.suites.find((candidate) => candidate.id === selection.id);
+    if (suite === undefined) {
+      throw new LocalSimulationError(
+        404,
+        "framework.SUITE_NOT_FOUND",
+        `no suite named ${selection.id} exists`,
+        { available: this.projectValue.suites.map((candidate) => candidate.id) },
+      );
+    }
+    if (suite.drills.length === 0 && suite.tags.length === 0) return this.projectValue.drills;
+    const explicit = new Set(suite.drills);
+    const selected = this.projectValue.drills.filter(
+      (drill) => explicit.has(drill.id) || drill.tags.some((tag) => suite.tags.includes(tag)),
+    );
+    if (selected.length === 0) {
+      throw new LocalSimulationError(
+        422,
+        "framework.NO_DRILLS_SELECTED",
+        `suite ${suite.id} selects no drills`,
+      );
+    }
+    return selected;
   }
 
   private assertOpen(): void {

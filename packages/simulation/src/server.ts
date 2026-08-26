@@ -1,10 +1,11 @@
 import { randomBytes, timingSafeEqual } from "node:crypto";
-import { createServer } from "node:http";
 import type { IncomingMessage, Server, ServerResponse } from "node:http";
+import { createServer } from "node:http";
 import type { ErrorEnvelope } from "@firedrill/contracts";
 import { FiredrillProjectError } from "@firedrill/sdk";
 import { ZodError } from "zod";
 import {
+  CompareSimulationRunsSchema,
   SimulationApiErrorSchema,
   SimulationRunRequestListSchema,
   StartSimulationRunSchema,
@@ -29,6 +30,17 @@ export interface LocalSimulationServer {
   readonly supervisor: LocalSimulationSupervisor;
   close(): Promise<void>;
 }
+
+export interface LocalSimulationRequestContext {
+  readonly token: string;
+  readonly url: URL;
+}
+
+export type LocalSimulationRequestFallback = (
+  request: IncomingMessage,
+  response: ServerResponse,
+  context: LocalSimulationRequestContext,
+) => void | Promise<void>;
 
 function loopbackHostname(value: string): boolean {
   return value === "127.0.0.1" || value === "localhost" || value === "[::1]" || value === "::1";
@@ -200,7 +212,16 @@ function decoded(value: string): string {
   }
 }
 
-function requestHandler(supervisor: LocalSimulationSupervisor, token: string) {
+/**
+ * Creates the canonical loopback request handler used by both the headless
+ * control server and same-origin local interfaces. A fallback may serve fixed
+ * local assets after Firedrill has validated the loopback host and origin.
+ */
+export function createLocalSimulationRequestHandler(
+  supervisor: LocalSimulationSupervisor,
+  token: string,
+  fallback?: LocalSimulationRequestFallback,
+) {
   return async (request: IncomingMessage, response: ServerResponse): Promise<void> => {
     try {
       if (!validRequestOrigin(request)) {
@@ -213,6 +234,10 @@ function requestHandler(supervisor: LocalSimulationSupervisor, token: string) {
       const url = new URL(request.url ?? "/", "http://localhost");
       if (request.method === "GET" && url.pathname === "/health") {
         writeJson(response, 200, { schemaVersion: 1, status: "ready" });
+        return;
+      }
+      if (!url.pathname.startsWith("/api/") && fallback !== undefined) {
+        await fallback(request, response, { token, url });
         return;
       }
       if (!authorized(request.headers.authorization, token)) {
@@ -238,6 +263,11 @@ function requestHandler(supervisor: LocalSimulationSupervisor, token: string) {
       if (request.method === "POST" && url.pathname === "/api/v1/runs") {
         const input = StartSimulationRunSchema.parse(await requestJson(request));
         writeJson(response, 202, supervisor.startRun(input));
+        return;
+      }
+      if (request.method === "POST" && url.pathname === "/api/v1/comparisons") {
+        const input = CompareSimulationRunsSchema.parse(await requestJson(request));
+        writeJson(response, 200, supervisor.compare(input.baselineRunId, input.candidateRunId));
         return;
       }
       if (request.method === "GET" && url.pathname === "/api/v1/run-requests") {
@@ -349,7 +379,7 @@ export async function startLocalSimulationServer(
     throw new TypeError("local simulation token must contain 24 through 256 HTTP-header-safe characters");
   }
   const supervisor = await LocalSimulationSupervisor.create(options);
-  const server = createServer(requestHandler(supervisor, token));
+  const server = createServer(createLocalSimulationRequestHandler(supervisor, token));
   try {
     await listen(server, port, hostname);
   } catch (error) {

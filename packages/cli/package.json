@@ -37,6 +37,7 @@
   "dependencies": {
     "@firedrill/compiler": "workspace:*",
     "@firedrill/contracts": "workspace:*",
+    "@firedrill/inspector": "workspace:*",
     "@firedrill/protocol-cli": "workspace:*",
     "@firedrill/sdk": "workspace:*",
     "@firedrill/world-build": "workspace:*"

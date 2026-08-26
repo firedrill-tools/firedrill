@@ -12,6 +12,7 @@ firedrill format --check  # check typed YAML and JSON formatting
 firedrill init            # inspect four account-free onboarding paths
 firedrill init --path firedrill-agent
 firedrill agent           # optional Claude Agent SDK authoring assistant
+firedrill inspect         # open the offline World, Drills, and Runs inspector
 firedrill run --suite pr  # run a repository-owned suite
 firedrill run --watch     # rerun after source or agent changes
 firedrill run my-drill --callback-receiver application=http://127.0.0.1:4319
@@ -26,6 +27,8 @@ firedrill world call my-tool records.read --input '{"id":"primary"}' --json
 ```
 
 `firedrill` creates a fresh world per trial, invokes the declared customer-owned agent target, evaluates state/tool/event consequences, and writes the retained SQLite world plus terminal, JSON, JSONL, JUnit, and self-contained HTML evidence beneath `.firedrill/`.
+
+`firedrill inspect` serves a bundled UI on a random loopback port, opens it in the browser, and stays attached until stopped. The UI compiles the current repository source, runs drills or suites, follows live causal evidence, inspects synthetic state and pending work, repeats a run with its recorded seed, compares verified runs, and opens HTML reports. Use `--no-open` when another process owns browser launch, `--port` for a fixed loopback port, or `--json` for one machine-readable ready event. The bearer token stays inside the served page and is never printed in the URL or CLI output.
 
 Choose a module, command, local HTTP, or caller-owned target based on how the agent already runs. A target declares direct, HTTP, MCP, or CLI world bindings; the CLI does not require an agent framework wrapper. `firedrill world` is available only inside an active CLI binding and calls the same stateful Tool runtime as the other adapters.
 

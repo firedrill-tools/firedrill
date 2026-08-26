@@ -4,6 +4,7 @@ import type { CompileWorldResult } from "@firedrill/compiler";
 import { compileWorld, formatWorldSources } from "@firedrill/compiler";
 import type { Diagnostic } from "@firedrill/contracts";
 import { SeedSchema, Sha256Schema, StableIdSchema } from "@firedrill/contracts";
+import { startLocalInspector } from "@firedrill/inspector";
 import type {
   CallbackReceiver,
   LocalRunComparison,
@@ -40,6 +41,8 @@ export interface CliIo {
   readonly signal?: AbortSignal;
   /** Present only for an interactive terminal. JSON and CI callers omit it. */
   readonly ask?: (question: string) => Promise<string>;
+  /** Browser launch is injected so programmatic callers retain control. */
+  readonly openUrl?: (url: string) => Promise<void>;
 }
 
 interface ParsedArguments {
@@ -49,6 +52,7 @@ interface ParsedArguments {
     | "compare"
     | "format"
     | "init"
+    | "inspect"
     | "plan"
     | "report"
     | "run"
@@ -78,6 +82,8 @@ interface ParsedArguments {
   readonly filter?: string;
   readonly shard?: { readonly index: number; readonly total: number };
   readonly root: string;
+  readonly inspectorPort?: number;
+  readonly noOpen?: boolean;
   readonly reportDirectory?: string;
   readonly callbackReceiverOrigins?: Readonly<Record<string, string>>;
   readonly callbackSecretEnvironment?: Readonly<Record<string, string>>;
@@ -111,6 +117,7 @@ Usage:
   firedrill compare <baseline-report> <candidate-report> [--json]
   firedrill report verify <report-directory> [--json]
   firedrill init [--path <firedrill-agent|coding-agent|template|manual>] [--json] [--root <path>]
+  firedrill inspect [--port <port>] [--no-open] [--json] [--root <path>]
   firedrill tool inspect <tool-id> [--json] [--root <path>]
   firedrill tool validate <tool-id> [--json] [--root <path>]
   firedrill tool test <tool-id> [--suite <id>] [--seed <seed>] [--callback-receiver <id>=<origin>] [--callback-secret-env <id>=<variable>] [--json] [--root <path>]
@@ -128,6 +135,7 @@ Commands:
   compare   Compare two verified local report bundles without inferring quality
   report    Verify a portable local report bundle without contacting a service
   init      Inspect onboarding paths or initialize one without overwriting files
+  inspect   Open the local World, Drills, and Runs inspector
   tool      Inspect, load-check, or conformance-test a selected Tool
   world     Discover or call Tools through an active drill's CLI binding
 
@@ -253,6 +261,19 @@ non-interactive caller, bare init remains a read-only inspection:
 Initialization is idempotent and never replaces a conflicting file. A selected
 path ensures .firedrill/ is ignored, appending that one rule when needed.
 `,
+  inspect: `Inspect the local world and drill evidence in a browser
+
+Usage:
+  firedrill inspect [--port <port>] [--no-open] [--json] [--root <path>]
+
+The inspector compiles repository source, then serves a loopback-only, offline
+UI with World, Drills, and Runs. It reads real local SQLite worlds and verified
+report bundles. Repository source stays authoritative and read-only.
+
+External targets remain owned by the caller. Start @firedrill/inspector from the
+process that supplies the agent callback when you need to run them from the UI.
+Use --no-open for terminal-only launch. JSON mode never opens a browser.
+`,
 };
 
 const REPORT_HELP = `Verify a portable local Firedrill report bundle
@@ -354,6 +375,7 @@ function parseArguments(arguments_: readonly string[], cwd: string): ParsedArgum
         "compare",
         "format",
         "init",
+        "inspect",
         "plan",
         "report",
         "run",
@@ -371,6 +393,7 @@ function parseArguments(arguments_: readonly string[], cwd: string): ParsedArgum
     return {
       root: cwd,
       watch: false,
+      noOpen: false,
       json: arguments_.includes("--json"),
       check: false,
       help: true,
@@ -418,6 +441,8 @@ function parseArguments(arguments_: readonly string[], cwd: string): ParsedArgum
   let concurrency: number | undefined;
   let watch = false;
   let initPath: InitPath | undefined;
+  let inspectorPort: number | undefined;
+  let noOpen = false;
   for (let index = 0; index < arguments_.length; index += 1) {
     const argument = arguments_[index];
     if (argument === undefined) continue;
@@ -439,6 +464,32 @@ function parseArguments(arguments_: readonly string[], cwd: string): ParsedArgum
     }
     if (argument === "--watch") {
       watch = true;
+      continue;
+    }
+    if (argument === "--no-open") {
+      noOpen = true;
+      continue;
+    }
+    if (argument === "--port") {
+      const value = arguments_[index + 1];
+      inspectorPort = Number(value);
+      if (
+        value === undefined ||
+        !Number.isSafeInteger(inspectorPort) ||
+        inspectorPort < 0 ||
+        inspectorPort > 65_535
+      ) {
+        return {
+          root,
+          watch,
+          json,
+          check,
+          help,
+          noOpen,
+          error: "--port must be an integer from 0 through 65535",
+        };
+      }
+      index += 1;
       continue;
     }
     if (argument === "--root") {
@@ -881,6 +932,7 @@ function parseArguments(arguments_: readonly string[], cwd: string): ParsedArgum
       argument === "compare" ||
       argument === "format" ||
       argument === "init" ||
+      argument === "inspect" ||
       argument === "plan" ||
       argument === "report" ||
       argument === "run" ||
@@ -919,6 +971,8 @@ function parseArguments(arguments_: readonly string[], cwd: string): ParsedArgum
     ...(filter === undefined ? {} : { filter }),
     ...(shard === undefined ? {} : { shard }),
     root,
+    ...(inspectorPort === undefined ? {} : { inspectorPort }),
+    noOpen,
     ...(reportDirectory === undefined ? {} : { reportDirectory }),
     ...(Object.keys(callbackReceiverOrigins).length === 0 ? {} : { callbackReceiverOrigins }),
     ...(Object.keys(callbackSecretEnvironment).length === 0 ? {} : { callbackSecretEnvironment }),
@@ -1874,6 +1928,72 @@ async function agentCommand(parsed: ParsedArguments, io: CliIo): Promise<number>
   }
 }
 
+async function waitForShutdown(signal: AbortSignal | undefined): Promise<void> {
+  if (signal?.aborted) return;
+  await new Promise<void>((resolve) => {
+    if (signal === undefined) return;
+    signal.addEventListener("abort", () => resolve(), { once: true });
+  });
+}
+
+async function inspectCommand(parsed: ParsedArguments, io: CliIo): Promise<number> {
+  try {
+    const server = await startLocalInspector({
+      root: parsed.root,
+      ...(parsed.inspectorPort === undefined ? {} : { port: parsed.inspectorPort }),
+    });
+    try {
+      const project = server.supervisor.project();
+      if (parsed.json) {
+        writeJsonLine(io, {
+          schemaVersion: 1,
+          command: "inspect",
+          status: "ready",
+          url: server.url,
+          worldId: project.world.id,
+          buildHash: project.world.buildHash,
+          tools: project.tools.length,
+          drills: project.drills.length,
+          accountRequired: false,
+        });
+      } else {
+        io.stdout.write(`Inspector ready — ${server.url}\n`);
+        io.stdout.write(
+          `${project.world.title ?? project.world.id} · ${project.tools.length} Tool${project.tools.length === 1 ? "" : "s"} · ${project.drills.length} drill${project.drills.length === 1 ? "" : "s"}\n`,
+        );
+      }
+      if (!parsed.json && parsed.noOpen !== true && io.openUrl !== undefined) {
+        try {
+          await io.openUrl(server.url);
+        } catch {
+          io.stderr.write(`Browser could not be opened. Visit ${server.url}\n`);
+        }
+      }
+      if (!parsed.json) io.stdout.write("Press Ctrl+C to stop.\n");
+      await waitForShutdown(io.signal);
+      return 0;
+    } finally {
+      await server.close();
+    }
+  } catch (error) {
+    if (!(error instanceof FiredrillProjectError)) throw error;
+    if (parsed.json) {
+      writeJson(io, {
+        schemaVersion: 1,
+        command: "inspect",
+        status: "failed",
+        code: error.code,
+        message: error.message,
+        diagnostics: error.diagnostics,
+      });
+    } else {
+      io.stderr.write(`${error.code} ${error.message}\n`);
+      if (error.diagnostics.length > 0) writeDiagnostics(io, error.diagnostics);
+    }
+    return 1;
+  }
+}
+
 export async function runCli(arguments_: readonly string[], io: CliIo): Promise<number> {
   const parsed = parseArguments(arguments_, io.cwd);
   try {
@@ -1944,6 +2064,12 @@ export async function runCli(arguments_: readonly string[], io: CliIo): Promise<
     if (parsed.initPath !== undefined && command !== "init") {
       return writeUsageFailure(parsed, io, "--path is only valid with init");
     }
+    if (parsed.inspectorPort !== undefined && command !== "inspect") {
+      return writeUsageFailure(parsed, io, "--port is only valid with inspect");
+    }
+    if (parsed.noOpen === true && command !== "inspect") {
+      return writeUsageFailure(parsed, io, "--no-open is only valid with inspect");
+    }
     if (
       command !== "agent" &&
       (parsed.agentPrompt !== undefined ||
@@ -1980,6 +2106,7 @@ export async function runCli(arguments_: readonly string[], io: CliIo): Promise<
       );
     }
     if (command === "agent") return agentCommand(parsed, io);
+    if (command === "inspect") return inspectCommand(parsed, io);
     if (command === "format") return formatCommand(parsed, io);
     if (command === "run") return parsed.watch ? watchCommand(parsed, io) : runCommand(parsed, io);
     if (command === "report") return reportCommand(parsed, io);

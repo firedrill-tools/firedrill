@@ -1,13 +1,14 @@
 import {
   ActorBindingIdSchema,
+  AssertionStatusSchema,
   CallbackDeliveryIdSchema,
   CallbackRefSchema,
   CorrelationIdSchema,
   DiagnosticSchema,
   ErrorEnvelopeSchema,
-  EvidenceEntrySchema,
   EventIdSchema,
   EventRefSchema,
+  EvidenceEntrySchema,
   JsonObjectSchema,
   OperationIdSchema,
   PackageIdSchema,
@@ -102,6 +103,25 @@ const DrillViewSchema = z
       })
       .strict(),
     assertions: z.number().int().positive(),
+    expectations: z.array(
+      z
+        .object({
+          id: StableIdSchema,
+          kind: z.enum([
+            "state.value",
+            "state.count",
+            "operation.count",
+            "operation.order",
+            "operation.arguments",
+            "operation.denied",
+            "event.count",
+            "callback.count",
+          ]),
+          gate: z.boolean(),
+          checkpoint: z.enum(["invariant", "final"]),
+        })
+        .strict(),
+    ),
     source: SourceReferenceSchema.optional(),
   })
   .strict();
@@ -268,7 +288,10 @@ export const SimulationRunRequestSchema = z
   .object({
     schemaVersion: z.literal(1),
     requestId: StableIdSchema,
-    drillId: StableIdSchema,
+    selection: z.discriminatedUnion("kind", [
+      z.object({ kind: z.literal("drill"), id: StableIdSchema }).strict(),
+      z.object({ kind: z.literal("suite"), id: StableIdSchema }).strict(),
+    ]),
     status: z.enum(["starting", "running", "cancelling", "completed", "failed", "cancelled"]),
     runIds: z.array(RunIdSchema),
     verdict: z.enum(["passed", "failed", "inconclusive"]).optional(),
@@ -283,15 +306,114 @@ export const SimulationRunRequestListSchema = z
   })
   .strict();
 
-export const StartSimulationRunSchema = z
+export const CompareSimulationRunsSchema = z
   .object({
+    baselineRunId: RunIdSchema,
+    candidateRunId: RunIdSchema,
+  })
+  .strict()
+  .refine((value) => value.baselineRunId !== value.candidateRunId, {
+    path: ["candidateRunId"],
+    message: "candidateRunId must identify a different run",
+  });
+
+const ComparedSimulationRunSchema = z
+  .object({
+    runId: RunIdSchema,
+    status: z.enum(["sealed", "runner_failed", "cancelled"]),
+    verdict: z.enum(["passed", "failed", "inconclusive"]).optional(),
     drillId: StableIdSchema,
-    seed: SeedSchema.optional(),
-    trials: z.number().int().positive().max(10_000).optional(),
-    retries: z.number().int().nonnegative().max(10).optional(),
-    concurrency: z.number().int().positive().max(64).optional(),
+    scenarioId: StableIdSchema.optional(),
+    targetId: StableIdSchema,
+    seed: SeedSchema,
+    buildHash: Sha256Schema,
+    packageLockHash: Sha256Schema,
+    stateHash: Sha256Schema.optional(),
+    trajectoryHash: Sha256Schema.optional(),
   })
   .strict();
+
+const CountDeltaSchema = z
+  .object({
+    subject: z.string().min(1).max(1024),
+    baseline: z.number().int().nonnegative().safe(),
+    candidate: z.number().int().nonnegative().safe(),
+    delta: z.number().int().safe(),
+  })
+  .strict();
+
+export const SimulationRunComparisonSchema = z
+  .object({
+    schemaVersion: z.literal(1),
+    compatibility: z
+      .object({
+        status: z.enum(["exact_inputs", "descriptive_only", "incompatible"]),
+        canAttributeBehaviorChange: z.boolean(),
+        differences: z.array(z.enum(["drill", "scenario", "target", "seed", "build", "package_lock"])),
+        explanation: z.string().min(1).max(2000),
+      })
+      .strict(),
+    outcome: z.enum(["unchanged", "changed", "not_comparable"]),
+    baseline: ComparedSimulationRunSchema,
+    candidate: ComparedSimulationRunSchema,
+    changes: z
+      .object({
+        verdictChanged: z.boolean(),
+        stateChanged: z.boolean().optional(),
+        trajectoryChanged: z.boolean().optional(),
+        operationCounts: z.array(
+          CountDeltaSchema.extend({
+            baselineErrors: z.number().int().nonnegative().safe(),
+            candidateErrors: z.number().int().nonnegative().safe(),
+          }).strict(),
+        ),
+        stateChangeCounts: z.array(CountDeltaSchema),
+        eventCounts: z.array(CountDeltaSchema),
+        assertions: z.array(
+          z
+            .object({
+              checkpointId: z.string().min(1).max(512),
+              assertionId: z.string().min(1).max(512),
+              baseline: AssertionStatusSchema.optional(),
+              candidate: AssertionStatusSchema.optional(),
+              actualChanged: z.boolean(),
+            })
+            .strict(),
+        ),
+        interactions: z.array(
+          z
+            .object({
+              interactionId: z.string().min(1).max(512),
+              baseline: z.string().min(1).max(128).optional(),
+              candidate: z.string().min(1).max(128).optional(),
+            })
+            .strict(),
+        ),
+      })
+      .strict(),
+  })
+  .strict();
+
+export const StartSimulationRunSchema = z.union([
+  z
+    .object({
+      drillId: StableIdSchema,
+      seed: SeedSchema.optional(),
+      trials: z.number().int().positive().max(10_000).optional(),
+      retries: z.number().int().nonnegative().max(10).optional(),
+      concurrency: z.number().int().positive().max(64).optional(),
+    })
+    .strict(),
+  z
+    .object({
+      suiteId: StableIdSchema,
+      seed: SeedSchema.optional(),
+      trials: z.number().int().positive().max(10_000).optional(),
+      retries: z.number().int().nonnegative().max(10).optional(),
+      concurrency: z.number().int().positive().max(64).optional(),
+    })
+    .strict(),
+]);
 
 export const SimulationApiErrorSchema = z
   .object({
@@ -308,5 +430,7 @@ export type SimulationEvidencePage = z.infer<typeof SimulationEvidencePageSchema
 export type SimulationStatePage = z.infer<typeof SimulationStatePageSchema>;
 export type SimulationRunRequest = z.infer<typeof SimulationRunRequestSchema>;
 export type SimulationRunRequestList = z.infer<typeof SimulationRunRequestListSchema>;
+export type CompareSimulationRuns = z.infer<typeof CompareSimulationRunsSchema>;
+export type SimulationRunComparison = z.infer<typeof SimulationRunComparisonSchema>;
 export type StartSimulationRun = z.infer<typeof StartSimulationRunSchema>;
 export type SimulationApiError = z.infer<typeof SimulationApiErrorSchema>;

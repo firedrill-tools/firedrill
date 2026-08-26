@@ -47,10 +47,11 @@ firedrill
 firedrill run refund-dispute --trials 3 --seed 42
 firedrill run --suite pull-request --concurrency 4
 firedrill run refund-dispute --watch
+firedrill inspect
 firedrill report verify .firedrill/reports/<run-id>
 ```
 
-`firedrill plan` lists the compiled Tools, drills, targets, and suites before anything runs. Bare `firedrill` runs every drill. See the [quickstart guide](docs/quickstart.md) for the source layout and how to select an agent target.
+`firedrill plan` lists the compiled Tools, drills, targets, and suites before anything runs. Bare `firedrill` runs every drill. `firedrill inspect` opens the offline World, Drills, and Runs workspace for the same repository; it starts real drills, reads their live state and evidence, repeats recorded seeds, and compares verified runs through the public local runtime. See the [quickstart guide](docs/quickstart.md) for the source layout and how to select an agent target.
 
 Keep `firedrill.json`, `firedrill/`, and any test-runner integration in version control. Firedrill keeps generated builds, retained SQLite worlds, reports, and contribution staging under the project-local `.firedrill/` directory. `firedrill init --path ...` ensures that directory is ignored by Git; do not commit it because reports can contain synthetic records and agent output. Copy a specific self-contained HTML report elsewhere only when you intend to share it. `firedrill report verify <report-directory>` checks a received bundle locally; unsigned local reports detect corruption but do not prove authorship.
 

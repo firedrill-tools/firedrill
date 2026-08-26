@@ -1,6 +1,28 @@
 #!/usr/bin/env node
+import { spawn } from "node:child_process";
 import { createInterface } from "node:readline/promises";
 import { runCli } from "./program.js";
+
+function openUrl(url: string): Promise<void> {
+  const command =
+    process.platform === "darwin"
+      ? { executable: "open", arguments: [url] }
+      : process.platform === "win32"
+        ? { executable: "cmd", arguments: ["/c", "start", "", url] }
+        : { executable: "xdg-open", arguments: [url] };
+  return new Promise((resolve, reject) => {
+    const child = spawn(command.executable, command.arguments, {
+      detached: true,
+      stdio: "ignore",
+      windowsHide: true,
+    });
+    child.once("error", reject);
+    child.once("spawn", () => {
+      child.unref();
+      resolve();
+    });
+  });
+}
 
 const arguments_ = process.argv.slice(2);
 const cancellation = new AbortController();
@@ -36,6 +58,7 @@ try {
     stderr: process.stderr,
     environment: process.env,
     signal: cancellation.signal,
+    openUrl,
     ...(terminal === undefined
       ? {}
       : {

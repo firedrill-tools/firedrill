@@ -316,6 +316,71 @@ describe("local CLI front door", () => {
     const agent = await invoke(root, ["agent", "--help"]);
     expect(agent.code).toBe(0);
     expect(agent.stdout).toMatch(/Claude Agent SDK[\s\S]*normal CLI and SDK work without/);
+
+    const inspect = await invoke(root, ["inspect", "--help"]);
+    expect(inspect.code).toBe(0);
+    expect(inspect.stdout).toMatch(/loopback-only, offline[\s\S]*Repository source stays authoritative/);
+  });
+
+  it("launches the local inspector through the public CLI without exposing its control token", async () => {
+    const root = repository();
+    const stdout = capture();
+    const stderr = capture();
+    const cancellation = new AbortController();
+    const opened: string[] = [];
+    const code = await runCli(["inspect", "--port", "0"], {
+      cwd: root,
+      stdout: stdout.writer,
+      stderr: stderr.writer,
+      signal: cancellation.signal,
+      openUrl: async (url) => {
+        opened.push(url);
+        const page = await fetch(url);
+        expect(page.status).toBe(200);
+        expect(await page.text()).toContain('name="firedrill-token"');
+        cancellation.abort();
+      },
+    });
+
+    expect(code, stderr.value()).toBe(0);
+    expect(opened).toHaveLength(1);
+    expect(opened[0]).toMatch(/^http:\/\/127\.0\.0\.1:\d+$/);
+    expect(stdout.value()).toMatch(/Inspector ready[\s\S]*cli-world[\s\S]*Press Ctrl\+C to stop/);
+    expect(stdout.value()).not.toMatch(/Bearer|token/i);
+  });
+
+  it("keeps inspector JSON mode non-interactive and machine-readable", async () => {
+    const root = repository();
+    const stdout = capture();
+    const stderr = capture();
+    const cancellation = new AbortController();
+    const writer: CliWriter = {
+      write(value) {
+        stdout.writer.write(value);
+        if (value.includes('"status":"ready"')) cancellation.abort();
+      },
+    };
+    let opened = false;
+    const code = await runCli(["inspect", "--json"], {
+      cwd: root,
+      stdout: writer,
+      stderr: stderr.writer,
+      signal: cancellation.signal,
+      openUrl: async () => {
+        opened = true;
+      },
+    });
+
+    expect(code, stderr.value()).toBe(0);
+    expect(opened).toBe(false);
+    expect(JSON.parse(stdout.value())).toMatchObject({
+      command: "inspect",
+      status: "ready",
+      worldId: "cli-world",
+      tools: 1,
+      drills: 1,
+      accountRequired: false,
+    });
   });
 
   it("discovers and calls an active world through the public CLI", async () => {

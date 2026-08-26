@@ -22,6 +22,7 @@ interface TestApiValue {
   readonly status: string;
   readonly verdict?: string;
   readonly requestId: string;
+  readonly selection: { readonly kind: "drill" | "suite"; readonly id: string };
   readonly runIds: readonly string[];
   readonly runs: ReadonlyArray<{
     readonly runId: string;
@@ -40,6 +41,13 @@ interface TestApiValue {
   }>;
   readonly summary: TestApiValue["runs"][number];
   readonly result: { readonly identity: { readonly runId: string } };
+  readonly compatibility: {
+    readonly status: "exact_inputs" | "descriptive_only" | "incompatible";
+    readonly canAttributeBehaviorChange: boolean;
+  };
+  readonly outcome: "unchanged" | "changed" | "not_comparable";
+  readonly baseline: { readonly runId: string; readonly reportDirectory?: string };
+  readonly candidate: { readonly runId: string; readonly reportDirectory?: string };
 }
 
 function repository(): string {
@@ -309,9 +317,50 @@ describe("local simulation server", () => {
     });
     expect(invalidBody.response.status).toBe(400);
 
+    const repeatStart = await api(server, "/api/v1/runs", {
+      method: "POST",
+      body: JSON.stringify({ drillId: "set-record", seed: "41" }),
+    });
+    const repeatFinished = await waitForRequest(server, repeatStart.value.requestId);
+    expect(repeatFinished).toMatchObject({ status: "completed", verdict: "passed" });
+    const repeatRunId = repeatFinished.runIds[0];
+    expect(repeatRunId).toBeDefined();
+    const comparison = await api(server, "/api/v1/comparisons", {
+      method: "POST",
+      body: JSON.stringify({ baselineRunId: active.runId, candidateRunId: repeatRunId }),
+    });
+    expect(comparison.response.status).toBe(200);
+    expect(comparison.value).toMatchObject({
+      compatibility: { status: "exact_inputs", canAttributeBehaviorChange: true },
+      outcome: "unchanged",
+      baseline: { runId: active.runId },
+      candidate: { runId: repeatRunId },
+    });
+    expect(comparison.value.baseline.reportDirectory).toBeUndefined();
+    expect(comparison.value.candidate.reportDirectory).toBeUndefined();
+    const selfComparison = await api(server, "/api/v1/comparisons", {
+      method: "POST",
+      body: JSON.stringify({ baselineRunId: active.runId, candidateRunId: active.runId }),
+    });
+    expect(selfComparison.response.status).toBe(400);
+
     const refreshed = await api(server, "/api/v1/project/refresh", { method: "POST" });
     expect(refreshed.response.status).toBe(200);
     expect(refreshed.value.world.buildHash).toBe(project.world.buildHash);
+
+    const suiteStart = await api(server, "/api/v1/runs", {
+      method: "POST",
+      body: JSON.stringify({ suiteId: "workspace-conformance", seed: "42" }),
+    });
+    expect(suiteStart.response.status).toBe(202);
+    expect(suiteStart.value.selection).toEqual({ kind: "suite", id: "workspace-conformance" });
+    const suiteFinished = await waitForRequest(server, suiteStart.value.requestId);
+    expect(suiteFinished).toMatchObject({
+      selection: { kind: "suite", id: "workspace-conformance" },
+      status: "completed",
+      verdict: "passed",
+    });
+    expect(suiteFinished.runIds).toHaveLength(1);
   }, 20_000);
 
   it("uses an agent callback only for external targets", async () => {

@@ -16,13 +16,14 @@ Every project, run, state, evidence, and control request requires `Authorization
 ## What a client can do
 
 - Read the compiled World, Tools, targets, drills, suites, diagnostics, and repository-relative source provenance.
-- Start one drill with optional seed, trial, retry, and concurrency overrides.
+- Start one drill or a named suite with optional seed, trial, retry, and concurrency overrides.
 - Follow a run request until its real drill-run IDs exist, then inspect those runs while the agent is still acting.
 - Page the ordered evidence journal and current synthetic Tool state.
 - Inspect active faults, scheduled events, callback deliveries, final assertions, and retained report availability.
+- Compare two verified sealed runs. The response removes local filesystem paths, grades input compatibility, and reports factual deltas without inferring improvement or regression.
 - Cancel active work and refresh repository source once no drill is running.
 
-The fixed routes are rooted at `/api/v1`: `project`, `runs`, and `run-requests`, with bounded child routes for evidence and state. A run request is transport-level correlation only: one request can create several real drill runs when trials or retries are enabled. Product evidence and reports always use the real run IDs.
+The fixed routes are rooted at `/api/v1`: `project`, `runs`, `run-requests`, and `comparisons`, with bounded child routes for evidence and state. A run request is transport-level correlation only: one request can create several real drill runs when trials or retries are enabled. Product evidence and reports always use the real run IDs.
 
 An `external` target is available only when the embedding application supplies its agent callback to `startLocalSimulationServer()`. Module, command, and HTTP targets continue to use their declared target adapters even when an external callback is present.
 
