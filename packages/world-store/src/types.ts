@@ -57,6 +57,12 @@ export interface StateScanOptions {
   readonly limit?: number;
 }
 
+export interface StateNamespaceSummary {
+  readonly packageId: PackageId;
+  readonly namespace: StableId;
+  readonly records: number;
+}
+
 export interface ActiveFault {
   readonly packageId: PackageId;
   readonly faultId: StableId;
@@ -259,11 +265,13 @@ export interface WorldReader {
   metadata(): WorldMetadata;
   listActiveFaults(packageId?: PackageId): readonly ActiveFault[];
   readState(packageId: PackageId, namespace: StableId, rowId: string): StoredStateRecord | null;
+  listStateNamespaces(): readonly StateNamespaceSummary[];
   scanState(
     packageId: PackageId,
     namespace: StableId,
     options?: StateScanOptions,
   ): readonly StoredStateRecord[];
+  latestEvidenceSequence(): number;
   readEvidence(fromSequence?: number, limit?: number): readonly EvidenceEntry[];
   listScheduledEvents(status?: ScheduledEvent["status"]): readonly ScheduledEvent[];
   listCallbackDeliveries(status?: CallbackDelivery["status"]): readonly CallbackDelivery[];

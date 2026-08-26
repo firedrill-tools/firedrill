@@ -70,6 +70,8 @@ export interface RunDrillTrialOptions {
   readonly callbackReceivers?: Readonly<Record<string, CallbackReceiver>>;
   /** Cooperatively cancels target execution and prevents later trials from starting. */
   readonly signal?: AbortSignal;
+  /** Called after the isolated world exists and before the target can act. */
+  readonly attemptStarted?: (context: DrillAttemptHookContext) => void | Promise<void>;
 }
 
 export interface DrillAttemptExecution {
@@ -94,6 +96,14 @@ export interface DrillTrialHookContext {
   readonly seed: Seed;
 }
 
+export interface DrillAttemptHookContext extends DrillTrialHookContext {
+  readonly attempt: number;
+  readonly attemptLimit: number;
+  readonly runId: RunId;
+  readonly worldInstanceId: WorldInstanceId;
+  readonly worldFilePath: string;
+}
+
 export type RunDrillOptions = Omit<
   RunDrillTrialOptions,
   "attempt" | "attemptLimit" | "runId" | "trial" | "trialCount" | "worldInstanceId"
@@ -107,6 +117,9 @@ export type RunDrillOptions = Omit<
   readonly beforeTrial?: (context: DrillTrialHookContext) => void | Promise<void>;
   readonly afterTrial?: (
     context: DrillTrialHookContext & { readonly execution: DrillTrialExecution },
+  ) => void | Promise<void>;
+  readonly attemptFinished?: (
+    context: DrillAttemptHookContext & { readonly execution: DrillAttemptExecution },
   ) => void | Promise<void>;
 };
 
@@ -442,6 +455,17 @@ export async function runDrillTrial(options: RunDrillTrialOptions): Promise<Dril
       },
     });
     store = world.store;
+    await options.attemptStarted?.({
+      drillId,
+      trial,
+      trialCount,
+      seed,
+      attempt,
+      attemptLimit,
+      runId,
+      worldInstanceId,
+      worldFilePath,
+    });
     const runEvidence = new AssertionEvidenceIndex();
     evidenceIndex = runEvidence;
     kernel = world.kernel;
@@ -817,6 +841,18 @@ async function runLogicalTrial(input: {
       attemptLimit: input.attemptLimit,
     });
     attempts.push(execution);
+    await input.options.attemptFinished?.({
+      drillId: input.drillId,
+      trial: input.trial,
+      trialCount: input.trialCount,
+      seed: input.seed,
+      attempt,
+      attemptLimit: input.attemptLimit,
+      runId: execution.result.identity.runId,
+      worldInstanceId: execution.result.identity.worldInstanceId,
+      worldFilePath: execution.worldFilePath,
+      execution,
+    });
     if (attemptVerdict(execution) === "passed" || execution.result.status === "cancelled") break;
   }
   const final = attempts.at(-1);

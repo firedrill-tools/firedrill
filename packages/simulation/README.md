@@ -1,0 +1,9 @@
+# @firedrill/simulation
+
+Versioned read and control projections for local Firedrill simulations.
+
+`startLocalSimulationServer()` binds to loopback, compiles one repository, runs its drills through `@firedrill/sdk`, and exposes bounded World/Drill/Run JSON views for local inspectors. It does not expose SQL, accept arbitrary filesystem paths, or give an evaluated agent world-control authority.
+
+The server requires its random bearer token on every project, run, state, evidence, and control route. The static health route reveals no repository data.
+
+It is an adapter, not another runtime: repository source is compiled by `@firedrill/compiler`, drills run through `@firedrill/sdk`, and live or retained state is read from the same per-run SQLite worlds that produce local evidence and reports.

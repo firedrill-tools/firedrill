@@ -14,6 +14,7 @@ import type {
   ActiveFault,
   CallbackDelivery,
   ScheduledEvent,
+  StateNamespaceSummary,
   StateScanOptions,
   StoredStateRecord,
   WorldMetadata,
@@ -148,6 +149,20 @@ export class SqliteWorldReader implements WorldReader {
     return row === undefined ? null : stateRecord(row);
   }
 
+  listStateNamespaces(): readonly StateNamespaceSummary[] {
+    this.assertOpen();
+    const rows = this.database
+      .prepare(
+        "SELECT package_id, namespace, COUNT(*) AS records FROM world_state GROUP BY package_id, namespace ORDER BY package_id, namespace",
+      )
+      .all() as Array<{ package_id: string; namespace: string; records: number }>;
+    return rows.map((row) => ({
+      packageId: PackageIdSchema.parse(row.package_id),
+      namespace: StableIdSchema.parse(row.namespace),
+      records: decodeStoredCount(String(row.records), "state record count"),
+    }));
+  }
+
   scanState(
     packageId: PackageId,
     namespace: StableId,
@@ -181,6 +196,16 @@ export class SqliteWorldReader implements WorldReader {
       .prepare("SELECT payload_json FROM evidence WHERE sequence >= ? ORDER BY sequence LIMIT ?")
       .all(fromSequence, parsedLimit) as EvidenceRow[];
     return rows.map((row) => EvidenceEntrySchema.parse(JSON.parse(row.payload_json)));
+  }
+
+  latestEvidenceSequence(): number {
+    this.assertOpen();
+    const row = this.database
+      .prepare("SELECT COALESCE(MAX(sequence), 0) AS sequence FROM evidence")
+      .get() as {
+      sequence: number;
+    };
+    return decodeStoredCount(String(row.sequence), "latest evidence sequence");
   }
 
   listScheduledEvents(status?: ScheduledEvent["status"]): readonly ScheduledEvent[] {

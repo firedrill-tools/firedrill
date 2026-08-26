@@ -16,6 +16,7 @@ import type {
 import { DrillShardSchema, SeedSchema, StableIdSchema, compareStableStrings } from "@firedrill/contracts";
 import type {
   CallbackReceiver,
+  DrillAttemptHookContext,
   DrillExecution,
   DrillTrialHookContext,
   TargetExecutionContext,
@@ -169,6 +170,12 @@ export interface RunDrillsHooks {
   readonly afterTrial?: (
     context: RunDrillContext &
       DrillTrialHookContext & { readonly execution: DrillExecution["trials"][number] },
+  ) => void | Promise<void>;
+  /** Observe a live attempt once its queryable world exists and before the target acts. */
+  readonly attemptStarted?: (context: RunDrillContext & DrillAttemptHookContext) => void | Promise<void>;
+  readonly attemptFinished?: (
+    context: RunDrillContext &
+      DrillAttemptHookContext & { readonly execution: DrillExecution["trials"][number]["attempts"][number] },
   ) => void | Promise<void>;
 }
 
@@ -566,6 +573,21 @@ export async function runDrills(options: RunDrillsOptions = {}): Promise<RunDril
         ? {}
         : { callbackReceivers: validated.callbackReceivers }),
       ...(options.signal === undefined ? {} : { signal: options.signal }),
+      ...(options.hooks?.attemptStarted === undefined
+        ? {}
+        : {
+            attemptStarted: (context: DrillAttemptHookContext) =>
+              options.hooks?.attemptStarted?.({ ...drillContext, ...context }),
+          }),
+      ...(options.hooks?.attemptFinished === undefined
+        ? {}
+        : {
+            attemptFinished: (
+              context: DrillAttemptHookContext & {
+                readonly execution: DrillExecution["trials"][number]["attempts"][number];
+              },
+            ) => options.hooks?.attemptFinished?.({ ...drillContext, ...context }),
+          }),
       ...(options.hooks?.beforeTrial === undefined
         ? {}
         : {

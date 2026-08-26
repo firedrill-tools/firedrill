@@ -199,6 +199,9 @@ describe("SQLite world transactions", () => {
     expect(reader.metadata().worldInstanceId).toBe("world_store01");
     expect(reader.listActiveFaults()).toEqual([{ packageId: "calendar", faultId: "slow-write" }]);
     expect(reader.scanState("calendar", "events")[0]?.value.title).toBe("Existing");
+    expect(reader.listStateNamespaces()).toEqual([
+      { packageId: "calendar", namespace: "events", records: 1 },
+    ]);
     expect("transact" in reader).toBe(false);
 
     store.transact("corr_reader_update", (transaction) => {
@@ -221,6 +224,7 @@ describe("SQLite world transactions", () => {
       "Visible while writer remains open",
     );
     expect(reader.readEvidence().at(-1)?.kind).toBe("state_change");
+    expect(reader.latestEvidenceSequence()).toBe(store.latestEvidenceSequence());
 
     reader.close();
     expect(() => reader.metadata()).toThrow(/reader is closed/);

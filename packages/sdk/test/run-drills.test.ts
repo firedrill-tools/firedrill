@@ -505,6 +505,8 @@ describe("repository-level TypeScript API", () => {
     let active = 0;
     let maximumActive = 0;
     const hooks: string[] = [];
+    const startedAttempts = new Map<string, string>();
+    const finishedAttempts = new Set<string>();
     const result = await runDrills({
       root: repository(),
       drill: "set-record",
@@ -519,6 +521,15 @@ describe("repository-level TypeScript API", () => {
         },
         beforeTrial: ({ trial }) => {
           hooks.push(`before-trial:${trial}`);
+        },
+        attemptStarted: ({ runId, worldFilePath, trial }) => {
+          expect(existsSync(worldFilePath)).toBe(true);
+          startedAttempts.set(runId, `${trial}:${worldFilePath}`);
+        },
+        attemptFinished: ({ runId, worldFilePath, execution }) => {
+          expect(execution.result.identity.runId).toBe(runId);
+          expect(execution.worldFilePath).toBe(worldFilePath);
+          finishedAttempts.add(runId);
         },
         afterTrial: ({ trial }) => {
           hooks.push(`after-trial:${trial}`);
@@ -547,6 +558,8 @@ describe("repository-level TypeScript API", () => {
     expect(hooks).toEqual(expect.arrayContaining(["before-trial:1", "after-trial:3"]));
     expect(hooks.at(-2)).toBe("after-drill:set-record");
     expect(hooks.at(-1)).toBe("after-all");
+    expect(startedAttempts.size).toBe(3);
+    expect(finishedAttempts).toEqual(new Set(startedAttempts.keys()));
   });
 
   it("labels quality trials as estimates and reports a bounded confidence interval", async () => {
