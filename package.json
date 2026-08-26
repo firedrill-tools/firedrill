@@ -2,7 +2,7 @@
   "name": "firedrill",
   "version": "0.0.0",
   "private": true,
-  "description": "Open-source stateful testing framework for action-taking AI agents",
+  "description": "Open-source stateful simulation and testing framework for action-taking AI agents",
   "license": "Apache-2.0",
   "type": "module",
   "packageManager": "pnpm@9.15.4",

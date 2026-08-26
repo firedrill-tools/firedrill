@@ -1,6 +1,6 @@
 # Firedrill
 
-Firedrill is an open-source stateful testing framework for AI agents that take actions.
+Firedrill is an open-source stateful simulation and testing framework for AI agents that take actions.
 
 Firedrill gives your AI agent a world to work inside—tools, data, and state with real consequences—so you can test what it does, not just what it says. Each trial starts from a fresh, controlled world, lets the existing agent act through its ordinary tool seams, and verifies the resulting state and behavior. The complete individual-developer loop runs locally without an account, upload, or hosted service.
 
