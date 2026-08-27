@@ -1,4 +1,13 @@
-import { cpSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import {
+  cpSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  renameSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
@@ -226,6 +235,18 @@ describe("local simulation server", () => {
     const response = await api(server, "/api/v1/sources/world/quickstart-world");
     expect(response.response.status).toBe(404);
     expect(response.value.error.code).toBe("framework.SOURCE_NOT_FOUND");
+
+    const directoryRoot = repository();
+    const directoryServer = await startLocalSimulationServer({ root: directoryRoot });
+    servers.push(directoryServer);
+    const compiledDirectory = join(directoryRoot, "firedrill");
+    const replacementDirectory = join(directoryRoot, "compiled-source");
+    renameSync(compiledDirectory, replacementDirectory);
+    symlinkSync(replacementDirectory, compiledDirectory, "dir");
+
+    const directoryResponse = await api(directoryServer, "/api/v1/sources/world/quickstart-world");
+    expect(directoryResponse.response.status).toBe(404);
+    expect(directoryResponse.value.error.code).toBe("framework.SOURCE_NOT_FOUND");
   });
 
   it("runs, follows, inspects, cancels, and seals drills through the authenticated loopback API", async () => {

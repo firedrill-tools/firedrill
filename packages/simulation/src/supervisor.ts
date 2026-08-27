@@ -293,6 +293,17 @@ export class LocalSimulationSupervisor {
       throw new LocalSimulationError(404, "framework.SOURCE_NOT_FOUND", "repository source is unavailable");
     }
     try {
+      let sourceComponent = this.repositoryRoot;
+      for (const component of reference.path.split("/")) {
+        sourceComponent = join(sourceComponent, component);
+        if (lstatSync(sourceComponent).isSymbolicLink()) {
+          throw new LocalSimulationError(
+            404,
+            "framework.SOURCE_NOT_FOUND",
+            "repository source cannot traverse a symbolic link",
+          );
+        }
+      }
       const realRepositoryRoot = realpathSync(this.repositoryRoot);
       const realSourcePath = realpathSync(absolutePath);
       const realRepositoryPath = relative(realRepositoryRoot, realSourcePath);
