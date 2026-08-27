@@ -39,6 +39,21 @@ const SourceReferenceSchema = z
   .object({
     path: RelativeSourcePathSchema,
     contentHash: Sha256Schema,
+    readable: z.boolean(),
+  })
+  .strict();
+
+export const SimulationSourceKindSchema = z.enum(["world", "scenario", "tool", "drill", "suite", "target"]);
+
+export const SimulationSourceDocumentSchema = z
+  .object({
+    schemaVersion: z.literal(1),
+    kind: SimulationSourceKindSchema,
+    id: StableIdSchema,
+    path: RelativeSourcePathSchema,
+    contentHash: Sha256Schema,
+    language: z.enum(["json", "yaml", "javascript", "typescript", "markdown", "text"]),
+    content: z.string().max(1024 * 1024),
   })
   .strict();
 
@@ -445,6 +460,8 @@ export const SimulationApiErrorSchema = z
   .strict();
 
 export type SimulationProject = z.infer<typeof SimulationProjectSchema>;
+export type SimulationSourceKind = z.infer<typeof SimulationSourceKindSchema>;
+export type SimulationSourceDocument = z.infer<typeof SimulationSourceDocumentSchema>;
 export type SimulationRunSummary = z.infer<typeof SimulationRunSummarySchema>;
 export type SimulationRunList = z.infer<typeof SimulationRunListSchema>;
 export type SimulationRunDetail = z.infer<typeof SimulationRunDetailSchema>;

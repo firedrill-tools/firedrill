@@ -6,6 +6,8 @@ import type {
   SimulationRunList,
   SimulationRunRequest,
   SimulationRunRequestList,
+  SimulationSourceDocument,
+  SimulationSourceKind,
   SimulationStatePage,
   StartSimulationRun,
 } from "./types";
@@ -65,6 +67,8 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
 export const inspectorApi = {
   project: () => request<SimulationProject>("/api/v1/project"),
   refreshProject: () => request<SimulationProject>("/api/v1/project/refresh", { method: "POST" }),
+  source: (kind: SimulationSourceKind, id: string) =>
+    request<SimulationSourceDocument>(`/api/v1/sources/${kind}/${encodeURIComponent(id)}`),
   runs: () => request<SimulationRunList>("/api/v1/runs"),
   runRequests: () => request<SimulationRunRequestList>("/api/v1/run-requests"),
   run: (runId: string) => request<SimulationRunDetail>(`/api/v1/runs/${encodeURIComponent(runId)}`),

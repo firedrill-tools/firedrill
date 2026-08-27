@@ -24,6 +24,7 @@ import {
   Spinner,
   Status,
 } from "../components/primitives";
+import { SourceViewer } from "../components/source-viewer";
 
 type Selection =
   | { readonly kind: "drill"; readonly value: SimulationDrill }
@@ -476,6 +477,11 @@ export function DrillsView({
                     the repository.
                   </p>
                   <p className="fd-hash">{selected.value.source.contentHash}</p>
+                  {selected.value.source.readable ? (
+                    <div className="fd-inspector-actions">
+                      <SourceViewer kind={selected.kind} id={selected.value.id} />
+                    </div>
+                  ) : null}
                 </section>
               )}
             </div>

@@ -7,6 +7,8 @@ import type {
   SimulationRunRequest,
   SimulationRunRequestList,
   SimulationRunSummary,
+  SimulationSourceDocument,
+  SimulationSourceKind,
   SimulationStatePage,
   StartSimulationRun,
 } from "@firedrill/simulation";
@@ -20,6 +22,8 @@ export type {
   SimulationRunRequest,
   SimulationRunRequestList,
   SimulationRunSummary,
+  SimulationSourceDocument,
+  SimulationSourceKind,
   SimulationStatePage,
   StartSimulationRun,
 };

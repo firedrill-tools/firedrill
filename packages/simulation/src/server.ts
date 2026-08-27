@@ -256,6 +256,13 @@ export function createLocalSimulationRequestHandler(
         writeJson(response, 200, await supervisor.refreshProject());
         return;
       }
+      const sourceMatch = /^\/api\/v1\/sources\/(world|scenario|tool|drill|suite|target)\/([^/]+)$/.exec(
+        url.pathname,
+      );
+      if (request.method === "GET" && sourceMatch !== null) {
+        writeJson(response, 200, supervisor.source(sourceMatch[1] ?? "", decoded(sourceMatch[2] ?? "")));
+        return;
+      }
       if (request.method === "GET" && url.pathname === "/api/v1/runs") {
         writeJson(response, 200, supervisor.listRuns());
         return;

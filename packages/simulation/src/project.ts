@@ -34,7 +34,11 @@ export async function loadSimulationProject(
   const source = new Map(
     compiled.build.sourceProvenance.map((item) => [
       `${item.kind}:${item.id}`,
-      { path: item.sourcePath, contentHash: item.contentHash },
+      {
+        path: item.sourcePath,
+        contentHash: item.contentHash,
+        readable: item.origin.kind === "repository",
+      },
     ]),
   );
   const targetKinds = new Map(compiled.build.worldIr.targets.map((target) => [target.id, target.kind]));

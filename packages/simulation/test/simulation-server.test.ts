@@ -1,4 +1,4 @@
-import { cpSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { cpSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
@@ -67,6 +67,10 @@ interface TestApiValue {
   readonly outcome: "unchanged" | "changed" | "not_comparable";
   readonly baseline: { readonly runId: string; readonly reportDirectory?: string };
   readonly candidate: { readonly runId: string; readonly reportDirectory?: string };
+  readonly kind: string;
+  readonly path: string;
+  readonly language: string;
+  readonly content: string;
 }
 
 function repository(): string {
@@ -209,6 +213,21 @@ describe("local simulation server", () => {
     ).rejects.toThrow(/HTTP-header-safe/);
   });
 
+  it("serves only regular compiled repository source files", async () => {
+    const root = repository();
+    const server = await startLocalSimulationServer({ root });
+    servers.push(server);
+    const sourcePath = join(root, "firedrill", "world.yaml");
+    const replacement = join(root, "replacement.yaml");
+    writeFileSync(replacement, "private: not-a-world\n");
+    rmSync(sourcePath);
+    symlinkSync(replacement, sourcePath);
+
+    const response = await api(server, "/api/v1/sources/world/quickstart-world");
+    expect(response.response.status).toBe(404);
+    expect(response.value.error.code).toBe("framework.SOURCE_NOT_FOUND");
+  });
+
   it("runs, follows, inspects, cancels, and seals drills through the authenticated loopback API", async () => {
     const root = repository();
     const server = await startLocalSimulationServer({ root, maxConcurrency: 2 });
@@ -256,6 +275,21 @@ describe("local simulation server", () => {
     expect(
       project.targets.find((target: { id: string }) => target.id === "caller-owned-agent")?.runAvailability,
     ).toBe("agent_callback_required");
+
+    const worldSource = await api(server, "/api/v1/sources/world/quickstart-world");
+    expect(worldSource.response.status).toBe(200);
+    expect(worldSource.value).toMatchObject({
+      kind: "world",
+      path: "firedrill/world.yaml",
+      language: "yaml",
+    });
+    expect(worldSource.value.content).toContain("id: quickstart-world");
+    const missingSource = await api(server, "/api/v1/sources/scenario/unknown");
+    expect(missingSource.response.status).toBe(404);
+    expect(missingSource.value.error.code).toBe("framework.SOURCE_NOT_FOUND");
+    const malformedSource = await api(server, "/api/v1/sources/world/BAD%20ID");
+    expect(malformedSource.response.status).toBe(400);
+    expect(malformedSource.value.error.code).toBe("framework.INVALID_ARGUMENT");
 
     const external = await api(server, "/api/v1/runs", {
       method: "POST",

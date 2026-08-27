@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
-import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
-import { join } from "node:path";
+import { existsSync, lstatSync, readdirSync, readFileSync, realpathSync, statSync } from "node:fs";
+import { extname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import type { ErrorEnvelope, RunId, RunResult, StableId } from "@firedrill/contracts";
 import { PackageIdSchema, RunIdSchema, StableIdSchema } from "@firedrill/contracts";
 import { verifyLocalReport } from "@firedrill/reporters";
@@ -16,6 +16,8 @@ import type {
   SimulationRunList,
   SimulationRunRequest,
   SimulationRunSummary,
+  SimulationSourceDocument,
+  SimulationSourceKind,
   SimulationStatePage,
   StartSimulationRun,
 } from "./contracts.js";
@@ -26,6 +28,8 @@ import {
   SimulationRunListSchema,
   SimulationRunRequestSchema,
   SimulationRunSummarySchema,
+  SimulationSourceDocumentSchema,
+  SimulationSourceKindSchema,
   SimulationStatePageSchema,
   StartSimulationRunSchema,
 } from "./contracts.js";
@@ -33,6 +37,7 @@ import { loadSimulationProject } from "./project.js";
 
 const MAX_REPORTS = 500;
 const MAX_REQUEST_HISTORY = 1_000;
+const MAX_SOURCE_BYTES = 1024 * 1024;
 
 function bounded(value: unknown, maximum: number, fallback: string): string {
   const text = typeof value === "string" ? value : value === undefined ? fallback : String(value);
@@ -165,6 +170,30 @@ function requestId(): StableId {
   return StableIdSchema.parse(`request-${randomUUID().replaceAll("-", "")}`);
 }
 
+function sourceLanguage(path: string): SimulationSourceDocument["language"] {
+  switch (extname(path).toLowerCase()) {
+    case ".json":
+      return "json";
+    case ".yaml":
+    case ".yml":
+      return "yaml";
+    case ".js":
+    case ".mjs":
+    case ".cjs":
+      return "javascript";
+    case ".ts":
+    case ".tsx":
+    case ".mts":
+    case ".cts":
+      return "typescript";
+    case ".md":
+    case ".mdx":
+      return "markdown";
+    default:
+      return "text";
+  }
+}
+
 function publicComparison(comparison: LocalRunComparison): SimulationRunComparison {
   const side = (value: LocalRunComparison["baseline"] | LocalRunComparison["candidate"]) => ({
     runId: value.runId,
@@ -232,6 +261,89 @@ export class LocalSimulationSupervisor {
   project(): SimulationProject {
     this.assertOpen();
     return this.projectValue;
+  }
+
+  source(kind: string, id: string): SimulationSourceDocument {
+    this.assertOpen();
+    const sourceKind = SimulationSourceKindSchema.safeParse(kind);
+    const sourceId = StableIdSchema.safeParse(id);
+    if (!sourceKind.success || !sourceId.success) {
+      throw new LocalSimulationError(
+        400,
+        "framework.INVALID_ARGUMENT",
+        "source kind and id must identify a compiled Firedrill resource",
+      );
+    }
+    const reference = this.sourceReference(sourceKind.data, sourceId.data);
+    if (reference === undefined || !reference.readable) {
+      throw new LocalSimulationError(
+        404,
+        "framework.SOURCE_NOT_FOUND",
+        `repository source is unavailable for ${sourceKind.data} ${sourceId.data}`,
+      );
+    }
+    const absolutePath = resolve(this.repositoryRoot, reference.path);
+    const repositoryPath = relative(this.repositoryRoot, absolutePath);
+    if (
+      repositoryPath.length === 0 ||
+      isAbsolute(repositoryPath) ||
+      repositoryPath === ".." ||
+      repositoryPath.startsWith(`..${sep}`)
+    ) {
+      throw new LocalSimulationError(404, "framework.SOURCE_NOT_FOUND", "repository source is unavailable");
+    }
+    try {
+      const realRepositoryRoot = realpathSync(this.repositoryRoot);
+      const realSourcePath = realpathSync(absolutePath);
+      const realRepositoryPath = relative(realRepositoryRoot, realSourcePath);
+      if (
+        realRepositoryPath.length === 0 ||
+        isAbsolute(realRepositoryPath) ||
+        realRepositoryPath === ".." ||
+        realRepositoryPath.startsWith(`..${sep}`)
+      ) {
+        throw new LocalSimulationError(404, "framework.SOURCE_NOT_FOUND", "repository source is unavailable");
+      }
+      const file = lstatSync(absolutePath);
+      if (!file.isFile() || file.isSymbolicLink()) {
+        throw new LocalSimulationError(
+          404,
+          "framework.SOURCE_NOT_FOUND",
+          "repository source must be a regular file",
+        );
+      }
+      if (file.size > MAX_SOURCE_BYTES) {
+        throw new LocalSimulationError(
+          413,
+          "framework.SOURCE_TOO_LARGE",
+          "repository source exceeds the 1 MiB inspector limit",
+        );
+      }
+      const content = readFileSync(absolutePath, "utf8");
+      if (content.includes("\u0000")) {
+        throw new LocalSimulationError(
+          415,
+          "framework.SOURCE_NOT_TEXT",
+          "repository source is not a text file",
+        );
+      }
+      return SimulationSourceDocumentSchema.parse({
+        schemaVersion: 1,
+        kind: sourceKind.data,
+        id: sourceId.data,
+        path: reference.path,
+        contentHash: reference.contentHash,
+        language: sourceLanguage(reference.path),
+        content,
+      });
+    } catch (error) {
+      if (error instanceof LocalSimulationError) throw error;
+      throw new LocalSimulationError(
+        404,
+        "framework.SOURCE_NOT_FOUND",
+        `repository source is unavailable for ${sourceKind.data} ${sourceId.data}`,
+      );
+    }
   }
 
   async refreshProject(): Promise<SimulationProject> {
@@ -565,6 +677,22 @@ export class LocalSimulationSupervisor {
     await Promise.allSettled(tasks);
     for (const attempt of this.attempts.values()) attempt.reader.close();
     this.attempts.clear();
+  }
+
+  private sourceReference(kind: SimulationSourceKind, id: StableId) {
+    if (kind === "world")
+      return this.projectValue.world.id === id ? this.projectValue.world.source : undefined;
+    const collection =
+      kind === "scenario"
+        ? this.projectValue.scenarios
+        : kind === "tool"
+          ? this.projectValue.tools
+          : kind === "drill"
+            ? this.projectValue.drills
+            : kind === "suite"
+              ? this.projectValue.suites
+              : this.projectValue.targets;
+    return collection.find((candidate) => candidate.id === id)?.source;
   }
 
   private async execute(request: MutableRunRequest, input: StartSimulationRun): Promise<void> {

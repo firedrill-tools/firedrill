@@ -6,4 +6,6 @@ Versioned read and control projections for local Firedrill simulations.
 
 The server requires its random bearer token on every project, run, state, evidence, and control route. The static health route reveals no repository data.
 
+Source reads are keyed by compiled resource kind and identity rather than a caller-provided path. They are limited to regular text files already present in the compiled repository projection and fail closed on missing files, symlinks, and files over 1 MiB.
+
 It is an adapter, not another runtime: repository source is compiled by `@firedrill/compiler`, drills run through `@firedrill/sdk`, and live or retained state is read from the same per-run SQLite worlds that produce local evidence and reports.

@@ -12,6 +12,7 @@ import {
 } from "lucide-react";
 import { useMemo, useState } from "react";
 import { CodeBlock, KeyValue, SearchField } from "../components/primitives";
+import { SourceViewer } from "../components/source-viewer";
 import { compactId, json, plural, titleFromId, virtualTime } from "../format";
 import type { SimulationProject, SimulationScenario, SimulationSetup, SimulationTool } from "../types";
 
@@ -20,6 +21,7 @@ type WorldSelection = "setup" | `scenario:${string}` | `tool:${string}`;
 interface SourceReference {
   readonly path: string;
   readonly contentHash: string;
+  readonly readable: boolean;
 }
 
 function uniquelyKeyed<T>(values: readonly T[], identity: (value: T) => string) {
@@ -220,13 +222,21 @@ function ToolInspector({ tool }: { readonly tool: SimulationTool }) {
             </ul>
           )}
         </section>
-        {tool.source === undefined ? null : <SourceSection source={tool.source} />}
+        {tool.source === undefined ? null : <SourceSection source={tool.source} kind="tool" id={tool.id} />}
       </div>
     </aside>
   );
 }
 
-function SourceSection({ source }: { readonly source: SourceReference }) {
+function SourceSection({
+  source,
+  kind,
+  id,
+}: {
+  readonly source: SourceReference;
+  readonly kind: "world" | "scenario" | "tool";
+  readonly id: string;
+}) {
   return (
     <section className="fd-inspector-section">
       <h3>Repository source</h3>
@@ -234,6 +244,13 @@ function SourceSection({ source }: { readonly source: SourceReference }) {
       <p className="fd-hash" title={source.contentHash}>
         {compactId(source.contentHash, 22)}
       </p>
+      {source.readable ? (
+        <div className="fd-inspector-actions">
+          <SourceViewer kind={kind} id={id} />
+        </div>
+      ) : (
+        <p className="fd-inspector-copy">This definition belongs to an installed package.</p>
+      )}
     </section>
   );
 }
@@ -443,11 +460,15 @@ function SetupInspector({
   title,
   setup,
   source,
+  sourceKind,
+  sourceId,
   resolved,
 }: {
   readonly title: string;
   readonly setup: SimulationSetup;
   readonly source?: SourceReference;
+  readonly sourceKind: "world" | "scenario";
+  readonly sourceId: string;
   readonly resolved: boolean;
 }) {
   return (
@@ -477,7 +498,7 @@ function SetupInspector({
               : "This is the compiled world baseline. Repository source remains authoritative."}
           </p>
         </section>
-        {source === undefined ? null : <SourceSection source={source} />}
+        {source === undefined ? null : <SourceSection source={source} kind={sourceKind} id={sourceId} />}
       </div>
     </aside>
   );
@@ -558,6 +579,8 @@ export function WorldView({ project }: { readonly project: SimulationProject }) 
               title={scenario.title ?? titleFromId(scenario.id)}
               setup={scenario}
               {...(scenario.source === undefined ? {} : { source: scenario.source })}
+              sourceKind="scenario"
+              sourceId={scenario.id}
               resolved
             />
           </>
@@ -578,6 +601,8 @@ export function WorldView({ project }: { readonly project: SimulationProject }) 
               title={project.world.title ?? titleFromId(project.world.id)}
               setup={project.world.baseline}
               {...(project.world.source === undefined ? {} : { source: project.world.source })}
+              sourceKind="world"
+              sourceId={project.world.id}
               resolved={false}
             />
           </>
