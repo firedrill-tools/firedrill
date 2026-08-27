@@ -16,7 +16,7 @@ active faults, pending events, and callback deliveries. It can run drills and
 suites, repeat a sealed drill with the same seed, compare two verified local
 reports, cancel active work, and open the self-contained HTML report. Repository
 source remains authoritative and read-only in the inspector. World, scenario,
-Tool, drill, and suite panels can open their current repository file in a
+Tool, target, drill, and suite panels can open their current repository file in a
 line-numbered viewer; the browser cannot request arbitrary filesystem paths.
 Run search covers drill, target, scenario, seed, trial, and result identity;
 evidence search covers nested actor, Tool, operation, event, assertion, fault,

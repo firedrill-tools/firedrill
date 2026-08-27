@@ -284,6 +284,14 @@ describe("local simulation server", () => {
       language: "yaml",
     });
     expect(worldSource.value.content).toContain("id: quickstart-world");
+    const targetSource = await api(server, "/api/v1/sources/target/local-agent");
+    expect(targetSource.response.status).toBe(200);
+    expect(targetSource.value).toMatchObject({
+      kind: "target",
+      path: "firedrill/local-agent.target.yaml",
+      language: "yaml",
+    });
+    expect(targetSource.value.content).toContain("id: local-agent");
     const missingSource = await api(server, "/api/v1/sources/scenario/unknown");
     expect(missingSource.response.status).toBe(404);
     expect(missingSource.value.error.code).toBe("framework.SOURCE_NOT_FOUND");

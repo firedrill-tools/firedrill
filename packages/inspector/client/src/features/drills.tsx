@@ -266,7 +266,14 @@ function DrillDetails({
         </div>
       </section>
       <section className="fd-definition__section">
-        <h3>Execution limits</h3>
+        <div className="fd-section-heading">
+          <div>
+            <h3>Execution limits</h3>
+          </div>
+          {target?.source?.readable ? (
+            <SourceViewer kind="target" id={target.id} label="View target source" />
+          ) : null}
+        </div>
         <dl className="fd-definition-grid">
           <KeyValue label="Interactions">{drill.timeline.interactions}</KeyValue>
           <KeyValue label="Workloads">{drill.timeline.workloads}</KeyValue>
