@@ -16,7 +16,7 @@ import {
   Wrench,
   XCircle,
 } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { inspectorApi } from "../api";
 import {
   Button,
@@ -31,6 +31,7 @@ import {
   Status,
 } from "../components/primitives";
 import { compactId, evidenceLabel, json, plural, titleFromId, virtualTime } from "../format";
+import { evidenceSearchText, matchesSearch, preferredEvidenceSequence, runSearchText } from "../search";
 import type {
   EvidenceEntry,
   SimulationRunComparison,
@@ -590,7 +591,7 @@ function RunWorkspace({
         setDetail(nextDetail);
         setEntries(page.entries);
         setNextSequence(page.nextSequence);
-        setSelectedSequence(page.entries.at(-1)?.sequence);
+        setSelectedSequence(preferredEvidenceSequence(page.entries));
       })
       .catch((error: unknown) => {
         if (current) onError(error instanceof Error ? error.message : "Run evidence could not be loaded.");
@@ -620,7 +621,7 @@ function RunWorkspace({
         if (page.entries.length > 0) {
           setEntries((value) => [...value, ...page.entries]);
           setNextSequence(page.nextSequence);
-          setSelectedSequence((value) => value ?? page.entries.at(-1)?.sequence);
+          setSelectedSequence((value) => value ?? preferredEvidenceSequence(page.entries));
         }
       })
       .catch((error: unknown) => {
@@ -654,11 +655,16 @@ function RunWorkspace({
     }
   };
 
-  const filtered = entries.filter((entry) => {
-    if (kind !== "all" && entry.kind !== kind) return false;
-    const search = `${entry.kind} ${evidenceLabel(entry)} ${entry.sequence}`.toLowerCase();
-    return search.includes(query.toLowerCase());
-  });
+  const indexedEntries = useMemo(
+    () => entries.map((entry) => ({ entry, searchText: evidenceSearchText(entry) })),
+    [entries],
+  );
+  const filtered = indexedEntries
+    .filter(({ entry, searchText }) => {
+      if (kind !== "all" && entry.kind !== kind) return false;
+      return matchesSearch(searchText, query);
+    })
+    .map(({ entry }) => entry);
   const selected = entries.find((entry) => entry.sequence === selectedSequence);
   const assertions = detail?.result?.assertionResults ?? [];
 
@@ -734,7 +740,7 @@ function RunWorkspace({
                 <SearchField
                   value={query}
                   onChange={(event) => setQuery(event.target.value)}
-                  placeholder="Find evidence"
+                  placeholder="Actor, Tool, assertion, fault…"
                 />
                 <Select label="Evidence kind" value={kind} onChange={(event) => setKind(event.target.value)}>
                   <option value="all">All evidence</option>
@@ -798,7 +804,11 @@ function RunWorkspace({
                     <button
                       type="button"
                       key={assertion.assertionId}
-                      onClick={() => setSelectedSequence(assertion.evidenceSequences.at(-1))}
+                      onClick={() => {
+                        setQuery("");
+                        setKind("verification");
+                        setSelectedSequence(assertion.evidenceSequences.at(-1));
+                      }}
                       disabled={assertion.evidenceSequences.length === 0}
                     >
                       {assertion.status === "passed" ? <CheckCircle2 size={16} /> : <XCircle size={16} />}
@@ -868,10 +878,13 @@ export function RunsView({
   const activeRequests = requests.filter((request) =>
     ["starting", "running", "cancelling"].includes(request.status),
   );
-  const filtered = runs.filter((run) => {
-    if (status !== "all" && (run.verdict ?? run.status) !== status) return false;
-    return `${run.drillId} ${run.runId} ${run.seed}`.toLowerCase().includes(query.toLowerCase());
-  });
+  const indexedRuns = useMemo(() => runs.map((run) => ({ run, searchText: runSearchText(run) })), [runs]);
+  const filtered = indexedRuns
+    .filter(({ run, searchText }) => {
+      if (status !== "all" && (run.verdict ?? run.status) !== status) return false;
+      return matchesSearch(searchText, query);
+    })
+    .map(({ run }) => run);
 
   useEffect(() => {
     if (selectedId === undefined && runs[0] !== undefined) setSelectedId(runs[0].runId);
@@ -930,7 +943,7 @@ export function RunsView({
             <SearchField
               value={query}
               onChange={(event) => setQuery(event.target.value)}
-              placeholder="Find a run"
+              placeholder="Drill, target, scenario, seed…"
             />
             <Select label="Run result" value={status} onChange={(event) => setStatus(event.target.value)}>
               <option value="all">All results</option>
@@ -938,6 +951,7 @@ export function RunsView({
               <option value="passed">Passed</option>
               <option value="failed">Failed</option>
               <option value="inconclusive">Inconclusive</option>
+              <option value="runner_failed">Runner failed</option>
               <option value="cancelled">Cancelled</option>
             </Select>
           </div>

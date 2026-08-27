@@ -18,3 +18,6 @@ reports, cancel active work, and open the self-contained HTML report. Repository
 source remains authoritative and read-only in the inspector. World, scenario,
 Tool, drill, and suite panels can open their current repository file in a
 line-numbered viewer; the browser cannot request arbitrary filesystem paths.
+Run search covers drill, target, scenario, seed, trial, and result identity;
+evidence search covers nested actor, Tool, operation, event, assertion, fault,
+and payload facts. A failed assertion is the default evidence selection.
