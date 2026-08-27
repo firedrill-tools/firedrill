@@ -48,10 +48,23 @@ export async function loadSimulationProject(
       seed: compiled.build.worldIr.world.seed,
       buildHash: compiled.build.manifest.buildHash,
       packageLockHash: compiled.build.manifest.packageLockHash,
+      baseline: compiled.build.worldIr.baseline,
       ...(source.get(`world:${compiled.build.worldIr.world.id}`) === undefined
         ? {}
         : { source: source.get(`world:${compiled.build.worldIr.world.id}`) }),
     },
+    scenarios: compiled.build.worldIr.scenarios.map((scenario) => ({
+      id: scenario.id,
+      ...(scenario.title === undefined ? {} : { title: scenario.title }),
+      virtualTimeUs: scenario.virtualTimeUs,
+      actors: scenario.actors,
+      state: scenario.state,
+      faults: scenario.faults,
+      initialEvents: scenario.initialEvents,
+      ...(source.get(`scenario:${scenario.id}`) === undefined
+        ? {}
+        : { source: source.get(`scenario:${scenario.id}`) }),
+    })),
     tools: compiled.build.worldIr.tools.map((tool) => ({
       id: tool.id,
       version: tool.version,

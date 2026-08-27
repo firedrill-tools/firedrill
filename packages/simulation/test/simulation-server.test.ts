@@ -10,7 +10,26 @@ const servers: LocalSimulationServer[] = [];
 
 interface TestApiValue {
   readonly error: { readonly code: string };
-  readonly world: { readonly id: string; readonly buildHash: string };
+  readonly world: {
+    readonly id: string;
+    readonly buildHash: string;
+    readonly baseline: {
+      readonly virtualTimeUs: number;
+      readonly actors: ReadonlyArray<{
+        readonly id: string;
+        readonly grants: ReadonlyArray<{ readonly packageId: string; readonly operationId: string }>;
+      }>;
+      readonly state: readonly unknown[];
+      readonly faults: readonly unknown[];
+      readonly initialEvents: readonly unknown[];
+    };
+  };
+  readonly scenarios: ReadonlyArray<{
+    readonly id: string;
+    readonly virtualTimeUs: number;
+    readonly state: readonly unknown[];
+    readonly source?: { readonly path: string };
+  }>;
   readonly tools: ReadonlyArray<{
     readonly id: string;
     readonly stateNamespaces: readonly string[];
@@ -207,6 +226,29 @@ describe("local simulation server", () => {
     const { response: projectResponse, value: project } = await api(server, "/api/v1/project");
     expect(projectResponse.status).toBe(200);
     expect(project.world.id).toBe("quickstart-world");
+    expect(project.world.baseline).toMatchObject({
+      virtualTimeUs: 0,
+      actors: [{ id: "agent", grants: [{ packageId: "workspace", operationId: "records.set" }] }],
+      state: [],
+      faults: [],
+      initialEvents: [],
+    });
+    expect(project.scenarios).toContainEqual(
+      expect.objectContaining({
+        id: "empty",
+        virtualTimeUs: 0,
+        state: [
+          {
+            action: "upsert",
+            packageId: "workspace",
+            namespace: "records",
+            rowId: "primary",
+            value: { value: 0 },
+          },
+        ],
+        source: expect.objectContaining({ path: "firedrill/empty.scenario.yaml" }),
+      }),
+    );
     expect(project.tools[0]).toMatchObject({
       id: "workspace",
       stateNamespaces: ["records"],

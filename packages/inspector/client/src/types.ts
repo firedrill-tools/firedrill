@@ -25,6 +25,8 @@ export type {
 };
 
 export type SimulationTool = SimulationProject["tools"][number];
+export type SimulationScenario = SimulationProject["scenarios"][number];
+export type SimulationSetup = SimulationProject["world"]["baseline"];
 export type SimulationDrill = SimulationProject["drills"][number];
 export type SimulationSuite = SimulationProject["suites"][number];
 export type SimulationTarget = SimulationProject["targets"][number];

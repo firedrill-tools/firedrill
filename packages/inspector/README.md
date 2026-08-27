@@ -10,8 +10,9 @@ Use `firedrill inspect` for the normal CLI experience. Embedders that own an
 external agent callback can call `startLocalInspector({ root, agent })` so that
 external targets remain in their process.
 
-The UI reads compiled project metadata, live or sealed causal evidence, retained
-world state, active faults, pending events, and callback deliveries. It can run
-drills and suites, repeat a sealed drill with the same seed, compare two verified
-local reports, cancel active work, and open the self-contained HTML report.
-Repository source remains authoritative and read-only in the inspector.
+The UI reads the compiled world setup, scenarios, actors and permissions, seeded
+state, Tool surfaces, live or sealed causal evidence, retained world state,
+active faults, pending events, and callback deliveries. It can run drills and
+suites, repeat a sealed drill with the same seed, compare two verified local
+reports, cancel active work, and open the self-contained HTML report. Repository
+source remains authoritative and read-only in the inspector.

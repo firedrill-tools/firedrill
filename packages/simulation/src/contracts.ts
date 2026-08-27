@@ -1,4 +1,5 @@
 import {
+  ActorDefinitionSchema,
   ActorBindingIdSchema,
   AssertionStatusSchema,
   CallbackDeliveryIdSchema,
@@ -9,6 +10,8 @@ import {
   EventIdSchema,
   EventRefSchema,
   EvidenceEntrySchema,
+  FaultActivationSchema,
+  InitialEventSchema,
   JsonObjectSchema,
   OperationIdSchema,
   PackageIdSchema,
@@ -18,6 +21,7 @@ import {
   SeedSchema,
   Sha256Schema,
   StableIdSchema,
+  StateSetupSchema,
   VirtualTimeSchema,
   WorldInstanceIdSchema,
 } from "@firedrill/contracts";
@@ -37,6 +41,22 @@ const SourceReferenceSchema = z
     contentHash: Sha256Schema,
   })
   .strict();
+
+const ScenarioSetupViewSchema = z
+  .object({
+    virtualTimeUs: VirtualTimeSchema,
+    actors: z.array(ActorDefinitionSchema),
+    state: z.array(StateSetupSchema),
+    faults: z.array(FaultActivationSchema),
+    initialEvents: z.array(InitialEventSchema),
+  })
+  .strict();
+
+const ScenarioViewSchema = ScenarioSetupViewSchema.extend({
+  id: StableIdSchema,
+  title: z.string().min(1).max(200).optional(),
+  source: SourceReferenceSchema.optional(),
+}).strict();
 
 const OperationViewSchema = z
   .object({
@@ -149,9 +169,11 @@ export const SimulationProjectSchema = z
         seed: SeedSchema,
         buildHash: Sha256Schema,
         packageLockHash: Sha256Schema,
+        baseline: ScenarioSetupViewSchema,
         source: SourceReferenceSchema.optional(),
       })
       .strict(),
+    scenarios: z.array(ScenarioViewSchema),
     tools: z.array(ToolViewSchema),
     targets: z.array(TargetViewSchema),
     drills: z.array(DrillViewSchema),
