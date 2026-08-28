@@ -26,7 +26,7 @@ Authenticated requests use `Authorization: Bearer <FIREDRILL_HTTP_TOKEN>`. An op
 
 Every operation response contains `schemaVersion`, `callId`, `correlationId`, and `outcome`. `outcome.status` is one of `ok`, `denied`, `tool_error`, `unsupported`, or `invalid`; successful values and structured failures use the same public operation contracts regardless of Tool domain.
 
-This is Firedrill's stable generic operation protocol. It does not by itself claim wire compatibility with another REST API. When an existing agent uses a different client shape, point that client at a Tool-declared synthetic route or adapt its transport once at the composition seam. Tool-specific behavior never enters protocol core.
+This is Firedrill's stable generic operation protocol. It does not by itself claim wire compatibility with another REST API. When an existing agent uses a different client shape, point its existing test configuration at a Tool-declared synthetic route or translate through a separate test-only adapter. Production agent logic and Tool-specific protocol core remain unchanged.
 
 A Tool may also declare repository-owned `http` routes using an OpenAPI-style path template, one supported credential placement, a JSON/form/text/no-body request shape, and explicit success and Tool-error statuses. Its behavior module supplies pure `decode` and `encode` codecs around one declared semantic operation. The route adapter parses and bounds the wire request, verifies the per-trial credential, invokes the operation as the selected scenario actor, and renders the response. It never owns state or consequences.
 

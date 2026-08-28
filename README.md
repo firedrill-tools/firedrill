@@ -55,7 +55,7 @@ firedrill report verify .firedrill/reports/<run-id>
 
 Keep `firedrill.json`, `firedrill/`, and any test-runner integration in version control. Firedrill keeps generated builds, retained SQLite worlds, reports, and contribution staging under the project-local `.firedrill/` directory. `firedrill init --path ...` ensures that directory is ignored by Git; do not commit it because reports can contain synthetic records and agent output. Copy a specific self-contained HTML report elsewhere only when you intend to share it. `firedrill report verify <report-directory>` checks a received bundle locally; unsigned local reports detect corruption but do not prove authorship.
 
-## Connect an existing agent once
+## Bind an existing agent without changing its logic
 
 Choose the target that matches how the agent already runs:
 
@@ -66,7 +66,7 @@ Choose the target that matches how the agent already runs:
 | `http` | The agent application is already running locally | Sends the task to its declared local endpoint |
 | `external` | Jest, Vitest, Mocha, or application code owns the agent process | Passes the task and binding to the `runDrills()` callback |
 
-Each target declares `direct`, `http`, `mcp`, or `cli` bindings. Adapt the agent at its existing tool/client composition seam; agent business logic should not contain Firedrill conditionals. A CLI-bound target discovers operations with `firedrill world tools --json` and calls them with `firedrill world call <tool-id> <operation-id> --input '{...}'`.
+Each target declares `direct`, `http`, `mcp`, or `cli` bindings. Repoint an existing configurable tool/client seam, or put a separate test-only harness around the agent's ordinary entry point. Firedrill does not require imports, conditionals, or per-action test branches in production agent logic. An agent with no configurable or interceptable seam needs an explicit test adapter before it can be bound; Firedrill does not silently rewrite it or call production. A CLI-bound target discovers operations with `firedrill world tools --json` and calls them with `firedrill world call <tool-id> <operation-id> --input '{...}'`.
 
 When the synthetic world must call back into the application under test, a Tool can declare a durable callback driven by one of its events. The repository names an abstract receiver; the CLI or SDK maps it to a local application origin at run time. See [callbacks](docs/callbacks.md) for delivery, signatures, virtual-time retries, evidence, and assertions.
 

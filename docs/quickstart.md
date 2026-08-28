@@ -95,7 +95,7 @@ environmentFromHost:
 
 Unlisted host variables are not inherited by the command. The target's `timeoutMs` covers the complete agent interaction, including all model turns and Tool calls, so choose it for the slowest expected end-to-end loop rather than one request.
 
-Repoint or adapt the agent's existing tool client once. Do not duplicate every agent action or scatter test-mode branches through business logic.
+Repoint the agent's existing test configuration, or use a separate test-only adapter around its ordinary entry point. Do not modify production agent logic, duplicate every action, or scatter test-mode branches through business logic.
 
 HTTP-bound agents can discover their granted operations at `GET $FIREDRILL_HTTP_URL/v1/tools` and call one at `POST /v1/operations/{packageId}/{operationId}` with bearer authentication. MCP-bound agents use the supplied Streamable HTTP URL and token; discovered names are `{packageId}.{operationId}`. CLI-bound agents call `firedrill world tools --json` and `firedrill world call <tool-id> <operation-id> --input '{...}' --json`. The protocol package READMEs define the exact request and response envelopes.
 

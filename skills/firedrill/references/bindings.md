@@ -11,9 +11,9 @@ Use this reference after inspecting how the existing agent already starts and ob
 | Already-running local service | `http` | HTTP, MCP, or CLI | Request handler receives Firedrill invocation |
 | Agent owned by Jest/Vitest/application code | `external` | Direct, HTTP, MCP, or CLI | `runDrills({ agent })` callback |
 
-Choose the shape requiring the fewest production-code changes. Protocol and target are separate decisions: a CLI agent may consume MCP, and an HTTP target may receive an MCP world binding.
+Choose a shape that preserves production agent logic and uses an existing configuration, dependency-injection, process, or callable seam. Protocol and target are separate decisions: a CLI agent may consume MCP, and an HTTP target may receive an MCP world binding.
 
-Capture the native interface before adapting it. A successful integration preserves the agent's ordinary input, output/return, log destination, and failure behavior when no Firedrill invocation or binding is present. When the target contract differs from the product interface, prefer a small target-only wrapper at the existing callable/composition seam rather than changing the product CLI or UI.
+Capture the native interface before binding it. A successful integration preserves the agent's ordinary input, output/return, log destination, failure behavior, and production decision logic. Repoint existing test configuration when possible. When the target contract differs from the product interface, prefer a separate small target-only wrapper at the existing callable/composition seam rather than changing the product CLI, UI, or agent logic. If no configurable or interceptable seam exists, report that limitation rather than using hidden process-global monkey-patching or production fallback.
 
 ## HTTP world binding
 

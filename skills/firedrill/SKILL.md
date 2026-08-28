@@ -1,11 +1,11 @@
 ---
 name: firedrill
-description: Set up, author, validate, run, reproduce, or debug Firedrill synthetic worlds and agent drills in a software repository. Use when an agent must inspect an AI agent's real tool boundary, model deterministic Tool behavior and state, connect the existing agent through direct/HTTP/MCP/CLI/command/module seams, write *.drill.yaml tests or suites, iterate on Firedrill diagnostics, and produce local evidence reports.
+description: Set up, author, validate, run, reproduce, or debug Firedrill synthetic worlds and agent drills in a software repository. Use when an agent must inspect an AI agent's real tool boundary, model deterministic Tool behavior and state, externally bind the existing agent through direct/HTTP/MCP/CLI/command/module seams, write *.drill.yaml tests or suites, iterate on Firedrill diagnostics, and produce local evidence reports.
 ---
 
 # Build and run agent drills
 
-Give the existing AI agent a deterministic, stateful world to act inside. Keep the agent process customer-owned. Change one composition seam, run drills locally, and assert on consequences rather than model wording.
+Give the existing AI agent a deterministic, stateful world to act inside. Keep the agent process customer-owned and its production logic unchanged. Reconfigure one existing dependency seam or add a separate test-only harness, run drills locally, and assert on consequences rather than model wording.
 
 ## Definition of done
 
@@ -15,7 +15,7 @@ Do not stop at generated files. Finish only when all applicable checks hold:
 - `firedrill format --check --json` reports no pending source changes.
 - `firedrill validate --json` returns success with no error diagnostics.
 - At least one real Tool operation is supplied by an approved selected package or repository-owned deterministic behavior.
-- The existing agent is connected at one declared target/binding seam.
+- The existing agent is externally bound at one declared target/binding seam without Firedrill logic inside its production behavior.
 - The agent's ordinary non-Firedrill entry point keeps its existing input, output, logging, and failure contract.
 - At least one representative drill passes.
 - A deliberately broken expectation produces exit code `1` and a verified local HTML report, then the source is restored.
@@ -30,7 +30,7 @@ Treat “one shot” as this verified loop, not one blind generation pass.
 
 ### 1. Scout the repository
 
-Find the agent entry point, its tool registry/client composition point, current tests, fixtures, mocks, MCP configuration, API clients, CLI adapters, and process start command. Identify the smallest seam where synthetic bindings can replace real dependencies without branching throughout business logic. Before editing, run or inspect the ordinary entry point and record its observable contract: accepted input, returned value or stdout, log destination, exit/error behavior, and provider configuration. Recheck that contract after integration; do not declare compatibility from a newly invented smoke path.
+Find the agent entry point, its tool registry/client composition point, current tests, fixtures, mocks, MCP configuration, API clients, CLI adapters, and process start command. Identify an existing configurable or interceptable seam where a test harness can replace real dependencies without editing production agent behavior. Before editing, run or inspect the ordinary entry point and record its observable contract: accepted input, returned value or stdout, log destination, exit/error behavior, and provider configuration. Recheck that contract after integration; do not declare compatibility from a newly invented smoke path. If no such seam exists, report the limitation and the smallest test-only adapter that would be required. Do not silently add production branches or monkey-patch a hidden dependency.
 
 Do not assume an agent framework, protocol, vendor, or domain. A Tool represents any capability the agent can invoke; it may be reached by MCP, HTTP, a CLI adapter, an SDK, or an in-process function.
 
@@ -45,7 +45,7 @@ Select the target that matches how the agent already runs:
 
 Read [references/bindings.md](references/bindings.md) before wiring the seam. Never give an out-of-process target a direct binding. Never point a local HTTP target outside loopback unless the user explicitly authorizes the credential exposure.
 
-If a target protocol conflicts with the product interface—for example, a command target needs one JSON stdout value but the product CLI streams human output—prefer a thin target wrapper around the existing callable seam. If a wrapper is impossible, make transport/output routing conditional on the actual target invocation and prove the ordinary interface remains unchanged.
+If a target protocol conflicts with the product interface—for example, a command target needs one JSON stdout value but the product CLI streams human output—prefer a separate thin target wrapper around the existing callable seam. Do not put target-specific transport or output branches into production agent logic. If no safe wrapper or existing configuration seam is possible, stop and report the unsupported boundary.
 
 Module and external targets may execute concurrently in one process. Their adapters must be reentrant: never replace `process.stdout.write`, `process.stderr.write`, `console` methods, `process.env`, the working directory, or another process-global registry during an invocation. Inject a logger/output sink into the existing callable seam, or use a command target when the agent cannot avoid process-global output. A single passing trial does not prove a process-global adapter is safe.
 
@@ -120,6 +120,7 @@ For a reusable Tool, add a `<tool-id>-conformance.suite.yaml`, then run `firedri
 - Never read, copy, move, or commit secrets. Map only explicitly required host environment variables.
 - Keep model/provider credentials owned by the customer's agent process. Firedrill bindings carry only synthetic-world connection material.
 - Do not weaken production behavior, bypass authorization, or add per-action test branches to make a drill pass.
+- Keep Firedrill imports and invocation-specific branches out of production agent logic; repository-owned world/drill files and separate test-only adapters are the integration surface.
 - Do not redirect, suppress, or reshape the agent's ordinary UI, stdout, return value, or errors merely to satisfy a target transport contract.
 - Do not monkey-patch process globals inside module or external target adapters; trials and drills may overlap in the same process.
 - Do not claim fidelity beyond the operations and failure modes implemented.
