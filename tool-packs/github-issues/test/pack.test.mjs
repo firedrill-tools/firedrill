@@ -21,7 +21,7 @@ function invoke(arguments_) {
 
 const humanInspection = invoke(["tool", "inspect", "github-issues"]);
 if (
-  !humanInspection.includes("Compatibility octokit-rest-22: @octokit/rest@22.0.1") ||
+  !humanInspection.includes("Compatibility octokit-rest-21: @octokit/rest@21.1.1") ||
   !humanInspection.includes("rest.issues.createComment → create-comment") ||
   !humanInspection.includes("Limitation — Only the four listed Issues and issue-comment routes")
 ) {
@@ -32,7 +32,7 @@ const inspection = JSON.parse(invoke(["tool", "inspect", "github-issues", "--jso
 const profile = inspection.tool?.manifest?.compatibility?.[0];
 if (
   profile?.client?.name !== "@octokit/rest" ||
-  profile?.client?.version !== "22.0.1" ||
+  profile?.client?.version !== "21.1.1" ||
   profile?.routes?.length !== 4 ||
   profile?.limitations?.length !== 3
 ) {
@@ -54,9 +54,9 @@ for (const htmlPath of reports) {
   const report = JSON.parse(readFileSync(resolve(reportDirectory, "report.json"), "utf8"));
   const html = readFileSync(htmlPath, "utf8");
   if (
-    manifest.tools?.[0]?.compatibility?.[0]?.id !== "octokit-rest-22" ||
-    report.tools?.[0]?.compatibility?.[0]?.client?.version !== "22.0.1" ||
-    !html.includes("@octokit/rest@22.0.1") ||
+    manifest.tools?.[0]?.compatibility?.[0]?.id !== "octokit-rest-21" ||
+    report.tools?.[0]?.compatibility?.[0]?.client?.version !== "21.1.1" ||
+    !html.includes("@octokit/rest@21.1.1") ||
     !html.includes("Known limitations")
   ) {
     throw new Error(`report ${reportDirectory} omitted compatibility and fidelity evidence`);

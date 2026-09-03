@@ -2,7 +2,7 @@
 
 This package supplies a small, stateful GitHub REST API-compatible Issues surface to a Firedrill world. An existing agent can point the official JavaScript client at the per-drill HTTP URL and use its normal `auth` option. Reads, comments, issue updates, failures, events, and resulting state remain part of the same isolated world and evidence timeline.
 
-The compatibility claim is deliberately narrow. Version `0.1.0-rc.1` is checked with `@octokit/rest@22.0.1` against four methods:
+The compatibility claim is deliberately narrow. Version `0.1.0-rc.1` is checked with `@octokit/rest@21.1.1` against four methods:
 
 - `rest.issues.get`
 - `rest.issues.createComment`

@@ -62,7 +62,7 @@
         ],
         "compatibility": [
           {
-            "id": "octokit-rest-22",
+            "id": "octokit-rest-21",
             "mode": "translated",
             "protocol": "http",
             "service": "GitHub REST API, Issues subset",
@@ -70,7 +70,7 @@
             "client": {
               "ecosystem": "npm",
               "name": "@octokit/rest",
-              "version": "22.0.1"
+              "version": "21.1.1"
             },
             "configuration": {
               "endpoint": "baseUrl",

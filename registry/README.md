@@ -35,10 +35,10 @@ Synthetic HTTP routes:
 - `GET /repos/{owner}/{repo}/issues/{issueNumber}/comments` → `comments.list`
 - `PATCH /repos/{owner}/{repo}/issues/{issueNumber}` → `issues.update`
 
-Compatibility profile `octokit-rest-22`:
+Compatibility profile `octokit-rest-21`:
 
 - Service: GitHub REST API, Issues subset (API 2026-03-10)
-- Client: `@octokit/rest@22.0.1`
+- Client: `@octokit/rest@21.1.1`
 - Configuration: `baseUrl` + `auth`
 - Covered methods: `rest.issues.createComment`, `rest.issues.get`, `rest.issues.listComments`, `rest.issues.update`
 - Verified flows: `rate-limited-comment`, `read-comment-close`

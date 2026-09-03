@@ -420,7 +420,7 @@ try {
           "@firedrill/cli": `file:${archives.get("@firedrill/cli")}`,
           "@firedrill/tool-github-issues": `file:${archives.get("@firedrill/tool-github-issues")}`,
           "@firedrill/tool-work-queue": `file:${archives.get("@firedrill/tool-work-queue")}`,
-          "@octokit/rest": "22.0.1",
+          "@octokit/rest": "21.1.1",
         },
         pnpm: {
           overrides: Object.fromEntries(
@@ -433,6 +433,14 @@ try {
     )}\n`,
   );
   run("pnpm", ["install", "--prefer-offline", "--no-frozen-lockfile"], installedPackProject);
+  const installedOctokitManifest = JSON.parse(
+    readFileSync(join(installedPackProject, "node_modules", "@octokit", "rest", "package.json"), "utf8"),
+  ) as { version?: string };
+  if (installedOctokitManifest.version !== "21.1.1") {
+    throw new Error(
+      `installed official client does not match the declared compatibility version: ${installedOctokitManifest.version ?? "missing"}`,
+    );
+  }
   const installedPackCli = join(installedPackProject, "node_modules", ".bin", "firedrill");
   mkdirSync(join(installedPackProject, "world"), { recursive: true });
   writeFileSync(
@@ -604,6 +612,7 @@ try {
     compatibleInspect.status !== 0 ||
     compatibleInspection?.tool?.origin?.packageName !== "@firedrill/tool-github-issues" ||
     compatibleInspection?.tool?.manifest?.compatibility?.[0]?.client?.name !== "@octokit/rest" ||
+    compatibleInspection?.tool?.manifest?.compatibility?.[0]?.client?.version !== "21.1.1" ||
     compatibleInspection?.tool?.manifest?.compatibility?.[0]?.routes?.length !== 4
   ) {
     throw new Error(
@@ -626,6 +635,7 @@ try {
     compatibleRunResult?.verdict !== "passed" ||
     compatibleTrial?.result?.bindingEvidence !== "observed" ||
     compatibleReport?.tools?.[0]?.compatibility?.[0]?.client?.name !== "@octokit/rest" ||
+    compatibleReport?.tools?.[0]?.compatibility?.[0]?.client?.version !== "21.1.1" ||
     compatibleReport?.tools?.[0]?.compatibility?.[0]?.routes?.length !== 4
   ) {
     throw new Error(
