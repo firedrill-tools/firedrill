@@ -172,7 +172,7 @@ try {
   );
   requireFile(shim, "installed firedrill executable");
   requireStatus(
-    run(shim, ["--help"], {
+    run("npm", ["exec", "--offline", "--", "firedrill", "--help"], {
       env: executionEnvironment,
       windowsShell: process.platform === "win32",
     }),
