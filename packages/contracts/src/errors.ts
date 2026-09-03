@@ -2,7 +2,23 @@ import { z } from "zod";
 import { CorrelationIdSchema, RunIdSchema } from "./identifiers.js";
 import { JsonObjectSchema } from "./json.js";
 
-export const ErrorSourceSchema = z.enum(["framework", "world", "tool", "target", "assertion", "reporter"]);
+/**
+ * Error namespaces shared by the local framework and hosted transports.
+ *
+ * `control` is intentionally only a namespace in this generic envelope. It
+ * does not import organizations, billing, identity, or any other hosted
+ * resource into the open framework. A hosted client can therefore reuse the
+ * same stable wire shape without maintaining a second error format.
+ */
+export const ErrorSourceSchema = z.enum([
+  "framework",
+  "world",
+  "tool",
+  "target",
+  "assertion",
+  "reporter",
+  "control",
+]);
 export const ErrorCodeSchema = z.string().regex(/^[a-z][a-z0-9-]*\.[A-Z][A-Z0-9_]*$/);
 
 export const ErrorIssueSchema = z

@@ -857,6 +857,17 @@ describe("errors and diagnostics", () => {
     expect(ErrorEnvelopeSchema.safeParse({ ...error, source: "world" }).success).toBe(false);
     const parsed = ErrorEnvelopeSchema.parse({ ...error, futureField: { value: true } });
     expect(parsed.futureField).toEqual({ value: true });
+    expect(
+      ErrorEnvelopeSchema.safeParse({
+        schemaVersion: 1,
+        code: "control.AUTH_REQUIRED",
+        source: "control",
+        message: "sign in to continue",
+        retryable: false,
+        correlationId: "corr_abcdef",
+        issues: [],
+      }).success,
+    ).toBe(true);
   });
 
   it("requires repository-relative diagnostic locations", () => {
