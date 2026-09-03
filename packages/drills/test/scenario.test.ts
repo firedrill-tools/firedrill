@@ -12,15 +12,15 @@ import {
   PackageLockSchema,
   semanticHash,
 } from "@firedrill/world-ir";
-import { WorldKernel } from "@firedrill/world-kernel";
 import type { BoundWorldClient } from "@firedrill/world-kernel";
+import { WorldKernel } from "@firedrill/world-kernel";
 import { SqliteWorldStore } from "@firedrill/world-store-sqlite";
 import { Client, StreamableHTTPClientTransport } from "@modelcontextprotocol/client";
 import { afterEach, describe, expect, it } from "vitest";
 import {
   createDrillWorld,
-  DrillTrialCoordinator,
   DrillSetupError,
+  DrillTrialCoordinator,
   materializeDrillScenario,
   runDrill,
   runDrillTrial,
@@ -510,6 +510,86 @@ describe("complete local drill trial", () => {
     } finally {
       reopened.close();
     }
+  });
+
+  it("accounts Tool-call budgets from the start of a coordinator window", async () => {
+    const directory = temporaryDirectory();
+    const build = withWorldIr(loadedBuild(), (worldIr) => ({
+      ...worldIr,
+      drills: worldIr.drills.map((drill) => ({
+        ...drill,
+        timeline: { ...drill.timeline, maxToolCalls: 1 },
+        assertions: drill.assertions.map((assertion) => ({
+          ...assertion,
+          comparison: { operator: "equals", value: 2 },
+        })),
+      })),
+    }));
+    const created = createDrillWorld({
+      build,
+      drillId: "release-ready-parcel",
+      filePath: join(directory, "budget-window.sqlite"),
+      worldInstanceId: "world_budgetwindow1",
+      correlationId: "corr_budgetcreate1",
+      seed: "91",
+    });
+    const actorBindingId = created.materialized.actors[0]?.bindingId;
+    if (actorBindingId === undefined) throw new Error("fixture actor was not materialized");
+    created.kernel.invoke({
+      schemaVersion: 1,
+      callId: "call_beforewindow1",
+      correlationId: "corr_beforewindow1",
+      operation: { packageId: "parcel-service", operationId: "parcels.release" },
+      actorBindingId,
+      arguments: { parcelId: "parcel-a" },
+      idempotencyKey: "before-budget-window",
+    });
+    const kernel = new WorldKernel({
+      store: created.store,
+      packageLockHash: build.manifest.packageLockHash,
+      tools: build.tools,
+      budgets: { maxToolCalls: 2 },
+    });
+    const coordinator = new DrillTrialCoordinator({
+      build,
+      drillId: "release-ready-parcel",
+      store: created.store,
+      kernel,
+      identity: {
+        runId: "run_budgetwindow1",
+        worldInstanceId: "world_budgetwindow1",
+        trial: 1,
+        trialCount: 1,
+        attempt: 1,
+        attemptLimit: 1,
+        seed: "91",
+      },
+      callbacks: { flush: async () => undefined, nextDueUs: () => null },
+    });
+    const next = await coordinator.next();
+    if (next.kind !== "interaction") throw new Error("fixture did not produce an interaction");
+    kernel.invoke({
+      schemaVersion: 1,
+      callId: "call_insidewindow1",
+      correlationId: "corr_insidewindow1",
+      operation: { packageId: "parcel-service", operationId: "parcels.release" },
+      actorBindingId,
+      arguments: { parcelId: "parcel-a" },
+      idempotencyKey: "inside-budget-window",
+    });
+    await coordinator.complete({
+      interactionId: next.pending.interaction.id,
+      targetResult: { schemaVersion: 1, status: "completed", attachments: [] },
+      bindingEvidence: "observed",
+      callsIssued: 1,
+    });
+    const result = await coordinator.seal();
+    expect(result).toMatchObject({
+      status: "sealed",
+      verdict: "passed",
+      budgetUsage: { toolCalls: { limit: 1, attempted: 1, rejected: 0 } },
+    });
+    created.store.close();
   });
 
   it("invokes the agent, evaluates assertions, seals hashes, and retains the world artifact", async () => {

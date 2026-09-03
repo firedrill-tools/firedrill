@@ -17,9 +17,9 @@ import type {
   TargetResult,
 } from "@firedrill/contracts";
 import {
+  CheckpointResultSchema,
   CorrelationIdSchema,
   canonicalJson,
-  CheckpointResultSchema,
   DrillInteractionSchema,
   expandDrillInteractions,
   InteractionResultSchema,
@@ -93,6 +93,7 @@ export const DrillCoordinatorSnapshotSchema = z
     bindingsIssued: z.boolean(),
     bindingRouteVerified: z.boolean(),
     issuedToolCalls: z.number().int().nonnegative().safe(),
+    toolCallsAtStart: z.number().int().nonnegative().safe(),
     pendingInteraction: PendingDrillInteractionSchema.optional(),
     result: RunResultSchema.optional(),
   })
@@ -269,9 +270,11 @@ function targetBudgetResult(
   kernel: WorldKernel,
   targetResult: TargetResult,
   maxToolCalls: number,
+  toolCallsAtStart: number,
 ): TargetResult {
   const usage = kernel.usage();
-  if (!usage.toolCallBudgetExceeded) return targetResult;
+  const attempted = Math.max(0, usage.toolCalls - toolCallsAtStart);
+  if (!usage.toolCallBudgetExceeded && attempted <= maxToolCalls) return targetResult;
   return TargetResultSchema.parse({
     schemaVersion: 1,
     status: "failed",
@@ -280,7 +283,7 @@ function targetBudgetResult(
       runId,
       "framework.TOOL_CALL_BUDGET_EXCEEDED",
       `drill exceeded its ${maxToolCalls} Tool-call budget`,
-      { attempted: usage.toolCalls, limit: maxToolCalls },
+      { attempted, limit: maxToolCalls },
     ),
   });
 }
@@ -345,6 +348,7 @@ export class DrillTrialCoordinator {
       bindingsIssued: false,
       bindingRouteVerified: false,
       issuedToolCalls: 0,
+      toolCallsAtStart: options.kernel.usage().toolCalls,
     };
     if (
       canonicalJson(this.state.identity as unknown as JsonValue) !==
@@ -412,6 +416,7 @@ export class DrillTrialCoordinator {
       this.options.kernel,
       TargetResultSchema.parse(input.targetResult),
       this.drill.timeline.maxToolCalls,
+      this.state.toolCallsAtStart,
     );
     const interactionResult: InteractionResult = {
       schemaVersion: 1,
@@ -555,6 +560,7 @@ export class DrillTrialCoordinator {
       ...this.state.interactions.map((interaction) => interaction.bindingEvidence),
     ]);
     const usage = this.options.kernel.usage();
+    const attemptedToolCalls = Math.max(0, usage.toolCalls - this.state.toolCallsAtStart);
     return {
       schemaVersion: 1 as const,
       ...(this.options.build.setup === undefined ? {} : { setup: this.options.build.setup }),
@@ -575,9 +581,9 @@ export class DrillTrialCoordinator {
       checkpoints,
       budgetUsage: {
         toolCalls: {
-          limit: usage.maxToolCalls,
-          attempted: usage.toolCalls,
-          rejected: Math.max(0, usage.toolCalls - usage.maxToolCalls),
+          limit: this.drill.timeline.maxToolCalls,
+          attempted: attemptedToolCalls,
+          rejected: Math.max(0, attemptedToolCalls - this.drill.timeline.maxToolCalls),
         },
         scheduledEvents: {
           limit: this.drill.timeline.maxEvents,
