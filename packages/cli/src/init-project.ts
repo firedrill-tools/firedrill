@@ -7,7 +7,7 @@ import {
   readdirSync,
   writeFileSync,
 } from "node:fs";
-import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
+import { dirname, extname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import { compareStableStrings } from "@firedrill/contracts";
 
@@ -75,6 +75,17 @@ export class FiredrillInitError extends Error {
 }
 
 const IGNORED = new Set([".firedrill", ".git", "dist", "node_modules"]);
+const TEXT_ASSET_EXTENSIONS = new Set([
+  ".css",
+  ".html",
+  ".js",
+  ".json",
+  ".md",
+  ".mjs",
+  ".ts",
+  ".yaml",
+  ".yml",
+]);
 const MANIFEST = '{\n  "schemaVersion": 1\n}\n';
 const WORLD =
   "schemaVersion: 1\nid: local-world\nactors:\n  - id: operator\n    grants:\n      - packageId: local-probe\n        operationId: ping\n";
@@ -417,7 +428,13 @@ function treeFiles(sourceRoot: string, destinationRoot: string): readonly Planne
       if (entry.isDirectory()) visit(source);
       else if (entry.isFile()) {
         const relativePath = relative(sourceRoot, source);
-        files.push({ path: join(destinationRoot, relativePath), body: readFileSync(source) });
+        const body = readFileSync(source);
+        files.push({
+          path: join(destinationRoot, relativePath),
+          body: TEXT_ASSET_EXTENSIONS.has(extname(source).toLowerCase())
+            ? Buffer.from(body.toString("utf8").replace(/\r\n?/g, "\n"))
+            : body,
+        });
       }
     }
   };

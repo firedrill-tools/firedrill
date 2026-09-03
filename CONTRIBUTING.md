@@ -20,6 +20,8 @@ pnpm check
 
 `pnpm check` is the required gate. It formats and lints the source, enforces package and genericity boundaries, scans the public tree for secret-bearing files and common credential formats, builds and type-checks every package, verifies authored-input JSON Schemas plus the generated human/machine registry, runs the tests and quickstart, then installs all publishable tarballs into a clean offline consumer and exercises their public entry points.
 
+CLI help is the documentation authority for the generated command reference. After intentionally changing the frozen command surface in `release/public-surface.json`, run `pnpm docs:cli:write`; the root gate rejects stale help documentation.
+
 Every behavior change needs a focused test at the lowest useful layer and an acceptance test through the public CLI or SDK seam. Do not mark a command or capability complete based only on an internal unit test.
 
 ## Tool contributions

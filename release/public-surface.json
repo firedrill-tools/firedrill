@@ -6,7 +6,26 @@
   "cli": {
     "package": "@firedrill/cli",
     "binary": "firedrill",
-    "entrypoint": "./dist/bin.js"
+    "entrypoint": "./dist/bin.js",
+    "helpCommands": [
+      [],
+      ["agent"],
+      ["run"],
+      ["validate"],
+      ["plan"],
+      ["build"],
+      ["format"],
+      ["compare"],
+      ["report", "verify"],
+      ["init"],
+      ["inspect"],
+      ["tool"],
+      ["tool", "inspect"],
+      ["tool", "validate"],
+      ["tool", "test"],
+      ["tool", "contribute"],
+      ["world"]
+    ]
   },
   "packages": [
     {

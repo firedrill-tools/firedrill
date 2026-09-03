@@ -696,7 +696,15 @@ describe("local CLI front door", () => {
     temporaryDirectories.push(root);
     const initialized = await invoke(root, ["init", "--path", "template", "--json"]);
     expect(initialized.code, `${initialized.stdout}\n${initialized.stderr}`).toBe(0);
-    expect(JSON.parse(initialized.stdout)).toMatchObject({ status: "initialized", path: "template" });
+    const initialization = JSON.parse(initialized.stdout) as {
+      status: string;
+      path: string;
+      written: readonly string[];
+    };
+    expect(initialization).toMatchObject({ status: "initialized", path: "template" });
+    for (const path of initialization.written.filter((path) => path !== ".gitignore")) {
+      expect(readFileSync(join(root, ...path.split("/")), "utf8"), path).not.toContain("\r");
+    }
 
     const format = await invoke(root, ["format", "--check", "--json"]);
     expect(format.code, `${format.stdout}\n${format.stderr}`).toBe(0);

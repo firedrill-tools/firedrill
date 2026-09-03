@@ -27,7 +27,12 @@ interface PublicSurface {
   readonly node: string;
   readonly pnpm: string;
   readonly packageManager: string;
-  readonly cli: { readonly package: string; readonly binary: string; readonly entrypoint: string };
+  readonly cli: {
+    readonly package: string;
+    readonly binary: string;
+    readonly entrypoint: string;
+    readonly helpCommands: readonly (readonly string[])[];
+  };
   readonly packages: readonly {
     readonly name: string;
     readonly directory: string;
@@ -166,6 +171,17 @@ if (
   cli?.bin?.[publicSurface.cli.binary] !== publicSurface.cli.entrypoint
 ) {
   violations.push("@firedrill/cli does not match the frozen executable surface");
+}
+const helpInvocations = publicSurface.cli.helpCommands?.map((arguments_) => arguments_.join(" ")) ?? [];
+if (
+  helpInvocations.length === 0 ||
+  helpInvocations[0] !== "" ||
+  new Set(helpInvocations).size !== helpInvocations.length ||
+  helpInvocations.some((invocation) => /(^|\s)-/.test(invocation))
+) {
+  violations.push(
+    "release/public-surface.json must declare unique, positional CLI help commands with root first",
+  );
 }
 
 for (const group of ["packages"] as const) {

@@ -2,6 +2,19 @@
 
 This guide explains Firedrill's repository contract. The files belong beside the agent code, can be reviewed in pull requests, and work without an account.
 
+The npm packages are still an unpublished release candidate. After an authorized publication, the normal project-local installation will be `npm install --save-dev @firedrill/cli`, followed by `npx firedrill init`. Until then, use a reviewed packed release artifact or the source-checkout commands in the root README. The exact available flags are generated from the executable in the [CLI reference](cli-reference.md).
+
+The shortest complete path is:
+
+```sh
+firedrill init --path template
+firedrill validate
+firedrill
+firedrill inspect
+```
+
+That creates repository-owned source, validates it, runs one passing drill in an isolated world, prints the self-contained report path, and opens the local inspector. No account or network service is involved.
+
 ## 1. Pick a verified starting path
 
 In an interactive terminal, `firedrill init` performs a bounded inspection, shows the frameworks, data systems, agent seams, and coding-agent conventions it found, then asks what the first drill should prove and which of four setup paths to use. Nothing is written until that final choice. In JSON, CI, or piped use, bare `firedrill init` remains a read-only inspection; pass `--path` to select a setup deterministically.
