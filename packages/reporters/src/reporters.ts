@@ -297,6 +297,17 @@ function checkedInput(input: LocalReportInput): CheckedLocalReport {
     throw new TypeError("report evidence hash does not match the sealed run");
   }
   if (
+    result.setup !== undefined &&
+    result.setup.setupHash !==
+      semanticHash({
+        schemaVersion: result.setup.schemaVersion,
+        drillId: result.setup.drillId,
+        setup: result.setup.setup,
+      })
+  ) {
+    throw new TypeError("run setup hash does not match its canonical contents");
+  }
+  if (
     result.status === "sealed" &&
     result.trajectoryHash !==
       trajectoryHash({ interactions: result.interactions, checkpoints: result.checkpoints, evidence })
@@ -330,7 +341,7 @@ function terminalValue(value: unknown): string {
 }
 
 function reproductionCommand(result: RunResult): string {
-  return `firedrill run ${result.identity.drillId} --seed ${result.identity.seed} --trials 1`;
+  return `firedrill run ${result.identity.drillId} --build-hash ${result.identity.buildHash} --seed ${result.identity.seed} --trials 1`;
 }
 
 function terminalReport({ result, evidence }: CheckedLocalReport): string {
@@ -341,6 +352,7 @@ function terminalReport({ result, evidence }: CheckedLocalReport): string {
     `Run ${result.identity.runId}`,
     `Build ${result.identity.buildHash}  seed ${result.identity.seed}`,
   ];
+  if (result.setup !== undefined) lines.push(`Setup ${result.setup.setupHash}`);
   if (result.status === "sealed") {
     const completed = result.interactions.filter(
       (interaction) => interaction.targetResult.status === "completed",
@@ -655,6 +667,7 @@ ${result.status === "runner_failed" ? `<section><h2>Runner failure</h2><div clas
 <section><h2>Invariant checkpoints</h2>${checkpointRows(result)}</section>
 <section><h2>Final assertions</h2>${assertionRows(result.assertionResults)}</section>
 <section><h2>State changes</h2>${stateChangeRows(evidence)}</section>
+${result.setup === undefined ? "" : `<section><h2>Test-local setup</h2><div class="panel"><p class="meta">${html(result.setup.setupHash)}</p><details><summary>View resolved setup</summary><pre>${html(JSON.stringify(result.setup.setup, null, 2))}</pre></details></div></section>`}
 <section><h2>Evidence timeline</h2><table><thead><tr><th scope="col">Seq</th><th scope="col">Kind</th><th scope="col">Subject</th><th scope="col">Virtual time</th><th scope="col">Details</th></tr></thead><tbody>${evidenceRows(evidence)}</tbody></table></section>
 <section><h2>Reproduce</h2><code>${html(reproduction)}</code><p class="meta">Build ${html(result.identity.buildHash)} · Seed ${html(result.identity.seed)}${result.status === "sealed" ? ` · Trajectory ${html(result.trajectoryHash)}` : ""}</p></section>
 </main></body></html>\n`;
@@ -734,6 +747,9 @@ export function writeLocalReport(rawInput: LocalReportInput, outputDirectory: st
       targetId: input.result.identity.targetId,
       buildHash: input.result.identity.buildHash,
       packageLockHash: input.result.identity.packageLockHash,
+      ...(input.result.identity.setupHash === undefined
+        ? {}
+        : { setupHash: input.result.identity.setupHash }),
       seed: input.result.identity.seed,
       originalTrial: input.result.identity.trial,
       originalTrialCount: input.result.identity.trialCount,
@@ -949,6 +965,7 @@ export function verifyLocalReport(outputDirectory: string): VerifiedLocalReport 
     manifest.reproduction.targetId !== result.identity.targetId ||
     manifest.reproduction.buildHash !== result.identity.buildHash ||
     manifest.reproduction.packageLockHash !== result.identity.packageLockHash ||
+    manifest.reproduction.setupHash !== result.identity.setupHash ||
     manifest.reproduction.seed !== result.identity.seed ||
     manifest.reproduction.scenarioId !== result.identity.scenarioId ||
     manifest.reproduction.originalTrial !== result.identity.trial ||

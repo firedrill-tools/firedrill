@@ -234,6 +234,230 @@ describe("source to executable world", () => {
     });
   });
 
+  it("derives a canonical immutable build from test-local setup without changing repository source", async () => {
+    const repository = temporaryFixture("appointments");
+    const toolPath = join(repository, "world", "reservations.tool.yaml");
+    writeFileSync(
+      toolPath,
+      `${readFileSync(toolPath, "utf8")}  faults:\n    - id: temporarily-unavailable\n      appliesTo: [slots.reserve]\n      timing: before\n      error:\n        code: OCCUPIED\n        message: Reservations are temporarily unavailable\n        retryable: true\n`,
+    );
+    const worldPath = join(repository, "world", "world.yaml");
+    writeFileSync(
+      worldPath,
+      `${readFileSync(worldPath, "utf8")}faults:\n  - packageId: reservations\n    faultId: temporarily-unavailable\n`,
+    );
+    const overrideDirectory = join(repository, "test-support");
+    const overridePath = join(overrideDirectory, "reservations.override.ts");
+    mkdirSync(overrideDirectory, { recursive: true });
+    writeFileSync(
+      overridePath,
+      [
+        "export default {",
+        "  operations: {",
+        '    "slots.reserve": (input, context) => {',
+        "      const slotId = String(input.slotId);",
+        "      const customerId = String(input.customerId);",
+        '      context.state.put("slots", slotId, { available: false, reservedBy: customerId });',
+        "      return { slotId, reserved: true };",
+        "    },",
+        "  },",
+        "};",
+        "",
+      ].join("\n"),
+    );
+    const authoredPaths = [
+      "firedrill.json",
+      "world/world.yaml",
+      "world/reservations.tool.yaml",
+      "world/reservations.ts",
+      "world/busy-morning.scenario.yaml",
+      "world/reserve-slot.drill.yaml",
+      "world/booking-agent.target.json",
+      "test-support/reservations.override.ts",
+    ];
+    const before = new Map(
+      authoredPaths.map((path) => [path, readFileSync(join(repository, ...path.split("/")), "utf8")]),
+    );
+    const firstSetup = {
+      scenario: {
+        virtualTimeUs: 900,
+        actors: [
+          { id: "reviewer", grants: [] },
+          {
+            id: "scheduler",
+            attributes: { region: "east" },
+            grants: [{ packageId: "reservations", operationId: "slots.reserve" }],
+          },
+        ],
+        state: [
+          {
+            action: "upsert" as const,
+            packageId: "reservations",
+            namespace: "slots",
+            rowId: "afternoon",
+            value: { available: true },
+          },
+        ],
+        faults: [{ packageId: "reservations", faultId: "temporarily-unavailable" }],
+      },
+      tools: {
+        behaviorOverrides: [{ packageId: "reservations", module: "test-support/reservations.override.ts" }],
+      },
+      bindings: {
+        environment: {
+          SERVICE_TOKEN: "FIREDRILL_HTTP_TOKEN" as const,
+          SERVICE_URL: "FIREDRILL_HTTP_URL" as const,
+        },
+      },
+    };
+    const first = await compileWorld({
+      repositoryRoot: repository,
+      runSetup: { drillId: "reserve-slot", setup: firstSetup },
+    });
+    expect(first.status, JSON.stringify(first.status === "failed" ? first.diagnostics : [])).toBe("success");
+    if (first.status !== "success" || first.build.buildDirectory === undefined) return;
+
+    const equivalent = await compileWorld({
+      repositoryRoot: repository,
+      materialize: false,
+      runSetup: {
+        drillId: "reserve-slot",
+        setup: {
+          ...firstSetup,
+          scenario: {
+            ...firstSetup.scenario,
+            actors: [...firstSetup.scenario.actors].reverse(),
+          },
+          bindings: {
+            environment: {
+              SERVICE_URL: "FIREDRILL_HTTP_URL",
+              SERVICE_TOKEN: "FIREDRILL_HTTP_TOKEN",
+            },
+          },
+        },
+      },
+    });
+    expect(equivalent.status).toBe("success");
+    if (equivalent.status !== "success") return;
+    expect(equivalent.build.setup?.setupHash).toBe(first.build.setup?.setupHash);
+    expect(equivalent.build.manifest.buildHash).toBe(first.build.manifest.buildHash);
+
+    const changed = await compileWorld({
+      repositoryRoot: repository,
+      materialize: false,
+      runSetup: {
+        drillId: "reserve-slot",
+        setup: {
+          ...firstSetup,
+          scenario: {
+            ...firstSetup.scenario,
+            state: [
+              {
+                action: "upsert",
+                packageId: "reservations",
+                namespace: "slots",
+                rowId: "afternoon",
+                value: { available: false },
+              },
+            ],
+          },
+        },
+      },
+    });
+    expect(changed.status).toBe("success");
+    if (changed.status !== "success") return;
+    expect(changed.build.setup?.setupHash).not.toBe(first.build.setup?.setupHash);
+    expect(changed.build.manifest.buildHash).not.toBe(first.build.manifest.buildHash);
+
+    expect(first.build.manifest.artifacts.setup).toBe("run-setup.json");
+    expect(first.build.sourceProvenance).toContainEqual(
+      expect.objectContaining({
+        kind: "tool",
+        id: "reservations",
+        origin: {
+          kind: "repository_override",
+          module: "test-support/reservations.override.ts",
+          base: { kind: "repository" },
+        },
+      }),
+    );
+    expect(first.build.packageLock.packages[0]?.source).toEqual({
+      kind: "repository_override",
+      module: "test-support/reservations.override.ts",
+      base: { kind: "repository" },
+    });
+    expect(first.build.worldIr.targets[0]?.bindingEnvironment).toEqual({
+      SERVICE_TOKEN: "FIREDRILL_HTTP_TOKEN",
+      SERVICE_URL: "FIREDRILL_HTTP_URL",
+    });
+    expect(first.build.worldIr.drills[0]?.inlineScenario).toMatchObject({
+      virtualTimeUs: 900,
+      actors: [
+        expect.objectContaining({ id: "reviewer" }),
+        expect.objectContaining({ id: "scheduler", attributes: { region: "east" } }),
+      ],
+      state: expect.arrayContaining([
+        expect.objectContaining({ rowId: "afternoon", value: { available: true } }),
+      ]),
+    });
+    const loaded = await loadWorldBuild(first.build.buildDirectory);
+    expect(loaded.status).toBe("success");
+    if (loaded.status === "success") expect(loaded.build.setup).toEqual(first.build.setup);
+    const setupArtifactPath = join(first.build.buildDirectory, "run-setup.json");
+    expect(JSON.parse(readFileSync(setupArtifactPath, "utf8"))).toEqual(first.build.setup);
+    for (const [path, source] of before) {
+      expect(readFileSync(join(repository, ...path.split("/")), "utf8"), path).toBe(source);
+    }
+
+    const tamperedSetup = structuredClone(first.build.setup) as {
+      setup: { scenario?: { state: Array<{ value?: { available?: boolean } }> } };
+    };
+    const injectedRow = tamperedSetup.setup.scenario?.state[0];
+    if (injectedRow?.value === undefined) throw new Error("derived setup has no injected state");
+    injectedRow.value.available = false;
+    writeFileSync(setupArtifactPath, `${JSON.stringify(tamperedSetup)}\n`);
+    const tampered = await loadWorldBuild(first.build.buildDirectory);
+    expect(tampered.status).toBe("failed");
+    if (tampered.status === "failed") {
+      expect(tampered.diagnostics).toContainEqual(
+        expect.objectContaining({ code: "FD1601", message: expect.stringContaining("setup hash") }),
+      );
+    }
+  });
+
+  it("selects an installed Tool package for one derived run without editing firedrill.json", async () => {
+    const repository = temporaryFixture("appointments");
+    installReservationsPack(repository);
+    const configPath = join(repository, "firedrill.json");
+    writeFileSync(
+      configPath,
+      `${JSON.stringify({ schemaVersion: 1, sourceRoot: "world", world: "world.yaml" }, null, 2)}\n`,
+    );
+    const configBefore = readFileSync(configPath, "utf8");
+
+    const withoutPackage = await compileWorld({ repositoryRoot: repository, materialize: false });
+    expect(withoutPackage.status).toBe("failed");
+
+    const selected = await compileWorld({
+      repositoryRoot: repository,
+      materialize: false,
+      runSetup: {
+        drillId: "reserve-slot",
+        setup: { tools: { packages: ["@example/reservations-pack"] } },
+      },
+    });
+    expect(selected.status, JSON.stringify(selected.status === "failed" ? selected.diagnostics : [])).toBe(
+      "success",
+    );
+    if (selected.status !== "success") return;
+    expect(selected.build.packageLock.packages[0]?.source).toEqual({
+      kind: "npm",
+      packageName: "@example/reservations-pack",
+      packageVersion: "1.0.0",
+    });
+    expect(readFileSync(configPath, "utf8")).toBe(configBefore);
+  });
+
   it("builds and executes three unrelated repositories without framework changes", async () => {
     await executeFixture({
       name: "appointments",
@@ -583,6 +807,81 @@ describe("source to executable world", () => {
 });
 
 describe("compiler failures", () => {
+  it("rejects unknown, duplicate, and escaped test-local Tool setup", async () => {
+    const unknown = temporaryFixture("appointments");
+    const unknownResult = await compileWorld({
+      repositoryRoot: unknown,
+      materialize: false,
+      runSetup: {
+        drillId: "reserve-slot",
+        setup: {
+          tools: {
+            behaviorOverrides: [{ packageId: "missing-tool", module: "world/reservations.ts" }],
+          },
+        },
+      },
+    });
+    expect(unknownResult.status).toBe("failed");
+    if (unknownResult.status === "failed") {
+      expect(unknownResult.diagnostics).toContainEqual(
+        expect.objectContaining({
+          code: "FD1402",
+          message: "Tool behavior override references unknown package missing-tool",
+        }),
+      );
+    }
+
+    const duplicate = temporaryFixture("appointments");
+    installReservationsPack(duplicate);
+    const duplicateResult = await compileWorld({
+      repositoryRoot: duplicate,
+      materialize: false,
+      runSetup: {
+        drillId: "reserve-slot",
+        setup: { tools: { packages: ["@example/reservations-pack"] } },
+      },
+    });
+    expect(duplicateResult.status).toBe("failed");
+    if (duplicateResult.status === "failed") {
+      expect(duplicateResult.diagnostics).toContainEqual(
+        expect.objectContaining({
+          code: "FD1402",
+          message: "Tool package @example/reservations-pack is selected more than once",
+        }),
+      );
+    }
+
+    const escaped = temporaryFixture("appointments");
+    const outsideDirectory = mkdtempSync(join(tmpdir(), "firedrill-compiler-setup-outside-"));
+    temporaryDirectories.push(outsideDirectory);
+    const outside = join(outsideDirectory, "override.ts");
+    writeFileSync(outside, "export default { operations: {} };\n");
+    mkdirSync(join(escaped, "test-support"));
+    const linked = join(escaped, "test-support", "escaped-override.ts");
+    symlinkSync(outside, linked);
+    const escapedResult = await compileWorld({
+      repositoryRoot: escaped,
+      materialize: false,
+      runSetup: {
+        drillId: "reserve-slot",
+        setup: {
+          tools: {
+            behaviorOverrides: [{ packageId: "reservations", module: "test-support/escaped-override.ts" }],
+          },
+        },
+      },
+    });
+    expect(escapedResult.status).toBe("failed");
+    if (escapedResult.status === "failed") {
+      expect(escapedResult.diagnostics).toContainEqual(
+        expect.objectContaining({
+          code: "FD1002",
+          message: expect.stringContaining("resolves through a symlink outside"),
+        }),
+      );
+    }
+  });
+
   it("makes missing and inconsistent installed Tool packs actionable", async () => {
     const missing = temporaryFixture("appointments");
     const configPath = join(missing, "firedrill.json");

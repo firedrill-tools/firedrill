@@ -12,6 +12,7 @@ import {
   WorldInstanceIdSchema,
 } from "./identifiers.js";
 import { TargetResultSchema } from "./target.js";
+import { RunSetupRecordSchema } from "./setup.js";
 
 export const RunPhaseSchema = z.enum([
   "created",
@@ -127,6 +128,7 @@ export const RunIdentitySchema = z
     targetId: StableIdSchema,
     buildHash: Sha256Schema,
     packageLockHash: Sha256Schema,
+    setupHash: Sha256Schema.optional(),
     seed: SeedSchema,
     trial: z.number().int().positive(),
     trialCount: z.number().int().positive(),
@@ -156,6 +158,7 @@ export const RunProgressSchema = z
 const TerminalRunBase = {
   schemaVersion: z.literal(1),
   identity: RunIdentitySchema,
+  setup: RunSetupRecordSchema.optional(),
   startedAtVirtualUs: VirtualTimeSchema,
   finishedAtVirtualUs: VirtualTimeSchema,
   bindingEvidence: BindingEvidenceSchema,
@@ -201,6 +204,24 @@ const CancelledRunSchema = z
 export const RunResultSchema = z
   .discriminatedUnion("status", [SealedRunSchema, FailedRunSchema, CancelledRunSchema])
   .superRefine((result, context) => {
+    if ((result.setup === undefined) !== (result.identity.setupHash === undefined)) {
+      context.addIssue({
+        code: "custom",
+        path: ["setup"],
+        message: "run setup and identity setupHash must be present together",
+      });
+    }
+    if (
+      result.setup !== undefined &&
+      (result.setup.setupHash !== result.identity.setupHash ||
+        result.setup.drillId !== result.identity.drillId)
+    ) {
+      context.addIssue({
+        code: "custom",
+        path: ["setup"],
+        message: "run setup does not match run identity",
+      });
+    }
     if (result.finishedAtVirtualUs < result.startedAtVirtualUs) {
       context.addIssue({
         code: "custom",

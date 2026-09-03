@@ -11,7 +11,7 @@ const RelativeModulePathSchema = z
     message: "module path must stay inside the consumer repository",
   });
 
-const EnvironmentNameSchema = z.string().regex(/^[A-Za-z_][A-Za-z0-9_]*$/);
+export const EnvironmentNameSchema = z.string().regex(/^[A-Za-z_][A-Za-z0-9_]*$/);
 const HeaderNameSchema = z.string().regex(/^[!#$%&'*+.^_`|~0-9A-Za-z-]+$/);
 const EnvironmentMappingSchema = z.record(EnvironmentNameSchema, EnvironmentNameSchema);
 const HeaderMappingSchema = z.record(HeaderNameSchema, EnvironmentNameSchema);
@@ -20,6 +20,34 @@ const HttpTargetUrlSchema = z.url().refine((value) => ["http:", "https:"].includ
 });
 
 export const TargetBindingKindSchema = z.enum(["direct", "http", "mcp", "cli"]);
+
+/** Canonical, invocation-scoped values emitted by Firedrill protocol bindings. */
+export const WorldBindingEnvironmentNameSchema = z.enum([
+  "FIREDRILL_HTTP_URL",
+  "FIREDRILL_HTTP_TOKEN",
+  "FIREDRILL_MCP_URL",
+  "FIREDRILL_MCP_TOKEN",
+  "FIREDRILL_CLI_URL",
+  "FIREDRILL_CLI_TOKEN",
+]);
+
+/**
+ * Maps an environment variable already consumed by an agent to one canonical
+ * Firedrill binding value. Canonical names remain present alongside aliases.
+ */
+export const BindingEnvironmentProjectionSchema = z
+  .record(EnvironmentNameSchema, WorldBindingEnvironmentNameSchema)
+  .superRefine((projection, context) => {
+    for (const targetName of Object.keys(projection)) {
+      if (targetName.startsWith("FIREDRILL_")) {
+        context.addIssue({
+          code: "custom",
+          path: [targetName],
+          message: "binding aliases cannot replace reserved FIREDRILL_* variables",
+        });
+      }
+    }
+  });
 
 const InProcessBindingsSchema = z
   .array(TargetBindingKindSchema)
@@ -37,49 +65,85 @@ const NetworkBindingsSchema = z
     message: "target bindings must be unique",
   });
 
-export const TargetDescriptorSchema = z.discriminatedUnion("kind", [
-  z
-    .object({
-      id: StableIdSchema,
-      kind: z.literal("module"),
-      bindings: InProcessBindingsSchema,
-      module: RelativeModulePathSchema,
-      export: z.string().min(1).max(128).default("default"),
-      timeoutMs: z.number().int().positive().max(3_600_000),
-    })
-    .strict(),
-  z
-    .object({
-      id: StableIdSchema,
-      kind: z.literal("command"),
-      bindings: NetworkBindingsSchema,
-      executable: z.string().min(1).max(1024),
-      arguments: z.array(z.string().max(4096)).default([]),
-      workingDirectory: RelativeModulePathSchema.optional(),
-      environmentFromHost: EnvironmentMappingSchema.default({}),
-      timeoutMs: z.number().int().positive().max(3_600_000),
-    })
-    .strict(),
-  z
-    .object({
-      id: StableIdSchema,
-      kind: z.literal("http"),
-      bindings: NetworkBindingsSchema,
-      url: HttpTargetUrlSchema,
-      method: z.enum(["POST", "PUT"]),
-      headersFromEnvironment: HeaderMappingSchema.default({}),
-      timeoutMs: z.number().int().positive().max(3_600_000),
-    })
-    .strict(),
-  z
-    .object({
-      id: StableIdSchema,
-      kind: z.literal("external"),
-      bindings: InProcessBindingsSchema,
-      timeoutMs: z.number().int().positive().max(86_400_000),
-    })
-    .strict(),
-]);
+export const TargetDescriptorSchema = z
+  .discriminatedUnion("kind", [
+    z
+      .object({
+        id: StableIdSchema,
+        kind: z.literal("module"),
+        bindings: InProcessBindingsSchema,
+        bindingEnvironment: BindingEnvironmentProjectionSchema.optional(),
+        module: RelativeModulePathSchema,
+        export: z.string().min(1).max(128).default("default"),
+        timeoutMs: z.number().int().positive().max(3_600_000),
+      })
+      .strict(),
+    z
+      .object({
+        id: StableIdSchema,
+        kind: z.literal("command"),
+        bindings: NetworkBindingsSchema,
+        bindingEnvironment: BindingEnvironmentProjectionSchema.optional(),
+        executable: z.string().min(1).max(1024),
+        arguments: z.array(z.string().max(4096)).default([]),
+        workingDirectory: RelativeModulePathSchema.optional(),
+        environmentFromHost: EnvironmentMappingSchema.default({}),
+        timeoutMs: z.number().int().positive().max(3_600_000),
+      })
+      .strict(),
+    z
+      .object({
+        id: StableIdSchema,
+        kind: z.literal("http"),
+        bindings: NetworkBindingsSchema,
+        bindingEnvironment: BindingEnvironmentProjectionSchema.optional(),
+        url: HttpTargetUrlSchema,
+        method: z.enum(["POST", "PUT"]),
+        headersFromEnvironment: HeaderMappingSchema.default({}),
+        timeoutMs: z.number().int().positive().max(3_600_000),
+      })
+      .strict(),
+    z
+      .object({
+        id: StableIdSchema,
+        kind: z.literal("external"),
+        bindings: InProcessBindingsSchema,
+        bindingEnvironment: BindingEnvironmentProjectionSchema.optional(),
+        timeoutMs: z.number().int().positive().max(86_400_000),
+      })
+      .strict(),
+  ])
+  .superRefine((descriptor, context) => {
+    const available = new Set<string>();
+    for (const binding of descriptor.bindings) {
+      if (binding === "http") {
+        available.add("FIREDRILL_HTTP_URL");
+        available.add("FIREDRILL_HTTP_TOKEN");
+      } else if (binding === "mcp") {
+        available.add("FIREDRILL_MCP_URL");
+        available.add("FIREDRILL_MCP_TOKEN");
+      } else if (binding === "cli") {
+        available.add("FIREDRILL_CLI_URL");
+        available.add("FIREDRILL_CLI_TOKEN");
+      }
+    }
+    for (const [targetName, sourceName] of Object.entries(descriptor.bindingEnvironment ?? {})) {
+      if (!available.has(sourceName)) {
+        context.addIssue({
+          code: "custom",
+          path: ["bindingEnvironment", targetName],
+          message: `${sourceName} is unavailable because target ${descriptor.id} does not declare its protocol binding`,
+        });
+      }
+      if (descriptor.kind === "command" && Object.hasOwn(descriptor.environmentFromHost, targetName)) {
+        context.addIssue({
+          code: "custom",
+          path: ["bindingEnvironment", targetName],
+          message: `${targetName} cannot come from both a world binding and the host environment`,
+        });
+      }
+    }
+  });
 
 export const TargetInvocationSchema = z
   .object({
@@ -121,5 +185,7 @@ export const TargetResultSchema = z
 
 export type TargetDescriptor = z.infer<typeof TargetDescriptorSchema>;
 export type TargetBindingKind = z.infer<typeof TargetBindingKindSchema>;
+export type BindingEnvironmentProjection = z.infer<typeof BindingEnvironmentProjectionSchema>;
+export type WorldBindingEnvironmentName = z.infer<typeof WorldBindingEnvironmentNameSchema>;
 export type TargetInvocation = z.infer<typeof TargetInvocationSchema>;
 export type TargetResult = z.infer<typeof TargetResultSchema>;

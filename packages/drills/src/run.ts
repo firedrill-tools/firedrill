@@ -47,6 +47,27 @@ interface WorldBinding {
   close(): Promise<void>;
 }
 
+async function verifyWorldBinding(binding: WorldBinding): Promise<void> {
+  const endpoint =
+    binding.environment.FIREDRILL_HTTP_URL ??
+    binding.environment.FIREDRILL_MCP_URL ??
+    binding.environment.FIREDRILL_CLI_URL;
+  if (endpoint === undefined) throw new Error("world binding exposed no canonical endpoint");
+  const health = new URL(endpoint);
+  health.pathname = "/health";
+  health.search = "";
+  health.hash = "";
+  const response = await fetch(health, {
+    method: "GET",
+    redirect: "manual",
+    signal: AbortSignal.timeout(2_000),
+  });
+  await response.body?.cancel();
+  if (response.status !== 200) {
+    throw new Error(`world binding canary returned HTTP ${response.status}`);
+  }
+}
+
 export interface RunDrillTrialOptions {
   readonly build: LoadedWorldBuild;
   readonly drillId: StableId;
@@ -245,7 +266,11 @@ async function worldBindings(
   descriptor: TargetDescriptor,
   build: LoadedWorldBuild,
   client: Parameters<typeof startHttpWorldBinding>[0]["client"],
-): Promise<{ readonly bindings: readonly WorldBinding[]; readonly environment: Record<string, string> }> {
+): Promise<{
+  readonly bindings: readonly WorldBinding[];
+  readonly environment: Record<string, string>;
+  readonly routeVerified: boolean;
+}> {
   const bindings: WorldBinding[] = [];
   const environment: Record<string, string> = {};
   try {
@@ -264,8 +289,19 @@ async function worldBindings(
         }
         environment[name] = value;
       }
+      await verifyWorldBinding(binding);
     }
-    return { bindings, environment };
+    for (const [targetName, sourceName] of Object.entries(descriptor.bindingEnvironment ?? {})) {
+      const value = environment[sourceName];
+      if (value === undefined) {
+        throw new DrillSetupError(
+          "framework.BINDING_PROJECTION_UNAVAILABLE",
+          `target ${descriptor.id} cannot project unavailable binding ${sourceName} to ${targetName}`,
+        );
+      }
+      environment[targetName] = value;
+    }
+    return { bindings, environment, routeVerified: bindings.length > 0 };
   } catch (error) {
     await closeBindings(bindings);
     throw error;
@@ -287,8 +323,13 @@ function evidenceRange(entries: readonly EvidenceEntry[]) {
   return { fromSequence: first.sequence, toSequence: last.sequence };
 }
 
-function bindingEvidence(bindingsIssued: boolean, callsIssued: number): BindingEvidence {
+function bindingEvidence(
+  bindingsIssued: boolean,
+  callsIssued: number,
+  routeVerified: boolean,
+): BindingEvidence {
   if (callsIssued > 0) return "observed";
+  if (routeVerified) return "route_verified";
   return bindingsIssued ? "issued" : "not_checked";
 }
 
@@ -415,6 +456,7 @@ export async function runDrillTrial(options: RunDrillTrialOptions): Promise<Dril
   let activeClient: BoundWorldClient | undefined;
   let issuedToolCalls = 0;
   let bindingsIssued = false;
+  let bindingRouteVerified = false;
   let startedAtVirtualUs = 0;
   const interactions: InteractionResult[] = [];
   const checkpoints: CheckpointResult[] = [];
@@ -428,6 +470,7 @@ export async function runDrillTrial(options: RunDrillTrialOptions): Promise<Dril
   const drillIdentity = {
     targetId: target.id,
     ...(drill.scenarioId === undefined ? {} : { scenarioId: drill.scenarioId }),
+    ...(options.build.setup === undefined ? {} : { setupHash: options.build.setup.setupHash }),
     trial,
     trialCount,
     attempt,
@@ -585,6 +628,7 @@ export async function runDrillTrial(options: RunDrillTrialOptions): Promise<Dril
       const exposed = await worldBindings(target, options.build, client);
       bindings = exposed.bindings;
       bindingsIssued = true;
+      bindingRouteVerified ||= exposed.routeVerified;
       const invocation = TargetInvocationSchema.parse({
         schemaVersion: 1,
         runId,
@@ -630,7 +674,7 @@ export async function runDrillTrial(options: RunDrillTrialOptions): Promise<Dril
         scheduledAtVirtualUs,
         startedAtVirtualUs: interactionStartedAt,
         finishedAtVirtualUs: store.metadata().virtualTimeUs,
-        bindingEvidence: bindingEvidence(true, client.callsIssued() - callsBefore),
+        bindingEvidence: bindingEvidence(true, client.callsIssued() - callsBefore, exposed.routeVerified),
         targetResult,
       });
       releaseActiveClient();
@@ -651,6 +695,7 @@ export async function runDrillTrial(options: RunDrillTrialOptions): Promise<Dril
         const result = RunResultSchema.parse({
           schemaVersion: 1,
           status: "cancelled",
+          ...(options.build.setup === undefined ? {} : { setup: options.build.setup }),
           identity: {
             runId,
             worldInstanceId,
@@ -659,6 +704,7 @@ export async function runDrillTrial(options: RunDrillTrialOptions): Promise<Dril
             targetId: drillIdentity.targetId,
             buildHash: options.build.manifest.buildHash,
             packageLockHash: options.build.manifest.packageLockHash,
+            ...(drillIdentity.setupHash === undefined ? {} : { setupHash: drillIdentity.setupHash }),
             seed,
             trial,
             trialCount,
@@ -667,7 +713,7 @@ export async function runDrillTrial(options: RunDrillTrialOptions): Promise<Dril
           },
           startedAtVirtualUs,
           finishedAtVirtualUs: store.metadata().virtualTimeUs,
-          bindingEvidence: bindingEvidence(bindingsIssued, issuedToolCalls),
+          bindingEvidence: bindingEvidence(bindingsIssued, issuedToolCalls, bindingRouteVerified),
           worldConsistency: "atomic",
           interactions,
           checkpoints,
@@ -716,6 +762,7 @@ export async function runDrillTrial(options: RunDrillTrialOptions): Promise<Dril
     const result = RunResultSchema.parse({
       schemaVersion: 1,
       status: "sealed",
+      ...(options.build.setup === undefined ? {} : { setup: options.build.setup }),
       identity: {
         runId,
         worldInstanceId,
@@ -724,6 +771,7 @@ export async function runDrillTrial(options: RunDrillTrialOptions): Promise<Dril
         targetId: drillIdentity.targetId,
         buildHash: options.build.manifest.buildHash,
         packageLockHash: options.build.manifest.packageLockHash,
+        ...(drillIdentity.setupHash === undefined ? {} : { setupHash: drillIdentity.setupHash }),
         seed,
         trial,
         trialCount,
@@ -732,7 +780,7 @@ export async function runDrillTrial(options: RunDrillTrialOptions): Promise<Dril
       },
       startedAtVirtualUs,
       finishedAtVirtualUs: store.metadata().virtualTimeUs,
-      bindingEvidence: bindingEvidence(bindingsIssued, issuedToolCalls),
+      bindingEvidence: bindingEvidence(bindingsIssued, issuedToolCalls, bindingRouteVerified),
       worldConsistency: "atomic",
       interactions,
       checkpoints,
@@ -760,6 +808,7 @@ export async function runDrillTrial(options: RunDrillTrialOptions): Promise<Dril
     const result = RunResultSchema.parse({
       schemaVersion: 1,
       status: "runner_failed",
+      ...(options.build.setup === undefined ? {} : { setup: options.build.setup }),
       identity: {
         runId,
         worldInstanceId,
@@ -768,6 +817,7 @@ export async function runDrillTrial(options: RunDrillTrialOptions): Promise<Dril
         targetId: drillIdentity.targetId,
         buildHash: options.build.manifest.buildHash,
         packageLockHash: options.build.manifest.packageLockHash,
+        ...(drillIdentity.setupHash === undefined ? {} : { setupHash: drillIdentity.setupHash }),
         seed: drillIdentity.seed,
         trial: drillIdentity.trial,
         trialCount: drillIdentity.trialCount,
@@ -776,7 +826,7 @@ export async function runDrillTrial(options: RunDrillTrialOptions): Promise<Dril
       },
       startedAtVirtualUs,
       finishedAtVirtualUs,
-      bindingEvidence: bindingEvidence(bindingsIssued, issuedToolCalls),
+      bindingEvidence: bindingEvidence(bindingsIssued, issuedToolCalls, bindingRouteVerified),
       worldConsistency: "atomic",
       interactions,
       checkpoints,

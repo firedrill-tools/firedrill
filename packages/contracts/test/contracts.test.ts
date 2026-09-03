@@ -11,6 +11,7 @@ import {
   OperationInvocationSchema,
   OperationOutcomeSchema,
   RunResultSchema,
+  RunWorldSetupSchema,
   ScenarioDefinitionSchema,
   ToolPackageManifestSchema,
   TargetDescriptorSchema,
@@ -307,6 +308,118 @@ describe("agent target contracts", () => {
         module: "agent.ts",
         timeoutMs: 1_000,
       }).success,
+    ).toBe(false);
+  });
+
+  it("accepts only aliases backed by a declared world protocol", () => {
+    expect(
+      TargetDescriptorSchema.parse({
+        id: "command-agent",
+        kind: "command",
+        bindings: ["mcp"],
+        bindingEnvironment: {
+          AGENT_MCP_URL: "FIREDRILL_MCP_URL",
+          AGENT_MCP_TOKEN: "FIREDRILL_MCP_TOKEN",
+        },
+        executable: "node",
+        timeoutMs: 1_000,
+      }).bindingEnvironment,
+    ).toEqual({
+      AGENT_MCP_URL: "FIREDRILL_MCP_URL",
+      AGENT_MCP_TOKEN: "FIREDRILL_MCP_TOKEN",
+    });
+    expect(
+      TargetDescriptorSchema.safeParse({
+        id: "command-agent",
+        kind: "command",
+        bindings: ["mcp"],
+        bindingEnvironment: { SERVICE_URL: "FIREDRILL_HTTP_URL" },
+        executable: "node",
+        timeoutMs: 1_000,
+      }).success,
+    ).toBe(false);
+    expect(
+      TargetDescriptorSchema.safeParse({
+        id: "command-agent",
+        kind: "command",
+        bindings: ["mcp"],
+        bindingEnvironment: { FIREDRILL_MCP_URL: "FIREDRILL_MCP_URL" },
+        executable: "node",
+        timeoutMs: 1_000,
+      }).success,
+    ).toBe(false);
+    expect(
+      TargetDescriptorSchema.safeParse({
+        id: "command-agent",
+        kind: "command",
+        bindings: ["mcp"],
+        bindingEnvironment: { SERVICE_TOKEN: "FIREDRILL_MCP_TOKEN" },
+        environmentFromHost: { SERVICE_TOKEN: "PRODUCTION_TOKEN" },
+        executable: "node",
+        timeoutMs: 1_000,
+      }).success,
+    ).toBe(false);
+  });
+});
+
+describe("test-local world setup", () => {
+  it("normalizes serializable data, Tool, and binding overrides", () => {
+    expect(
+      RunWorldSetupSchema.parse({
+        scenario: {
+          state: [
+            {
+              action: "upsert",
+              packageId: "record-store",
+              namespace: "records",
+              rowId: "primary",
+              value: { value: 2 },
+            },
+          ],
+        },
+        tools: {
+          packages: ["@example/clock-pack"],
+          behaviorOverrides: [{ packageId: "record-store", module: "test/records.ts" }],
+        },
+        bindings: { environment: { SERVICE_URL: "FIREDRILL_HTTP_URL" } },
+      }),
+    ).toEqual({
+      scenario: {
+        actors: [],
+        state: [
+          {
+            action: "upsert",
+            packageId: "record-store",
+            namespace: "records",
+            rowId: "primary",
+            value: { value: 2 },
+          },
+        ],
+        faults: [],
+        initialEvents: [],
+      },
+      tools: {
+        packages: ["@example/clock-pack"],
+        behaviorOverrides: [{ packageId: "record-store", module: "test/records.ts", exportName: "default" }],
+      },
+      bindings: { environment: { SERVICE_URL: "FIREDRILL_HTTP_URL" } },
+    });
+  });
+
+  it("rejects no-op, duplicate, and anonymous setup", () => {
+    expect(RunWorldSetupSchema.safeParse({}).success).toBe(false);
+    expect(
+      RunWorldSetupSchema.safeParse({
+        tools: {
+          behaviorOverrides: [
+            { packageId: "records", module: "test/a.ts" },
+            { packageId: "records", module: "test/b.ts" },
+          ],
+        },
+      }).success,
+    ).toBe(false);
+    expect(
+      RunWorldSetupSchema.safeParse({ tools: { behaviorOverrides: [{ packageId: "records" }] } }).success,
     ).toBe(false);
   });
 });

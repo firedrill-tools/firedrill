@@ -11,5 +11,6 @@ export * from "./report.js";
 export * from "./run.js";
 export * from "./scenario.js";
 export * from "./schemas.js";
+export * from "./setup.js";
 export * from "./suite.js";
 export * from "./target.js";

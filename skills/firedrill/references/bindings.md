@@ -109,6 +109,24 @@ target:
 
 The mapping is `target variable: host variable`. No other host secrets are inherited. `timeoutMs` applies to the complete interaction—including every model turn and Tool call—not to each request.
 
+When the agent already reads a different variable name, a runner-owned test can project the invocation-scoped world value without changing the target source:
+
+```ts
+await runDrills({
+  drill: "changes-resource",
+  setup: {
+    bindings: {
+      environment: {
+        RESOURCE_BASE_URL: "FIREDRILL_HTTP_URL",
+        RESOURCE_TOKEN: "FIREDRILL_HTTP_TOKEN",
+      },
+    },
+  },
+});
+```
+
+The mapping is `agent variable: canonical Firedrill variable`. It may reference only HTTP, MCP, or CLI values produced by a binding the selected target declares. Reserved `FIREDRILL_*` names cannot be replaced. A command receives aliases automatically; an external callback passes `binding.environment` to the existing agent configuration seam. Firedrill checks the loopback route before target execution, rejects a missing protocol mapping, and removes the endpoint when the interaction ends.
+
 ## Module contract
 
 A module target exports an async or synchronous function receiving `(invocation, context)`. `context.signal` carries cancellation. `context.world` exists only for a declared direct binding. Return an ordinary JSON-serializable value or `undefined`.

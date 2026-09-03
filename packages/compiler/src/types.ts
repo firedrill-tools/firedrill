@@ -1,5 +1,11 @@
-import type { Diagnostic, SourceSpan } from "@firedrill/contracts";
-import type { BuildManifest, CanonicalWorldIr, PackageLock, ToolArtifactLock } from "@firedrill/world-ir";
+import type { Diagnostic, RunWorldSetupInput, SourceSpan, StableId } from "@firedrill/contracts";
+import type {
+  BuildManifest,
+  CanonicalWorldIr,
+  PackageLock,
+  ResolvedRunSetup,
+  ToolArtifactLock,
+} from "@firedrill/world-ir";
 
 export type ToolSourceOrigin = ToolArtifactLock["source"];
 
@@ -38,6 +44,7 @@ export interface CompiledBuild {
   readonly manifest: BuildManifest;
   readonly worldIr: CanonicalWorldIr;
   readonly packageLock: PackageLock;
+  readonly setup?: ResolvedRunSetup;
   readonly sourceProvenance: readonly SourceProvenance[];
   readonly toolSources: readonly ToolSourceSet[];
   readonly buildDirectory?: string;
@@ -47,6 +54,11 @@ export interface CompileWorldOptions {
   readonly repositoryRoot: string;
   readonly materialize?: boolean;
   readonly buildRoot?: string;
+  /** Produces a traceable immutable build for one test-local run setup. */
+  readonly runSetup?: {
+    readonly drillId: StableId;
+    readonly setup: RunWorldSetupInput;
+  };
 }
 
 export type CompileWorldResult =

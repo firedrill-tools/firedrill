@@ -1,6 +1,6 @@
 import { join } from "node:path";
 import { compileWorld } from "@firedrill/compiler";
-import type { Diagnostic } from "@firedrill/contracts";
+import type { Diagnostic, RunWorldSetup, StableId } from "@firedrill/contracts";
 import { Sha256Schema } from "@firedrill/contracts";
 import type { LoadedWorldBuild } from "@firedrill/world-build";
 import { loadWorldBuild } from "@firedrill/world-build";
@@ -15,6 +15,7 @@ export interface PreparedExecutableBuild {
 export async function prepareExecutableBuild(
   root: string,
   buildHash?: string,
+  runSetup?: { readonly drillId: StableId; readonly setup: RunWorldSetup },
 ): Promise<PreparedExecutableBuild> {
   if (buildHash !== undefined) {
     const parsed = Sha256Schema.safeParse(buildHash);
@@ -42,7 +43,11 @@ export async function prepareExecutableBuild(
     return { build: loaded.build, diagnostics: [] };
   }
 
-  const compiled = await compileWorld({ repositoryRoot: root, materialize: true });
+  const compiled = await compileWorld({
+    repositoryRoot: root,
+    materialize: true,
+    ...(runSetup === undefined ? {} : { runSetup }),
+  });
   if (compiled.status === "failed") {
     throw new FiredrillProjectError("framework.SOURCE_INVALID", "Firedrill source is invalid", {
       diagnostics: compiled.diagnostics,

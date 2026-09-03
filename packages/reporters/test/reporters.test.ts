@@ -215,8 +215,7 @@ describe("local evidence reporters", () => {
     expect(html).not.toContain("<script>alert('unsafe')</script>");
     expect(html).not.toContain("built-in-secret-1234");
     expect(html).not.toContain("declared-secret-5678");
-    expect(html).toContain(`firedrill run generic-agent-behavior --seed 41 --trials 1`);
-    expect(html).not.toContain(`--build-hash ${HASH}`);
+    expect(html).toContain(`firedrill run generic-agent-behavior --build-hash ${HASH} --seed 41 --trials 1`);
     expect(renderJsonReport(input)).not.toContain("built-in-secret-1234");
     expect(renderJunitReport(input)).not.toContain("declared-secret-5678");
     expect(html).not.toContain("https://");

@@ -32,6 +32,7 @@ export type DrillSetupErrorCode =
   | "framework.DRILL_NOT_FOUND"
   | "framework.SCENARIO_NOT_FOUND"
   | "framework.ACTOR_NOT_FOUND"
+  | "framework.BINDING_PROJECTION_UNAVAILABLE"
   | "framework.TARGET_NOT_FOUND";
 
 export class DrillSetupError extends Error {

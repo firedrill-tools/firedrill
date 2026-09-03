@@ -96,11 +96,13 @@ Run the representative drill normally. Temporarily make one deterministic assert
 
 Finish with `firedrill format --check --json` and `firedrill validate --json` again so temporary failure edits or later source additions cannot leave the repository non-canonical or invalid.
 
-Restore repository source that compiles to the report's displayed build hash, then use its recorded seed to reproduce world inputs:
+Use the exact reproduction command in the report. It loads the content-addressed local build and reuses its recorded seed, including any hashed test-local setup:
 
 ```sh
-firedrill run <drill-id> --seed <seed> --trials 1
+firedrill run <drill-id> --build-hash <sha256:...> --seed <seed> --trials 1
 ```
+
+If the generated build has been removed, restore and compile the matching repository source and any recorded setup first. Never silently reproduce against a different build.
 
 Use `firedrill compare <baseline-report> <candidate-report>` only after checking its compatibility grade. Never call a descriptive-only or incompatible delta a regression.
 
@@ -117,6 +119,7 @@ For a reusable Tool, add a `<tool-id>-conformance.suite.yaml`, then run `firedri
 - Never edit an installed Tool package. Select it in `firedrill.json`; contribute changes from its owned source repository.
 - Assert on state, calls, events, callbacks, time, and errors. Treat response text as supporting evidence, not ground truth.
 - Keep fixtures deterministic. Never make network calls from Tool behavior.
+- In runner-owned tests, use the public `runDrills({ drill, setup })` surface for per-test starting state, declared faults, installed Tool selection, traceable behavior replacement, and binding aliases. Do not mutate a generated SQLite world behind the runner or use anonymous behavior closures that cannot be hashed and reported.
 - Never read, copy, move, or commit secrets. Map only explicitly required host environment variables.
 - Keep model/provider credentials owned by the customer's agent process. Firedrill bindings carry only synthetic-world connection material.
 - Do not weaken production behavior, bypass authorization, or add per-action test branches to make a drill pass.

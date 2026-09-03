@@ -15,6 +15,7 @@ import {
   BuildManifestSchema,
   CanonicalWorldIrSchema,
   PackageLockSchema,
+  ResolvedRunSetupSchema,
   semanticHash,
   sha256Text,
 } from "@firedrill/world-ir";
@@ -253,8 +254,16 @@ export async function loadWorldBuild(buildDirectory: string): Promise<LoadWorldB
   if (irResult.status === "failed") return { status: "failed", diagnostics: [irResult.diagnostic] };
   const lockResult = parseArtifact(root, manifest.artifacts.packageLock, PackageLockSchema, "package lock");
   if (lockResult.status === "failed") return { status: "failed", diagnostics: [lockResult.diagnostic] };
+  const setupResult =
+    manifest.artifacts.setup === undefined
+      ? undefined
+      : parseArtifact(root, manifest.artifacts.setup, ResolvedRunSetupSchema, "run setup");
+  if (setupResult?.status === "failed") {
+    return { status: "failed", diagnostics: [setupResult.diagnostic] };
+  }
   const worldIr = irResult.value;
   const packageLock = lockResult.value;
+  const setup = setupResult?.value;
 
   const errors: Diagnostic[] = [];
   if (semanticHash(worldIr) !== manifest.irHash) {
@@ -287,6 +296,27 @@ export async function loadWorldBuild(buildDirectory: string): Promise<LoadWorldB
   if (manifest.worldId !== worldIr.world.id) {
     errors.push(diagnostic("FD1602", "build world id does not match world IR", "build.json"));
   }
+  if (setup !== undefined) {
+    const setupEntry = manifest.provenance.find((entry) => entry.kind === "setup");
+    if (
+      setupEntry === undefined ||
+      setupEntry.id !== setup.drillId ||
+      setupEntry.contentHash !== setup.setupHash
+    ) {
+      errors.push(
+        diagnostic("FD1602", "run setup does not match build provenance", manifest.artifacts.setup),
+      );
+    }
+    if (!worldIr.drills.some((drill) => drill.id === setup.drillId)) {
+      errors.push(
+        diagnostic(
+          "FD1602",
+          `run setup references unavailable drill ${setup.drillId}`,
+          manifest.artifacts.setup,
+        ),
+      );
+    }
+  }
 
   const manifests = new Map(worldIr.tools.map((manifest_) => [manifest_.id, manifest_]));
   const locks = new Map(packageLock.packages.map((lock) => [lock.packageId, lock]));
@@ -318,6 +348,7 @@ export async function loadWorldBuild(buildDirectory: string): Promise<LoadWorldB
     "build.json",
     manifest.artifacts.worldIr,
     manifest.artifacts.packageLock,
+    ...(manifest.artifacts.setup === undefined ? [] : [manifest.artifacts.setup]),
     ...packageLock.packages.map((entry) => entry.artifactPath),
   ].sort();
   const actualFiles = filesUnder(root);
@@ -347,6 +378,13 @@ export async function loadWorldBuild(buildDirectory: string): Promise<LoadWorldB
   return {
     status: "success",
     diagnostics: [],
-    build: { manifest, worldIr, packageLock, tools, directory: root },
+    build: {
+      manifest,
+      worldIr,
+      packageLock,
+      ...(setup === undefined ? {} : { setup }),
+      tools,
+      directory: root,
+    },
   };
 }

@@ -97,6 +97,33 @@ Unlisted host variables are not inherited by the command. The target's `timeoutM
 
 Repoint the agent's existing test configuration, or use a separate test-only adapter around its ordinary entry point. Do not modify production agent logic, duplicate every action, or scatter test-mode branches through business logic.
 
+When an ordinary test needs different starting data or a temporary Tool behavior, use the repository-level SDK rather than editing source and restoring it:
+
+```ts
+const result = await runDrills({
+  root: process.cwd(),
+  drill: "one-explicit-drill",
+  setup: {
+    scenario: {
+      state: [
+        {
+          action: "upsert",
+          packageId: "record-store",
+          namespace: "records",
+          rowId: "primary",
+          value: { status: "ready" },
+        },
+      ],
+    },
+    bindings: { environment: { RECORDS_BASE_URL: "FIREDRILL_HTTP_URL" } },
+  },
+  agent: ({ task, binding, signal }) =>
+    runExistingAgent({ task, environment: binding.environment, signal }),
+});
+```
+
+The `setup` object is serialized, normalized, hashed, and compiled into a derived immutable build. It may add or replace starting state rows and actors, set virtual time, activate declared faults, append initial events, select installed Tool packages, point one declared Tool at a repository-owned behavior module, and map temporary bindings onto names the agent already understands. It never writes those choices back to YAML, JSON, or SQLite behind the report. Command targets receive binding aliases automatically; caller-owned targets pass `binding.environment` through the agent's existing configuration seam. Unsupported protocol mappings fail before agent execution. Full details are in the [`@firedrill/sdk` guide](../packages/sdk/README.md#per-test-synthetic-data-and-tools).
+
 HTTP-bound agents can discover their granted operations at `GET $FIREDRILL_HTTP_URL/v1/tools` and call one at `POST /v1/operations/{packageId}/{operationId}` with bearer authentication. MCP-bound agents use the supplied Streamable HTTP URL and token; discovered names are `{packageId}.{operationId}`. CLI-bound agents call `firedrill world tools --json` and `firedrill world call <tool-id> <operation-id> --input '{...}' --json`. The protocol package READMEs define the exact request and response envelopes.
 
 ## 4. Run and diagnose
@@ -118,7 +145,7 @@ firedrill tool test <tool-id>
 
 Exit code `0` means every selected drill passed. Exit code `1` means source, execution, or assertions failed. Exit code `2` means the CLI invocation itself was invalid. Human and JSON modes carry the same diagnostics and report locations.
 
-Every trial retains its exact world and writes terminal, JSON, JSONL, JUnit, and self-contained HTML evidence under the current project's `.firedrill/` directory. That directory is generated and Git-ignored by default. Use `firedrill report verify <report-directory>` to check the exact file set, hashes, schemas, identities, evidence ordering, and generated projections without an account or network. This proves bundle integrity, not authorship. The report's reproduction command recompiles current repository source and reruns with the recorded seed; use its displayed build hash to confirm or restore the matching source revision first.
+Every trial retains its exact world and writes terminal, JSON, JSONL, JUnit, and self-contained HTML evidence under the current project's `.firedrill/` directory. That directory is generated and Git-ignored by default. Use `firedrill report verify <report-directory>` to check the exact file set, hashes, schemas, identities, evidence ordering, and generated projections without an account or network. This proves bundle integrity, not authorship. The report's reproduction command loads its content-addressed build with `--build-hash` and reruns the recorded seed. Keep that project-local build directory while reproducing; if it was removed, restore the source revision and setup that produced the displayed hash and compile it again.
 
 A drill timeline can span hours of virtual time while running locally in minutes. It declares actors, ordered interactions, a horizon, invariant checkpoints, and Tool-call and event budgets; it is still a drill and uses the same runner and evidence. Watch mode queues edits and reruns without overlapping. To inspect change, compare two verified report directories:
 

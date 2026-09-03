@@ -301,6 +301,27 @@ function setValueAgent({ task, binding }: Parameters<AgentCallback>[0]) {
   return { status: result?.outcome.status ?? "missing" };
 }
 
+async function setValueOverHttp(
+  environment: Readonly<Record<string, string>>,
+  value: number,
+  idempotencyKey: string,
+) {
+  const baseUrl = environment.SERVICE_URL;
+  const token = environment.SERVICE_TOKEN;
+  if (baseUrl === undefined || token === undefined) throw new Error("projected service binding is missing");
+  const response = await fetch(`${baseUrl}/v1/operations/record-store/records.set`, {
+    method: "POST",
+    headers: {
+      authorization: `Bearer ${token}`,
+      "content-type": "application/json",
+    },
+    body: JSON.stringify({ arguments: { value }, idempotencyKey }),
+  });
+  const body = (await response.json()) as { outcome?: { status?: string; value?: unknown } };
+  if (!response.ok) throw new Error(`synthetic service returned HTTP ${response.status}`);
+  return body;
+}
+
 afterEach(async () => {
   await Promise.all(
     callbackServers.splice(0).map(
@@ -382,6 +403,330 @@ describe("repository-level TypeScript API", () => {
     expect(result).toMatchObject({
       verdict: "failed",
       drills: [{ trials: [{ result: { status: "sealed", verdict: "failed" } }] }],
+    });
+  });
+
+  it("injects test-local data as a reproducible derived build and leaves source untouched", async () => {
+    const root = repository();
+    const worldPath = join(root, "world", "world.json");
+    const drillPath = join(root, "world", "set-record.drill.json");
+    const worldBefore = readFileSync(worldPath, "utf8");
+    const drillBefore = readFileSync(drillPath, "utf8");
+    const setupForValue = (value: number) => ({
+      scenario: {
+        state: [
+          {
+            action: "upsert" as const,
+            packageId: "record-store",
+            namespace: "records",
+            rowId: "primary",
+            value: { value },
+          },
+        ],
+      },
+    });
+
+    const passing = await runDrills({
+      root,
+      drill: "set-record",
+      setup: setupForValue(7),
+      agent: () => ({ inspected: true }),
+    });
+    const passingTrial = passing.drills[0]?.trials[0];
+    expect(passing.verdict).toBe("passed");
+    expect(passing.setup).toMatchObject({
+      drillId: "set-record",
+      setup: { scenario: { state: [expect.objectContaining({ value: { value: 7 } })] } },
+    });
+    expect(passingTrial?.result.identity.setupHash).toBe(passing.setup?.setupHash);
+    expect(readFileSync(passingTrial?.report.files.json ?? "", "utf8")).toContain(
+      passing.setup?.setupHash ?? "missing-setup-hash",
+    );
+    const html = readFileSync(passingTrial?.report.files.html ?? "", "utf8");
+    expect(html).toContain("Test-local setup");
+    expect(html).toContain("record-store");
+
+    const failing = await runDrills({
+      root,
+      drill: "set-record",
+      setup: setupForValue(4),
+      agent: () => ({ inspected: true }),
+    });
+    expect(failing.verdict).toBe("failed");
+    expect(failing.setup?.setupHash).not.toBe(passing.setup?.setupHash);
+    expect(failing.buildHash).not.toBe(passing.buildHash);
+    expect(failing.drills[0]?.trials[0]?.result.assertionResults).toContainEqual(
+      expect.objectContaining({
+        assertionId: "record-set",
+        status: "failed",
+        actual: 4,
+        expected: { operator: "equals", value: 7 },
+      }),
+    );
+
+    const reproduced = await runDrills({
+      root,
+      drill: "set-record",
+      buildHash: passing.buildHash,
+      agent: () => ({ inspected: true }),
+    });
+    expect(reproduced.verdict).toBe("passed");
+    expect(reproduced.buildHash).toBe(passing.buildHash);
+    expect(reproduced.setup).toEqual(passing.setup);
+    expect(readFileSync(worldPath, "utf8")).toBe(worldBefore);
+    expect(readFileSync(drillPath, "utf8")).toBe(drillBefore);
+    expect(passingTrial?.report.directory).toContain(join(root, ".firedrill", "reports"));
+  });
+
+  it("injects a traceable Tool behavior replacement and an authored fault without hidden mutations", async () => {
+    const overriddenRoot = repository();
+    const drillPath = join(overriddenRoot, "world", "set-record.drill.json");
+    const drill = JSON.parse(readFileSync(drillPath, "utf8")) as {
+      assertions: Array<{ comparison?: { value?: number } }>;
+    };
+    const stateAssertion = drill.assertions.find((assertion) => assertion.comparison?.value === 7);
+    if (stateAssertion?.comparison === undefined) throw new Error("fixture has no state assertion");
+    stateAssertion.comparison.value = 8;
+    writeFileSync(drillPath, `${JSON.stringify(drill)}\n`);
+    mkdirSync(join(overriddenRoot, "test-support"));
+    const overridePath = join(overriddenRoot, "test-support", "records.override.js");
+    writeFileSync(
+      overridePath,
+      'export default { operations: { "records.set": (input, context) => { const value = { value: Number(input.value) + 1 }; context.state.put("records", "primary", value); return value; } } };\n',
+    );
+    const sourceBefore = readFileSync(join(overriddenRoot, "world", "records.js"), "utf8");
+    const overrideBefore = readFileSync(overridePath, "utf8");
+    const overridden = await runDrills({
+      root: overriddenRoot,
+      drill: "set-record",
+      setup: {
+        tools: {
+          behaviorOverrides: [{ packageId: "record-store", module: "test-support/records.override.js" }],
+        },
+      },
+      agent: setValueAgent,
+    });
+    expect(overridden.verdict).toBe("passed");
+    expect(overridden.drills[0]?.trials[0]?.result.assertionResults).toContainEqual(
+      expect.objectContaining({ assertionId: "record-set", status: "passed", actual: 8 }),
+    );
+    const lock = JSON.parse(
+      readFileSync(
+        join(
+          overriddenRoot,
+          ".firedrill",
+          "builds",
+          overridden.buildHash.slice("sha256:".length),
+          "packages.lock.json",
+        ),
+        "utf8",
+      ),
+    ) as { packages: Array<{ source: unknown }> };
+    expect(lock.packages[0]?.source).toEqual({
+      kind: "repository_override",
+      module: "test-support/records.override.js",
+      base: { kind: "repository" },
+    });
+    expect(readFileSync(join(overriddenRoot, "world", "records.js"), "utf8")).toBe(sourceBefore);
+    expect(readFileSync(overridePath, "utf8")).toBe(overrideBefore);
+
+    const faultRoot = repository();
+    const toolPath = join(faultRoot, "world", "records.tool.json");
+    const declaration = JSON.parse(readFileSync(toolPath, "utf8")) as {
+      manifest: {
+        operations: Array<{ declaredErrors?: string[] }>;
+        faults?: unknown[];
+      };
+    };
+    const operation = declaration.manifest.operations[0];
+    if (operation === undefined) throw new Error("fixture has no operation");
+    operation.declaredErrors = ["WRITE_BLOCKED"];
+    declaration.manifest.faults = [
+      {
+        id: "write-blocked",
+        appliesTo: ["records.set"],
+        timing: "before",
+        error: { code: "WRITE_BLOCKED", message: "writes are unavailable", retryable: true },
+      },
+    ];
+    writeFileSync(toolPath, `${JSON.stringify(declaration)}\n`);
+    const faultDrillPath = join(faultRoot, "world", "set-record.drill.json");
+    const faultDrill = JSON.parse(readFileSync(faultDrillPath, "utf8")) as { assertions: unknown[] };
+    faultDrill.assertions = [
+      {
+        id: "write-rejected",
+        kind: "operation.denied",
+        operation: { packageId: "record-store", operationId: "records.set" },
+        outcomes: ["tool_error"],
+        errorCode: "tool.WRITE_BLOCKED",
+      },
+      {
+        id: "record-unchanged",
+        kind: "state.value",
+        packageId: "record-store",
+        namespace: "records",
+        rowId: "primary",
+        path: ["value"],
+        comparison: { operator: "equals", value: 0 },
+      },
+    ];
+    writeFileSync(faultDrillPath, `${JSON.stringify(faultDrill)}\n`);
+    const faulted = await runDrills({
+      root: faultRoot,
+      drill: "set-record",
+      setup: {
+        scenario: { faults: [{ packageId: "record-store", faultId: "write-blocked" }] },
+      },
+      agent: setValueAgent,
+    });
+    expect(faulted.verdict).toBe("passed");
+    expect(faulted.drills[0]?.trials[0]?.evidence).toContainEqual(
+      expect.objectContaining({
+        kind: "fault",
+        packageId: "record-store",
+        faultId: "write-blocked",
+        timing: "before",
+      }),
+    );
+    expect(faulted.drills[0]?.trials[0]?.result.assertionResults).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ assertionId: "write-rejected", status: "passed" }),
+        expect.objectContaining({ assertionId: "record-unchanged", status: "passed", actual: 0 }),
+      ]),
+    );
+  });
+
+  it("projects an invocation-scoped synthetic service into an unchanged agent configuration", async () => {
+    const root = repository();
+    writeFileSync(
+      join(root, "world", "agent.target.json"),
+      `${JSON.stringify({
+        schemaVersion: 1,
+        target: { id: "agent-under-test", kind: "external", bindings: ["http"], timeoutMs: 5_000 },
+      })}\n`,
+    );
+    let called = 0;
+    let issuedUrl = "";
+    let issuedToken = "";
+    const result = await runDrills({
+      root,
+      drill: "set-record",
+      setup: {
+        bindings: {
+          environment: {
+            SERVICE_URL: "FIREDRILL_HTTP_URL",
+            SERVICE_TOKEN: "FIREDRILL_HTTP_TOKEN",
+          },
+        },
+      },
+      agent: async ({ task, binding }) => {
+        called += 1;
+        expect(binding.world).toBeUndefined();
+        expect(binding.environment.SERVICE_URL).toBe(binding.environment.FIREDRILL_HTTP_URL);
+        expect(binding.environment.SERVICE_TOKEN).toBe(binding.environment.FIREDRILL_HTTP_TOKEN);
+        issuedUrl = binding.environment.SERVICE_URL ?? "";
+        issuedToken = binding.environment.SERVICE_TOKEN ?? "";
+        const input = task.input as { value: number };
+        return setValueOverHttp(binding.environment, input.value, "unchanged-agent-set");
+      },
+    });
+    expect(called).toBe(1);
+    expect(result.verdict).toBe("passed");
+    expect(result.drills[0]?.trials[0]?.result.bindingEvidence).toBe("observed");
+    expect(issuedUrl).toMatch(/^http:\/\/127\.0\.0\.1:/);
+    expect(issuedToken.length).toBeGreaterThan(15);
+    await expect(fetch(`${issuedUrl}/health`, { signal: AbortSignal.timeout(1_000) })).rejects.toThrow();
+
+    let unsafeAgentCalled = false;
+    await expect(
+      runDrills({
+        root,
+        drill: "set-record",
+        setup: { bindings: { environment: { SERVICE_URL: "FIREDRILL_MCP_URL" } } },
+        agent: () => {
+          unsafeAgentCalled = true;
+          return {};
+        },
+      }),
+    ).rejects.toMatchObject({
+      code: "framework.SOURCE_INVALID",
+      diagnostics: [
+        expect.objectContaining({
+          code: "FD1202",
+          message: expect.stringContaining(
+            "FIREDRILL_MCP_URL is unavailable because target agent-under-test does not declare",
+          ),
+          path: expect.arrayContaining(["setup", "bindings", "environment"]),
+        }),
+      ],
+    });
+    expect(unsafeAgentCalled).toBe(false);
+  });
+
+  it("injects projected bindings into an existing command target without a runner callback", async () => {
+    const root = repository();
+    writeFileSync(
+      join(root, "world", "agent.target.json"),
+      `${JSON.stringify({
+        schemaVersion: 1,
+        target: {
+          id: "agent-under-test",
+          kind: "command",
+          bindings: ["http"],
+          executable: process.execPath,
+          arguments: ["agent-command.mjs"],
+          workingDirectory: ".",
+          timeoutMs: 5_000,
+        },
+      })}\n`,
+    );
+    writeFileSync(
+      join(root, "agent-command.mjs"),
+      [
+        'let source = "";',
+        "for await (const chunk of process.stdin) source += chunk;",
+        "const invocation = JSON.parse(source);",
+        "const baseUrl = process.env.RECORDS_SERVICE_URL;",
+        "const token = process.env.RECORDS_SERVICE_TOKEN;",
+        'if (!baseUrl || !token) throw new Error("the agent\'s normal service configuration is missing");',
+        'const response = await fetch(baseUrl + "/v1/operations/record-store/records.set", {',
+        '  method: "POST",',
+        '  headers: { authorization: "Bearer " + token, "content-type": "application/json" },',
+        '  body: JSON.stringify({ arguments: { value: Number(invocation.input.value) }, idempotencyKey: "command-set" }),',
+        "});",
+        "const result = await response.json();",
+        'if (!response.ok || result.outcome?.status !== "ok") throw new Error("synthetic service call failed");',
+        "process.stdout.write(JSON.stringify({ value: result.outcome.value.value }));",
+        "",
+      ].join("\n"),
+    );
+
+    const result = await runDrills({
+      root,
+      drill: "set-record",
+      setup: {
+        bindings: {
+          environment: {
+            RECORDS_SERVICE_URL: "FIREDRILL_HTTP_URL",
+            RECORDS_SERVICE_TOKEN: "FIREDRILL_HTTP_TOKEN",
+          },
+        },
+      },
+      hostEnvironment: {
+        PATH: process.env.PATH,
+        RECORDS_SERVICE_URL: "https://production.invalid",
+        RECORDS_SERVICE_TOKEN: "must-not-be-forwarded",
+      },
+    });
+
+    expect(result.verdict).toBe("passed");
+    expect(result.drills[0]?.trials[0]?.result).toMatchObject({
+      bindingEvidence: "observed",
+      interactions: [
+        {
+          targetResult: { status: "completed", output: { value: 7 } },
+        },
+      ],
     });
   });
 

@@ -79,6 +79,20 @@ import { runDrills } from "@firedrill/sdk";
 
 const result = await runDrills({
   drill: "my-drill",
+  setup: {
+    scenario: {
+      state: [
+        {
+          action: "upsert",
+          packageId: "record-store",
+          namespace: "records",
+          rowId: "primary",
+          value: { status: "ready" },
+        },
+      ],
+    },
+    bindings: { environment: { RECORDS_BASE_URL: "FIREDRILL_HTTP_URL" } },
+  },
   agent: ({ task, binding, signal }) => runMyAgent({ task, binding, signal }),
 });
 
@@ -86,6 +100,8 @@ expect(result.verdict).toBe("passed");
 ```
 
 Setup and source errors throw `FiredrillProjectError`. A completed drill that fails an assertion returns `verdict: "failed"`, so the caller's test runner remains in control.
+
+The optional `setup` is the Jest-like injection surface for one explicit drill. It can layer test-local starting state, actors, virtual time, events, and declared faults; select an installed Tool package; replace a declared Tool's deterministic behavior with a repository module; and project temporary HTTP, MCP, or CLI connection values onto environment names the existing agent already uses. Firedrill compiles the resolved setup into a content-addressed derived build and copies it into the report, so no hidden SQLite mutation or anonymous mock escapes the evidence trail. See the [`@firedrill/sdk` guide](packages/sdk/README.md#per-test-synthetic-data-and-tools) for the complete contract.
 
 ## Optional Firedrill Agent
 
@@ -104,7 +120,7 @@ An invocation defaults to at most 40 turns, $2 of model spend, and a 15-minute w
 
 ## What works now
 
-Repository-owned YAML or JSON plus explicitly selected Tool packages compile into a verified immutable world build. Custom Tool behavior is ordinary TypeScript or JavaScript loaded from the repository; reusable packs are ordinary package dependencies named once in `firedrill.json`. One behavior definition is exposed through the selected direct, generic HTTP, wire-compatible HTTP, MCP, and CLI adapters and mutates the same world state. A wire HTTP route is explicit repository source: method, path, auth placement, body mode, error statuses, and pure request/response codecs around one semantic operation. It is not an automatic claim of complete compatibility with an arbitrary service. Local execution supports a separate isolated SQLite world for every trial and retry, deterministic scenarios and faults, module/command/HTTP/caller-owned targets, eight typed assertion kinds, durable callbacks into the application under test, seeded trials, cancellation and timeouts, retained worlds, and verified local reports.
+Repository-owned YAML or JSON plus explicitly selected Tool packages compile into a verified immutable world build. Custom Tool behavior is ordinary TypeScript or JavaScript loaded from the repository; reusable packs are ordinary package dependencies named once in `firedrill.json` or selected for one test through `runDrills({ setup })`. One behavior definition is exposed through the selected direct, generic HTTP, wire-compatible HTTP, MCP, and CLI adapters and mutates the same world state. A wire HTTP route is explicit repository source: method, path, auth placement, body mode, error statuses, and pure request/response codecs around one semantic operation. It is not an automatic claim of complete compatibility with an arbitrary service. Local execution supports a separate isolated SQLite world for every trial and retry, deterministic scenarios and faults, traceable per-run data/Tool/binding setup, module/command/HTTP/caller-owned targets, eight typed assertion kinds, durable callbacks into the application under test, seeded trials, cancellation and timeouts, retained worlds, and verified local reports.
 
 Long-running drills support multiple actors, ordered interactions, virtual-time horizons, scheduled cross-Tool consequences, invariant checkpoints, stop policies, and event budgets. Suites add tags, text filters, deterministic shards, bounded concurrency, retries with distinct attempt identity, and SDK lifecycle hooks. Watch mode reruns through the same path without overlapping work. `firedrill compare` verifies both report bundles first and labels comparisons as exact-input, descriptive-only, or incompatible before showing factual deltas.
 

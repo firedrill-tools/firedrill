@@ -4,6 +4,7 @@ import {
   BuildManifestSchema,
   CanonicalWorldIrSchema,
   PackageLockSchema,
+  ResolvedRunSetupSchema,
   semanticHash,
 } from "../src/index.js";
 
@@ -255,6 +256,53 @@ describe("canonical world IR", () => {
 });
 
 describe("locked immutable build identity", () => {
+  it("binds a run-local setup hash to its full canonical contents", () => {
+    const identity = {
+      schemaVersion: 1 as const,
+      drillId: "reserve-one-slot",
+      setup: {
+        scenario: {
+          actors: [],
+          state: [
+            {
+              action: "upsert" as const,
+              packageId: "reservations",
+              namespace: "slots",
+              rowId: "afternoon",
+              value: { available: true },
+            },
+          ],
+          faults: [],
+          initialEvents: [],
+        },
+        tools: { packages: [], behaviorOverrides: [] },
+        bindings: { environment: {} },
+      },
+    };
+    const setup = ResolvedRunSetupSchema.parse({ ...identity, setupHash: semanticHash(identity) });
+    expect(setup.setup.scenario?.state[0]?.rowId).toBe("afternoon");
+    expect(
+      ResolvedRunSetupSchema.safeParse({
+        ...setup,
+        setup: {
+          ...setup.setup,
+          scenario: {
+            ...setup.setup.scenario,
+            state: [
+              {
+                action: "upsert",
+                packageId: "reservations",
+                namespace: "slots",
+                rowId: "afternoon",
+                value: { available: false },
+              },
+            ],
+          },
+        },
+      }).success,
+    ).toBe(false);
+  });
+
   it("locks exact Tool artifacts and rejects noncanonical package ordering", () => {
     const first = {
       packageId: "audit",
@@ -297,5 +345,12 @@ describe("locked immutable build identity", () => {
       "appointments",
     );
     expect(BuildManifestSchema.safeParse({ ...base, buildHash: HASH_A }).success).toBe(false);
+    expect(
+      BuildManifestSchema.safeParse({
+        ...base,
+        artifacts: { ...base.artifacts, setup: "run-setup.json" },
+        buildHash: semanticHash(identity),
+      }).success,
+    ).toBe(false);
   });
 });

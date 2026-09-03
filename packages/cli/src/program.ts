@@ -1267,11 +1267,13 @@ function writeToolInspection(io: CliIo, inspection: ToolInspection): void {
   if (inspection.diagnostics.length > 0) writeDiagnostics(io, inspection.diagnostics);
   const manifest = inspection.manifest;
   io.stdout.write(`Tool ${manifest.id}@${manifest.version}\n`);
-  io.stdout.write(
+  const source =
     inspection.origin.kind === "repository"
-      ? `Source ${inspection.sourcePath}\n`
-      : `Installed package ${inspection.origin.packageName}@${inspection.origin.packageVersion}\n`,
-  );
+      ? `Source ${inspection.sourcePath}`
+      : inspection.origin.kind === "npm"
+        ? `Installed package ${inspection.origin.packageName}@${inspection.origin.packageVersion}`
+        : `Temporary behavior override ${inspection.origin.module}`;
+  io.stdout.write(`${source}\n`);
   io.stdout.write(`Artifact ${inspection.artifact.artifactHash}\n`);
   io.stdout.write(
     `${manifest.operations.length} operation${manifest.operations.length === 1 ? "" : "s"}; ${manifest.http.length} HTTP route${manifest.http.length === 1 ? "" : "s"}; ${manifest.state.length} state namespace${manifest.state.length === 1 ? "" : "s"}; ${manifest.events.length} event${manifest.events.length === 1 ? "" : "s"}; ${manifest.callbacks.length} callback${manifest.callbacks.length === 1 ? "" : "s"}; ${manifest.faults.length} fault${manifest.faults.length === 1 ? "" : "s"}; ${manifest.subscriptions.length} subscription${manifest.subscriptions.length === 1 ? "" : "s"}\n`,

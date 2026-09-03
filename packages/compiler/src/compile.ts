@@ -13,13 +13,19 @@ import {
 import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import {
   FIREDRILL_ENGINE_VERSION,
+  InlineScenarioDefinitionSchema,
+  RunWorldSetupSchema,
   SourcePathSchema,
+  StableIdSchema,
+  TargetDescriptorSchema,
   canonicalJson,
   compareStableStrings,
 } from "@firedrill/contracts";
 import type {
   Diagnostic,
   InlineScenarioDefinition,
+  RunScenarioOverlay,
+  RunWorldSetup,
   ScenarioDefinition,
   ToolPackageManifest,
 } from "@firedrill/contracts";
@@ -28,9 +34,10 @@ import {
   BuildManifestSchema,
   CanonicalWorldIrSchema,
   PackageLockSchema,
+  ResolvedRunSetupSchema,
   semanticHash,
 } from "@firedrill/world-ir";
-import type { BuildProvenanceEntry, CanonicalWorldIr } from "@firedrill/world-ir";
+import type { BuildProvenanceEntry, CanonicalWorldIr, ResolvedRunSetup } from "@firedrill/world-ir";
 import { satisfies, validRange } from "semver";
 import type { z } from "zod";
 import { bundleTool } from "./bundle-tool.js";
@@ -93,7 +100,7 @@ interface TypedResource<T> {
 type DeclaredToolResource = TypedResource<ToolSource> &
   (
     | {
-        readonly origin: { readonly kind: "repository" };
+        readonly origin: Extract<ToolSourceOrigin, { readonly kind: "repository" }>;
         readonly behaviorRoot: string;
         readonly installedPackage?: undefined;
       }
@@ -142,6 +149,117 @@ function resourceProvenance(
     contentHash: semanticHash(semanticValue),
     origin,
   };
+}
+
+function normalizeRunSetup(input: RunWorldSetup): RunWorldSetup {
+  const scenario = input.scenario;
+  return RunWorldSetupSchema.parse({
+    ...(scenario === undefined
+      ? {}
+      : {
+          scenario: {
+            ...(scenario.virtualTimeUs === undefined ? {} : { virtualTimeUs: scenario.virtualTimeUs }),
+            actors: scenario.actors
+              .map((actor) => ({
+                ...actor,
+                grants: [...actor.grants].sort((left, right) =>
+                  compareStableStrings(
+                    `${left.packageId}\u0000${left.operationId}`,
+                    `${right.packageId}\u0000${right.operationId}`,
+                  ),
+                ),
+              }))
+              .sort((left, right) => compareStableStrings(left.id, right.id)),
+            state: scenario.state,
+            faults: [...scenario.faults].sort((left, right) =>
+              compareStableStrings(
+                `${left.packageId}\u0000${left.faultId}`,
+                `${right.packageId}\u0000${right.faultId}`,
+              ),
+            ),
+            initialEvents: scenario.initialEvents,
+          },
+        }),
+    tools: {
+      packages: [...input.tools.packages].sort(compareStableStrings),
+      behaviorOverrides: [...input.tools.behaviorOverrides].sort((left, right) =>
+        compareStableStrings(left.packageId, right.packageId),
+      ),
+    },
+    bindings: {
+      environment: Object.fromEntries(
+        Object.entries(input.bindings.environment).sort(([left], [right]) =>
+          compareStableStrings(left, right),
+        ),
+      ),
+    },
+  });
+}
+
+function resolvedRunSetup(
+  options: CompileWorldOptions["runSetup"],
+):
+  | { readonly status: "success"; readonly setup?: ResolvedRunSetup }
+  | { readonly status: "failed"; readonly diagnostics: readonly Diagnostic[] } {
+  if (options === undefined) return { status: "success" };
+  const drillId = StableIdSchema.safeParse(options.drillId);
+  const setup = RunWorldSetupSchema.safeParse(options.setup);
+  if (!drillId.success || !setup.success) {
+    const messages = [
+      ...(drillId.success ? [] : drillId.error.issues.map((issue) => `drillId: ${issue.message}`)),
+      ...(setup.success
+        ? []
+        : setup.error.issues.map(
+            (issue) =>
+              `${issue.path.length === 0 ? "setup" : `setup.${issue.path.join(".")}`}: ${issue.message}`,
+          )),
+    ];
+    return {
+      status: "failed",
+      diagnostics: messages.map((message) =>
+        diagnostic({
+          code: "FD1202",
+          message: `invalid run setup: ${message}`,
+          suggestion: "Use a serializable scenario, Tool selection, and binding projection.",
+        }),
+      ),
+    };
+  }
+  const normalized = normalizeRunSetup(setup.data);
+  const identity = { schemaVersion: 1 as const, drillId: drillId.data, setup: normalized };
+  return {
+    status: "success",
+    setup: ResolvedRunSetupSchema.parse({ ...identity, setupHash: semanticHash(identity) }),
+  };
+}
+
+function applyRunScenarioOverlay(
+  base: InlineScenarioDefinition,
+  overlay: RunScenarioOverlay,
+): InlineScenarioDefinition {
+  const activatedFaults = new Set(overlay.faults.map((fault) => `${fault.packageId}\u0000${fault.faultId}`));
+  const resolved = resolveScenario(
+    {
+      ...base,
+      faults: base.faults.filter((fault) => !activatedFaults.has(`${fault.packageId}\u0000${fault.faultId}`)),
+    },
+    {
+      schemaVersion: 1,
+      id: "run-setup",
+      ...(overlay.virtualTimeUs === undefined ? {} : { virtualTimeUs: overlay.virtualTimeUs }),
+      actors: overlay.actors,
+      state: overlay.state,
+      faults: overlay.faults,
+      initialEvents: overlay.initialEvents,
+    },
+  );
+  return InlineScenarioDefinitionSchema.parse({
+    virtualTimeUs: resolved.virtualTimeUs,
+    actors: resolved.actors,
+    state: resolved.state,
+    faults: resolved.faults,
+    initialEvents: resolved.initialEvents,
+  });
 }
 
 function addDuplicateDiagnostics(values: readonly SourceProvenance[], diagnostics: Diagnostic[]): void {
@@ -376,6 +494,7 @@ function materializeBuild(input: {
   readonly manifest: unknown;
   readonly worldIr: unknown;
   readonly packageLock: unknown;
+  readonly setup?: unknown;
   readonly tools: readonly BundledTool[];
 }):
   | { readonly status: "success"; readonly buildDirectory: string }
@@ -395,6 +514,7 @@ function materializeBuild(input: {
   expected.set("build.json", encode(input.manifest));
   expected.set("world.ir.json", encode(input.worldIr));
   expected.set("packages.lock.json", encode(input.packageLock));
+  if (input.setup !== undefined) expected.set("run-setup.json", encode(input.setup));
   for (const tool of input.tools) expected.set(tool.lock.artifactPath, tool.bytes);
 
   const buildDirectory = join(outputRoot.path, input.buildHash.replace("sha256:", ""));
@@ -455,6 +575,11 @@ function materializeBuild(input: {
 
 export async function compileWorld(options: CompileWorldOptions): Promise<CompileWorldResult> {
   const diagnostics: Diagnostic[] = [];
+  const setupResult = resolvedRunSetup(options.runSetup);
+  if (setupResult.status === "failed") {
+    return { status: "failed", diagnostics: sortDiagnostics(setupResult.diagnostics) };
+  }
+  const runSetup = setupResult.setup;
   const opened = openRepository(options.repositoryRoot);
   if (opened.status === "failed") {
     return { status: "failed", diagnostics: sortDiagnostics(opened.diagnostics) };
@@ -533,12 +658,30 @@ export async function compileWorld(options: CompileWorldOptions): Promise<Compil
       suiteSources.push(parsed.resource as TypedResource<SuiteSource>);
     } else targetSources.push(parsed.resource as TypedResource<TargetSource>);
   }
-  for (const [index, packageName] of config.resource.value.toolPackages.entries()) {
-    const resolvedPackage = resolveInstalledToolPackage(
-      repository.root,
+  const selectedToolPackages = [
+    ...config.resource.value.toolPackages.map((packageName, index) => ({
       packageName,
-      config.resource.document.spanAt(["toolPackages", index]),
+      span: config.resource.document.spanAt(["toolPackages", index]),
+    })),
+    ...(runSetup?.setup.tools.packages.map((packageName) => ({ packageName, span: undefined })) ?? []),
+  ];
+  const duplicateSelectedPackage = selectedToolPackages.find(
+    (item, index) =>
+      selectedToolPackages.findIndex((candidate) => candidate.packageName === item.packageName) !== index,
+  );
+  if (duplicateSelectedPackage !== undefined) {
+    diagnostics.push(
+      diagnostic({
+        code: "FD1402",
+        message: `Tool package ${duplicateSelectedPackage.packageName} is selected more than once`,
+        ...(duplicateSelectedPackage.span === undefined ? {} : { span: duplicateSelectedPackage.span }),
+        suggestion:
+          "Select each installed Tool package either in firedrill.json or in the run setup, not both.",
+      }),
     );
+  }
+  for (const { packageName, span } of selectedToolPackages) {
+    const resolvedPackage = resolveInstalledToolPackage(repository.root, packageName, span);
     if (resolvedPackage.status === "failed") {
       diagnostics.push(...resolvedPackage.diagnostics);
       continue;
@@ -549,7 +692,7 @@ export async function compileWorld(options: CompileWorldOptions): Promise<Compil
           code: "FD1403",
           message: `Tool package ${packageName}@${resolvedPackage.package.version} is revoked`,
           severity: "error",
-          span: config.resource.document.spanAt(["toolPackages", index]),
+          ...(span === undefined ? {} : { span }),
           suggestion: `Remove ${packageName} or install a non-revoked version. Firedrill will not execute this installed artifact.`,
         }),
       );
@@ -561,7 +704,7 @@ export async function compileWorld(options: CompileWorldOptions): Promise<Compil
           code: "FD1403",
           message: `Tool package ${packageName}@${resolvedPackage.package.version} is deprecated`,
           severity: "warning",
-          span: config.resource.document.spanAt(["toolPackages", index]),
+          ...(span === undefined ? {} : { span }),
           suggestion: `Plan an upgrade or replacement for ${packageName}; this installed version remains runnable.`,
         }),
       );
@@ -586,6 +729,10 @@ export async function compileWorld(options: CompileWorldOptions): Promise<Compil
     return { status: "failed", diagnostics: sortDiagnostics(diagnostics) };
   }
 
+  const behaviorOverrides = new Map(
+    (runSetup?.setup.tools.behaviorOverrides ?? []).map((override) => [override.packageId, override]),
+  );
+  const appliedBehaviorOverrides = new Set<string>();
   const tools: ToolResource[] = [];
   for (const source of toolSources) {
     const manifest = normalizeManifest(source.value.manifest);
@@ -615,29 +762,59 @@ export async function compileWorld(options: CompileWorldOptions): Promise<Compil
       );
       continue;
     }
+    const behaviorOverride = behaviorOverrides.get(manifest.id);
     const module =
-      source.installedPackage === undefined
-        ? resolveToolModule(repository, source.document.absolutePath, source.value.module)
-        : resolveInstalledToolModule(source.installedPackage, source.value.module);
+      behaviorOverride !== undefined
+        ? resolveRepositoryPath(
+            repository,
+            repository.root,
+            behaviorOverride.module,
+            `Tool ${manifest.id} behavior override`,
+          )
+        : source.installedPackage === undefined
+          ? resolveToolModule(repository, source.document.absolutePath, source.value.module)
+          : resolveInstalledToolModule(source.installedPackage, source.value.module);
     if (module.status === "failed") {
       diagnostics.push(...module.diagnostics);
       continue;
     }
+    if (behaviorOverride !== undefined) appliedBehaviorOverrides.add(manifest.id);
     const bundled = await bundleTool({
-      provenanceRoot: source.installedPackage?.root ?? repository.root,
-      ...(source.origin.kind === "npm" ? { provenancePrefix: `npm/${source.origin.packageName}` } : {}),
-      sourceRoot: source.behaviorRoot,
+      provenanceRoot:
+        behaviorOverride === undefined ? (source.installedPackage?.root ?? repository.root) : repository.root,
+      ...(behaviorOverride === undefined && source.origin.kind === "npm"
+        ? { provenancePrefix: `npm/${source.origin.packageName}` }
+        : {}),
+      sourceRoot: behaviorOverride === undefined ? source.behaviorRoot : repository.rootRealPath,
       modulePath: module.path.absolutePath,
       repositoryModulePath: module.path.repositoryPath,
-      exportName: source.value.exportName,
+      exportName: behaviorOverride?.exportName ?? source.value.exportName,
       manifest,
-      source: source.origin,
+      source:
+        behaviorOverride === undefined
+          ? source.origin
+          : {
+              kind: "repository_override",
+              module: module.path.repositoryPath,
+              base: source.origin,
+            },
     });
     if (bundled.status === "failed") {
       diagnostics.push(...bundled.diagnostics);
       continue;
     }
     tools.push({ ...source, manifest, bundle: bundled.tool });
+  }
+  for (const packageId of behaviorOverrides.keys()) {
+    if (appliedBehaviorOverrides.has(packageId)) continue;
+    diagnostics.push(
+      diagnostic({
+        code: "FD1402",
+        message: `Tool behavior override references unknown package ${packageId}`,
+        suggestion:
+          "Declare the Tool in the repository or select its installed package before overriding it.",
+      }),
+    );
   }
   if (diagnostics.some((item) => item.severity === "error")) {
     return { status: "failed", diagnostics: sortDiagnostics(diagnostics) };
@@ -718,6 +895,87 @@ export async function compileWorld(options: CompileWorldOptions): Promise<Compil
     .map((source) => ({ source, resolved: source.value.target }))
     .sort((left, right) => compareStableStrings(left.resolved.id, right.resolved.id));
 
+  let resolvedDrills = sortedDrills.map((item) => item.resolved);
+  let resolvedTargets = sortedTargets.map((item) => item.resolved);
+  if (runSetup !== undefined) {
+    const selectedDrill = resolvedDrills.find((drill) => drill.id === runSetup.drillId);
+    if (selectedDrill === undefined) {
+      diagnostics.push(
+        diagnostic({
+          code: "FD1202",
+          message: `run setup references unknown drill ${runSetup.drillId}`,
+          suggestion: "Select an existing repository drill before applying test-local setup.",
+        }),
+      );
+      return { status: "failed", diagnostics: sortDiagnostics(diagnostics) };
+    }
+    if (runSetup.setup.scenario !== undefined) {
+      const baseScenario =
+        selectedDrill.inlineScenario ??
+        sortedScenarios.find((item) => item.resolved?.id === selectedDrill.scenarioId)?.resolved;
+      if (baseScenario === undefined) {
+        diagnostics.push(
+          diagnostic({
+            code: "FD1202",
+            message: `run setup cannot resolve the scenario for drill ${runSetup.drillId}`,
+            suggestion: "Correct the drill's repository scenario before applying test-local setup.",
+          }),
+        );
+        return { status: "failed", diagnostics: sortDiagnostics(diagnostics) };
+      }
+      const {
+        scenarioId: _scenarioId,
+        inlineScenario: _inlineScenario,
+        ...drillWithoutScenario
+      } = selectedDrill;
+      const derivedDrill = {
+        ...drillWithoutScenario,
+        inlineScenario: applyRunScenarioOverlay(baseScenario, runSetup.setup.scenario),
+      };
+      resolvedDrills = resolvedDrills.map((drill) => (drill.id === selectedDrill.id ? derivedDrill : drill));
+    }
+    if (Object.keys(runSetup.setup.bindings.environment).length > 0) {
+      const target = resolvedTargets.find((candidate) => candidate.id === selectedDrill.targetId);
+      if (target === undefined) {
+        diagnostics.push(
+          diagnostic({
+            code: "FD1202",
+            message: `run setup cannot resolve target ${selectedDrill.targetId}`,
+            suggestion: "Correct the drill target before applying a binding projection.",
+          }),
+        );
+        return { status: "failed", diagnostics: sortDiagnostics(diagnostics) };
+      }
+      const projected = TargetDescriptorSchema.safeParse({
+        ...target,
+        bindingEnvironment: {
+          ...(target.bindingEnvironment ?? {}),
+          ...runSetup.setup.bindings.environment,
+        },
+      });
+      if (!projected.success) {
+        diagnostics.push(
+          ...projected.error.issues.map((issue) => {
+            const issuePath = issue.path.map((segment) =>
+              typeof segment === "symbol" ? String(segment) : segment,
+            );
+            return diagnostic({
+              code: "FD1202",
+              message: `invalid binding projection for target ${target.id}: ${issue.message}`,
+              path: ["setup", "bindings", "environment", ...issuePath],
+              suggestion:
+                "Map each agent variable to a canonical FIREDRILL_* value provided by a binding declared on the target.",
+            });
+          }),
+        );
+        return { status: "failed", diagnostics: sortDiagnostics(diagnostics) };
+      }
+      resolvedTargets = resolvedTargets.map((candidate) =>
+        candidate.id === target.id ? projected.data : candidate,
+      );
+    }
+  }
+
   const provisionalIr = {
     schemaVersion: 1,
     engineVersion: FIREDRILL_ENGINE_VERSION,
@@ -729,9 +987,9 @@ export async function compileWorld(options: CompileWorldOptions): Promise<Compil
     tools: sortedTools.map((tool) => tool.manifest),
     baseline,
     scenarios: sortedScenarios.flatMap((item) => (item.resolved === undefined ? [] : [item.resolved])),
-    drills: sortedDrills.map((item) => item.resolved),
+    drills: resolvedDrills,
     suites: sortedSuites.map((item) => item.resolved),
-    targets: sortedTargets.map((item) => item.resolved),
+    targets: resolvedTargets,
   };
   const parsedIr = CanonicalWorldIrSchema.safeParse(provisionalIr);
   if (!parsedIr.success) {
@@ -784,7 +1042,7 @@ export async function compileWorld(options: CompileWorldOptions): Promise<Compil
           artifactHash: tool.bundle.lock.artifactHash,
           exportName: tool.bundle.lock.exportName,
         },
-        tool.origin,
+        tool.bundle.lock.source,
       ),
     ),
     ...sortedScenarios.flatMap((item) =>
@@ -814,11 +1072,14 @@ export async function compileWorld(options: CompileWorldOptions): Promise<Compil
     engineVersion: FIREDRILL_ENGINE_VERSION,
     packages: sortedTools.map((tool) => tool.bundle.lock),
   });
-  const buildProvenance: BuildProvenanceEntry[] = sourceProvenance.map(({ kind, id, contentHash }) => ({
-    kind,
-    id,
-    contentHash,
-  }));
+  const buildProvenance: BuildProvenanceEntry[] = [
+    ...sourceProvenance.map(({ kind, id, contentHash }) => ({ kind, id, contentHash })),
+    ...(runSetup === undefined
+      ? []
+      : [{ kind: "setup" as const, id: runSetup.drillId, contentHash: runSetup.setupHash }]),
+  ].sort((left, right) =>
+    compareStableStrings(`${left.kind}\u0000${left.id}`, `${right.kind}\u0000${right.id}`),
+  );
   const irHash = semanticHash(worldIr);
   const packageLockHash = semanticHash(packageLock);
   const sourceDigest = semanticHash(buildProvenance);
@@ -836,7 +1097,11 @@ export async function compileWorld(options: CompileWorldOptions): Promise<Compil
     ...identity,
     buildHash: semanticHash(identity),
     worldId: worldIr.world.id,
-    artifacts: { worldIr: "world.ir.json", packageLock: "packages.lock.json" },
+    artifacts: {
+      worldIr: "world.ir.json",
+      packageLock: "packages.lock.json",
+      ...(runSetup === undefined ? {} : { setup: "run-setup.json" }),
+    },
     provenance: buildProvenance,
     diagnostics: {
       errors: diagnostics.filter((item) => item.severity === "error").length,
@@ -854,6 +1119,7 @@ export async function compileWorld(options: CompileWorldOptions): Promise<Compil
       manifest,
       worldIr,
       packageLock,
+      ...(runSetup === undefined ? {} : { setup: runSetup }),
       tools: sortedTools.map((tool) => tool.bundle),
     });
     if (materialized.status === "failed") {
@@ -872,12 +1138,13 @@ export async function compileWorld(options: CompileWorldOptions): Promise<Compil
       manifest,
       worldIr,
       packageLock,
+      ...(runSetup === undefined ? {} : { setup: runSetup }),
       sourceProvenance,
       toolSources: sortedTools.map((tool) => ({
         packageId: tool.manifest.id,
         declarationPath: tool.document.repositoryPath,
         behaviorPaths: tool.bundle.sourcePaths,
-        origin: tool.origin,
+        origin: tool.bundle.lock.source,
       })),
       ...(buildDirectory === undefined ? {} : { buildDirectory }),
     },

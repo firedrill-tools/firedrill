@@ -4,6 +4,8 @@ import {
   InlineScenarioDefinitionSchema,
   NodePackageNameSchema,
   PackageIdSchema,
+  RunSetupRecordSchema,
+  RunWorldSetupSchema,
   ScenarioDefinitionSchema,
   SeedSchema,
   SemverSchema,
@@ -355,6 +357,17 @@ export const CanonicalWorldIrSchema = z
     }
   });
 
+const BaseToolArtifactSourceSchema = z.discriminatedUnion("kind", [
+  z.object({ kind: z.literal("repository") }).strict(),
+  z
+    .object({
+      kind: z.literal("npm"),
+      packageName: NodePackageNameSchema,
+      packageVersion: SemverSchema,
+    })
+    .strict(),
+]);
+
 export const ToolArtifactLockSchema = z
   .object({
     packageId: PackageIdSchema,
@@ -368,12 +381,12 @@ export const ToolArtifactLockSchema = z
       .default("default"),
     moduleFormat: z.literal("esm"),
     source: z.discriminatedUnion("kind", [
-      z.object({ kind: z.literal("repository") }).strict(),
+      ...BaseToolArtifactSourceSchema.options,
       z
         .object({
-          kind: z.literal("npm"),
-          packageName: NodePackageNameSchema,
-          packageVersion: SemverSchema,
+          kind: z.literal("repository_override"),
+          module: SourcePathSchema,
+          base: BaseToolArtifactSourceSchema,
         })
         .strict(),
     ]),
@@ -410,7 +423,7 @@ export const BuildIdentitySchema = z
 
 export const BuildProvenanceEntrySchema = z
   .object({
-    kind: z.enum(["world", "tool", "scenario", "drill", "suite", "target"]),
+    kind: z.enum(["world", "tool", "scenario", "drill", "suite", "target", "setup"]),
     id: StableIdSchema,
     contentHash: Sha256Schema,
   })
@@ -425,6 +438,7 @@ export const BuildManifestSchema = z
       .object({
         worldIr: SourcePathSchema,
         packageLock: SourcePathSchema,
+        setup: SourcePathSchema.optional(),
       })
       .strict(),
     provenance: z.array(BuildProvenanceEntrySchema),
@@ -462,12 +476,57 @@ export const BuildManifestSchema = z
       "provenance",
       manifest.provenance.map((entry) => `${entry.kind}\u0000${entry.id}`),
     );
+    const setupEntries = manifest.provenance.filter((entry) => entry.kind === "setup");
+    if ((manifest.artifacts.setup === undefined) !== (setupEntries.length === 0)) {
+      context.addIssue({
+        code: "custom",
+        path: ["artifacts", "setup"],
+        message: "a setup artifact and setup provenance entry must be present together",
+      });
+    }
+    if (setupEntries.length > 1) {
+      context.addIssue({
+        code: "custom",
+        path: ["provenance"],
+        message: "a build can contain only one invocation setup",
+      });
+    }
+  });
+
+const ResolvedRunSetupIdentitySchema = z
+  .object({
+    schemaVersion: z.literal(1),
+    drillId: StableIdSchema,
+    setup: RunWorldSetupSchema,
+  })
+  .strict();
+
+/** Canonical invocation setup stored beside an immutable derived build. */
+export const ResolvedRunSetupSchema = z
+  .object(RunSetupRecordSchema.shape)
+  .strict()
+  .superRefine((setup, context) => {
+    const expected = semanticHash(
+      ResolvedRunSetupIdentitySchema.parse({
+        schemaVersion: setup.schemaVersion,
+        drillId: setup.drillId,
+        setup: setup.setup,
+      }),
+    );
+    if (setup.setupHash !== expected) {
+      context.addIssue({
+        code: "custom",
+        path: ["setupHash"],
+        message: `setup hash does not match canonical setup; expected ${expected}`,
+      });
+    }
   });
 
 export const WorldIrSchemas = {
   buildManifest: BuildManifestSchema,
   canonicalWorldIr: CanonicalWorldIrSchema,
   packageLock: PackageLockSchema,
+  resolvedRunSetup: ResolvedRunSetupSchema,
 } as const;
 
 export type CanonicalWorldIr = z.infer<typeof CanonicalWorldIrSchema>;
@@ -476,3 +535,4 @@ export type PackageLock = z.infer<typeof PackageLockSchema>;
 export type BuildIdentity = z.infer<typeof BuildIdentitySchema>;
 export type BuildProvenanceEntry = z.infer<typeof BuildProvenanceEntrySchema>;
 export type BuildManifest = z.infer<typeof BuildManifestSchema>;
+export type ResolvedRunSetup = z.infer<typeof ResolvedRunSetupSchema>;

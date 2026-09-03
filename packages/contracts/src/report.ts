@@ -40,6 +40,7 @@ export const ReproductionDescriptorSchema = z
     targetId: StableIdSchema,
     buildHash: Sha256Schema,
     packageLockHash: Sha256Schema,
+    setupHash: Sha256Schema.optional(),
     seed: SeedSchema,
     originalTrial: z.number().int().positive().safe(),
     originalTrialCount: z.number().int().positive().safe(),

@@ -7,6 +7,7 @@ import { OperationInvocationSchema, OperationOutcomeSchema, ToolPackageManifestS
 import { EvidenceBundleManifestSchema } from "./report.js";
 import { RunProgressSchema, RunResultSchema } from "./run.js";
 import { ScenarioDefinitionSchema } from "./scenario.js";
+import { RunSetupRecordSchema, RunWorldSetupSchema } from "./setup.js";
 import { DrillSuiteDefinitionSchema } from "./suite.js";
 import { TargetDescriptorSchema, TargetInvocationSchema, TargetResultSchema } from "./target.js";
 
@@ -23,6 +24,8 @@ export const ContractSchemas = {
   operationOutcome: OperationOutcomeSchema,
   runProgress: RunProgressSchema,
   runResult: RunResultSchema,
+  runSetupRecord: RunSetupRecordSchema,
+  runWorldSetup: RunWorldSetupSchema,
   scenarioDefinition: ScenarioDefinitionSchema,
   drillSuiteDefinition: DrillSuiteDefinitionSchema,
   targetDescriptor: TargetDescriptorSchema,

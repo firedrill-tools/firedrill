@@ -181,12 +181,18 @@ export async function prepareToolContribution(
 
   const inspection = await inspectTool(options);
   if (inspection.origin.kind !== "repository") {
+    const sourceLabel =
+      inspection.origin.kind === "npm"
+        ? `installed package ${inspection.origin.packageName}`
+        : `temporary behavior override ${inspection.origin.module}`;
     throw new FiredrillProjectError(
       "framework.TOOL_CONTRIBUTION_SOURCE_REQUIRED",
-      `Tool ${inspection.toolId} comes from installed package ${inspection.origin.packageName}`,
+      `Tool ${inspection.toolId} comes from ${sourceLabel}`,
       {
         details: {
-          packageName: inspection.origin.packageName,
+          ...(inspection.origin.kind === "npm"
+            ? { packageName: inspection.origin.packageName }
+            : { module: inspection.origin.module }),
           suggestion:
             "Prepare a contribution from the Tool's owned source repository, not from a consumer installation.",
         },

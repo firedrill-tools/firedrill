@@ -470,7 +470,18 @@ describe("complete local drill trial", () => {
     const directory = temporaryDirectory();
     const build = withWorldIr(loadedBuild(), (worldIr) => ({
       ...worldIr,
-      targets: [{ id: "parcel-agent", kind: "external", bindings: ["mcp"], timeoutMs: 30_000 }],
+      targets: [
+        {
+          id: "parcel-agent",
+          kind: "external",
+          bindings: ["mcp"],
+          bindingEnvironment: {
+            PARCEL_MCP_URL: "FIREDRILL_MCP_URL",
+            PARCEL_MCP_TOKEN: "FIREDRILL_MCP_TOKEN",
+          },
+          timeoutMs: 30_000,
+        },
+      ],
     }));
     const execution = await runDrillTrial({
       build,
@@ -479,8 +490,10 @@ describe("complete local drill trial", () => {
       runDirectory: join(directory, "mcp-runs"),
       externalHandler: async (invocation, context) => {
         expect(context.world).toBeUndefined();
-        const endpoint = invocation.bindingEnvironment.FIREDRILL_MCP_URL;
-        const token = invocation.bindingEnvironment.FIREDRILL_MCP_TOKEN;
+        const endpoint = invocation.bindingEnvironment.PARCEL_MCP_URL;
+        const token = invocation.bindingEnvironment.PARCEL_MCP_TOKEN;
+        expect(endpoint).toBe(invocation.bindingEnvironment.FIREDRILL_MCP_URL);
+        expect(token).toBe(invocation.bindingEnvironment.FIREDRILL_MCP_TOKEN);
         if (endpoint === undefined || token === undefined) throw new Error("MCP binding was not exposed");
         const mcp = new Client({ name: "firedrill-drill-e2e", version: "1.0.0" });
         try {

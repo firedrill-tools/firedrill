@@ -8,12 +8,21 @@ import type {
   JsonValue,
   RunId,
   RunResult,
+  RunSetupRecord,
+  RunWorldSetup,
+  RunWorldSetupInput,
   Seed,
   Sha256,
   StableId,
   TargetInvocation,
 } from "@firedrill/contracts";
-import { DrillShardSchema, SeedSchema, StableIdSchema, compareStableStrings } from "@firedrill/contracts";
+import {
+  DrillShardSchema,
+  RunWorldSetupSchema,
+  SeedSchema,
+  StableIdSchema,
+  compareStableStrings,
+} from "@firedrill/contracts";
 import type {
   CallbackReceiver,
   DrillAttemptHookContext,
@@ -77,6 +86,8 @@ export interface RunDrillsOptions {
   readonly seed?: string;
   /** Load this existing immutable build instead of compiling current source. */
   readonly buildHash?: string;
+  /** Serializable, test-local data, Tool, and binding overrides for one selected drill. */
+  readonly setup?: RunWorldSetupInput;
   /** Defaults to <root>/.firedrill/runs. */
   readonly runDirectory?: string;
   /** Defaults to <root>/.firedrill/reports. */
@@ -136,6 +147,7 @@ export interface RunDrillsResult {
   readonly diagnostics: readonly Diagnostic[];
   readonly buildHash: Sha256;
   readonly packageLockHash: Sha256;
+  readonly setup?: RunSetupRecord;
   readonly verdict: DrillExecution["verdict"];
   readonly selection: {
     readonly drillIds: readonly StableId[];
@@ -185,6 +197,7 @@ interface ValidatedRunOptions {
   readonly filter?: string;
   readonly shard?: DrillShard;
   readonly callbackReceivers?: Readonly<Record<string, CallbackReceiver>>;
+  readonly setup?: RunWorldSetup;
 }
 
 function drillShardIndex(drillId: string, total: number): number {
@@ -345,6 +358,40 @@ function validatedCallbackReceivers(
 
 function validateOptions(options: RunDrillsOptions): ValidatedRunOptions {
   const callbackReceivers = validatedCallbackReceivers(options.callbackReceivers);
+  let setup: RunWorldSetup | undefined;
+  if (options.setup !== undefined) {
+    if (options.drill === undefined) {
+      throw new FiredrillProjectError("framework.INVALID_ARGUMENT", "setup requires one explicit drill");
+    }
+    if (options.buildHash !== undefined) {
+      throw new FiredrillProjectError(
+        "framework.INVALID_ARGUMENT",
+        "setup cannot be combined with buildHash; reproduce the derived setup by buildHash alone",
+      );
+    }
+    if (!StableIdSchema.safeParse(options.drill).success) {
+      throw new FiredrillProjectError(
+        "framework.INVALID_ARGUMENT",
+        "drill must be a valid Firedrill id before applying setup",
+      );
+    }
+    const parsedSetup = RunWorldSetupSchema.safeParse(options.setup);
+    if (!parsedSetup.success) {
+      throw new FiredrillProjectError(
+        "framework.INVALID_ARGUMENT",
+        `setup is invalid: ${parsedSetup.error.issues[0]?.message ?? "invalid setup"}`,
+        {
+          details: {
+            issues: parsedSetup.error.issues.map((issue) => ({
+              path: issue.path.join("."),
+              message: issue.message,
+            })),
+          },
+        },
+      );
+    }
+    setup = parsedSetup.data;
+  }
   if (
     options.drill !== undefined &&
     (options.suite !== undefined ||
@@ -412,6 +459,7 @@ function validateOptions(options: RunDrillsOptions): ValidatedRunOptions {
       ...(filter === undefined ? {} : { filter }),
       ...(parsedShard?.success ? { shard: parsedShard.data } : {}),
       ...(callbackReceivers === undefined ? {} : { callbackReceivers }),
+      ...(setup === undefined ? {} : { setup }),
     };
   }
   const parsedSeed = SeedSchema.safeParse(options.seed);
@@ -424,6 +472,7 @@ function validateOptions(options: RunDrillsOptions): ValidatedRunOptions {
     ...(filter === undefined ? {} : { filter }),
     ...(parsedShard?.success ? { shard: parsedShard.data } : {}),
     ...(callbackReceivers === undefined ? {} : { callbackReceivers }),
+    ...(setup === undefined ? {} : { setup }),
   };
 }
 
@@ -495,7 +544,13 @@ function drillStatistics(
 export async function runDrills(options: RunDrillsOptions = {}): Promise<RunDrillsResult> {
   const root = resolve(options.root ?? process.cwd());
   const validated = validateOptions(options);
-  const preparedBuild = await prepareExecutableBuild(root, options.buildHash);
+  const preparedBuild = await prepareExecutableBuild(
+    root,
+    options.buildHash,
+    validated.setup === undefined
+      ? undefined
+      : { drillId: StableIdSchema.parse(options.drill), setup: validated.setup },
+  );
   const build = preparedBuild.build;
   if (validated.callbackReceivers !== undefined) {
     const declaredReceivers = new Set(
@@ -656,6 +711,7 @@ export async function runDrills(options: RunDrillsOptions = {}): Promise<RunDril
     diagnostics: preparedBuild.diagnostics,
     buildHash: build.manifest.buildHash,
     packageLockHash: build.manifest.packageLockHash,
+    ...(build.setup === undefined ? {} : { setup: build.setup }),
     verdict,
     selection: {
       drillIds: drills.map((drill) => drill.id),
