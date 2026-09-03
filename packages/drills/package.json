@@ -43,8 +43,10 @@
     "@firedrill/world-build": "workspace:*",
     "@firedrill/world-ir": "workspace:*",
     "@firedrill/world-kernel": "workspace:*",
+    "@firedrill/world-store": "workspace:*",
     "@firedrill/world-store-sqlite": "workspace:*",
-    "tsx": "4.23.12"
+    "tsx": "4.23.12",
+    "zod": "4.4.3"
   },
   "devDependencies": {
     "@firedrill/tool-sdk": "workspace:*",

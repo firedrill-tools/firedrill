@@ -12,12 +12,14 @@ import {
   PackageLockSchema,
   semanticHash,
 } from "@firedrill/world-ir";
+import { WorldKernel } from "@firedrill/world-kernel";
 import type { BoundWorldClient } from "@firedrill/world-kernel";
 import { SqliteWorldStore } from "@firedrill/world-store-sqlite";
 import { Client, StreamableHTTPClientTransport } from "@modelcontextprotocol/client";
 import { afterEach, describe, expect, it } from "vitest";
 import {
   createDrillWorld,
+  DrillTrialCoordinator,
   DrillSetupError,
   materializeDrillScenario,
   runDrill,
@@ -406,6 +408,110 @@ describe("drill scenario materialization", () => {
 });
 
 describe("complete local drill trial", () => {
+  it("resumes a settled interaction after a process-like restart without invoking it twice", async () => {
+    const directory = temporaryDirectory();
+    const filePath = join(directory, "resumable-world.sqlite");
+    const build = loadedBuild();
+    const identity = {
+      runId: "run_resumable01",
+      worldInstanceId: "world_resumable01",
+      trial: 1,
+      trialCount: 1,
+      attempt: 1,
+      attemptLimit: 1,
+      seed: "77",
+    } as const;
+    const callbacks = {
+      flush: async () => undefined,
+      nextDueUs: () => null,
+    };
+    const created = createDrillWorld({
+      build,
+      drillId: "release-ready-parcel",
+      filePath,
+      worldInstanceId: identity.worldInstanceId,
+      correlationId: "corr_resume_create01",
+      seed: identity.seed,
+    });
+
+    const coordinator = new DrillTrialCoordinator({
+      build,
+      drillId: "release-ready-parcel",
+      store: created.store,
+      kernel: created.kernel,
+      identity,
+      callbacks,
+    });
+    const next = await coordinator.next();
+    expect(next.kind).toBe("interaction");
+    if (next.kind !== "interaction") throw new Error("fixture did not produce an interaction");
+    const actorBindingId = created.materialized.actors[0]?.bindingId;
+    if (actorBindingId === undefined) throw new Error("fixture actor was not materialized");
+    created.kernel.invoke({
+      schemaVersion: 1,
+      callId: "call_resume_release01",
+      correlationId: "corr_resume_release01",
+      operation: { packageId: "parcel-service", operationId: "parcels.release" },
+      actorBindingId,
+      arguments: { parcelId: "parcel-a" },
+      idempotencyKey: "resume-release-a",
+    });
+    const completed = await coordinator.complete({
+      interactionId: next.pending.interaction.id,
+      targetResult: {
+        schemaVersion: 1,
+        status: "completed",
+        output: { acknowledged: true },
+        attachments: [],
+      },
+      bindingEvidence: "observed",
+      callsIssued: 1,
+    });
+    expect(completed.kind).toBe("ready_to_seal");
+    const snapshot = coordinator.snapshot();
+    expect(snapshot).toMatchObject({
+      nextInteractionIndex: 1,
+      interactions: [{ interactionId: "task" }],
+    });
+    created.store.close();
+
+    const reopened = SqliteWorldStore.open(filePath);
+    try {
+      const kernel = new WorldKernel({
+        store: reopened,
+        packageLockHash: build.manifest.packageLockHash,
+        tools: build.tools,
+      });
+      const resumed = new DrillTrialCoordinator({
+        build,
+        drillId: "release-ready-parcel",
+        store: reopened,
+        kernel,
+        identity,
+        callbacks,
+        snapshot,
+      });
+      expect(await resumed.next()).toEqual({ kind: "ready_to_seal" });
+      const result = await resumed.seal();
+      expect(result).toMatchObject({
+        status: "sealed",
+        verdict: "passed",
+        bindingEvidence: "observed",
+        interactions: [{ interactionId: "task" }],
+        budgetUsage: { toolCalls: { attempted: 1 } },
+      });
+      expect(
+        reopened
+          .readEvidence()
+          .filter(
+            (entry) => entry.kind === "operation" && entry.invocation.callId === "call_resume_release01",
+          ),
+      ).toHaveLength(1);
+    } finally {
+      reopened.close();
+    }
+  });
+
   it("invokes the agent, evaluates assertions, seals hashes, and retains the world artifact", async () => {
     const directory = temporaryDirectory();
     let retainedWorld: BoundWorldClient | undefined;
