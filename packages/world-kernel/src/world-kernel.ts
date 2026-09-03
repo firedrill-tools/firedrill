@@ -153,6 +153,21 @@ function unrecordedIdempotency(invocation: OperationInvocation): "not_requested"
   return invocation.idempotencyKey === undefined ? "not_requested" : "not_recorded";
 }
 
+function durableToolCallCount(store: WorldStore): number {
+  let fromSequence = 1;
+  let count = 0;
+  for (;;) {
+    const page = store.readEvidence(fromSequence, 10_000);
+    count += page.filter((entry) => entry.kind === "operation").length;
+    if (page.length < 10_000) return count;
+    const last = page.at(-1);
+    if (last === undefined || last.sequence < fromSequence) {
+      throw new Error("world evidence reader did not advance its pagination cursor");
+    }
+    fromSequence = last.sequence + 1;
+  }
+}
+
 function errorDetails(error: unknown): JsonObject {
   if (error instanceof Error) return { errorName: error.name, errorMessage: error.message };
   return { thrownType: typeof error };
@@ -195,6 +210,8 @@ export class WorldKernel {
         "maxRandomDraws",
       ),
     };
+    this.toolCalls = durableToolCallCount(this.store);
+    this.toolCallBudgetExceeded = this.toolCalls > this.budgets.maxToolCalls;
     this.onToolCallBudgetExceeded = options.onToolCallBudgetExceeded;
     const compiler = createSchemaCompiler();
     for (const tool of options.tools) {

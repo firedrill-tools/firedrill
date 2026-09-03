@@ -336,6 +336,56 @@ describe("package-driven world execution", () => {
     }
   });
 
+  it("keeps the world-wide Tool-call budget across kernel restarts", () => {
+    let exceeded = 0;
+    const { kernel, store } = createKernel({ maxToolCalls: 1 });
+    try {
+      const first = kernel.invoke(
+        invocation({
+          operation: { packageId: "inventory", operationId: "stock.get" },
+          arguments: { sku: "sku-1" },
+          idempotencyKey: undefined,
+        }),
+      );
+      expect(first.outcome.status).toBe("ok");
+
+      const restarted = new WorldKernel({
+        store,
+        packageLockHash: HASH_B,
+        tools: [inventoryTool(), activityTool()],
+        budgets: { maxToolCalls: 1 },
+        onToolCallBudgetExceeded: () => {
+          exceeded += 1;
+        },
+      });
+      expect(restarted.usage()).toEqual({
+        toolCalls: 1,
+        maxToolCalls: 1,
+        toolCallBudgetExceeded: false,
+      });
+
+      const rejected = restarted.invoke(
+        invocation({
+          callId: "call_after_restart",
+          correlationId: "corr_after_restart",
+          operation: { packageId: "inventory", operationId: "stock.get" },
+          arguments: { sku: "sku-1" },
+          idempotencyKey: undefined,
+        }),
+      );
+      expect(rejected.outcome).toMatchObject({
+        status: "tool_error",
+        error: {
+          code: "world.TOOL_CALL_BUDGET_EXCEEDED",
+          details: { attempted: 2, limit: 1 },
+        },
+      });
+      expect(exceeded).toBe(1);
+    } finally {
+      store.close();
+    }
+  });
+
   it("refuses a Tool set whose resolved lock does not match the world", () => {
     const { store } = createKernel({});
     expect(
