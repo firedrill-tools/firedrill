@@ -4,9 +4,9 @@ import type {
   EvidenceEntry,
   InteractionResult,
   OperationOutcome,
+  Sha256,
   TargetResult,
 } from "@firedrill/contracts";
-import type { Sha256 } from "@firedrill/contracts";
 import { semanticHash } from "./hash.js";
 
 export interface TrajectoryHashInput {
@@ -34,9 +34,10 @@ function stableTargetResult(result: TargetResult): unknown {
 }
 
 function stableEvidenceEntry(entry: EvidenceEntry): unknown {
-  const { correlationId: _correlationId, ...stable } = entry;
+  const { correlationId: _correlationId, transactionId: _transactionId, ...stable } = entry;
   if (entry.kind === "operation") {
     const {
+      actorBindingId: _actorBindingId,
       callId: _callId,
       correlationId: _invocationCorrelationId,
       idempotencyKey: _idempotencyKey,
@@ -49,7 +50,12 @@ function stableEvidenceEntry(entry: EvidenceEntry): unknown {
     };
   }
   if (entry.kind === "lifecycle") {
-    const { worldInstanceId: _worldInstanceId, snapshotId: _snapshotId, ...lifecycle } = stable;
+    const {
+      actorBindingId: _actorBindingId,
+      worldInstanceId: _worldInstanceId,
+      snapshotId: _snapshotId,
+      ...lifecycle
+    } = stable;
     return lifecycle;
   }
   if (entry.kind === "callback") {

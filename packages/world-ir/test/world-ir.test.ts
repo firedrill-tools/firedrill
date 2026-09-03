@@ -1,3 +1,4 @@
+import { EvidenceEntrySchema } from "@firedrill/contracts";
 import { describe, expect, it } from "vitest";
 import {
   BuildIdentitySchema,
@@ -6,6 +7,7 @@ import {
   PackageLockSchema,
   ResolvedRunSetupSchema,
   semanticHash,
+  trajectoryHash,
 } from "../src/index.js";
 
 const HASH_A = `sha256:${"a".repeat(64)}`;
@@ -352,5 +354,61 @@ describe("locked immutable build identity", () => {
         buildHash: semanticHash(identity),
       }).success,
     ).toBe(false);
+  });
+});
+
+describe("behavioral trajectory identity", () => {
+  it("ignores transport and storage identities while retaining the observed actor", () => {
+    const operation = (input: {
+      callId: string;
+      correlationId: string;
+      transactionId: string;
+      actorBindingId: string;
+    }) =>
+      EvidenceEntrySchema.parse({
+        schemaVersion: 1,
+        kind: "operation",
+        sequence: 1,
+        transactionId: input.transactionId,
+        transactionIndex: 0,
+        transactionSize: 1,
+        virtualTimeUs: 10,
+        correlationId: input.correlationId,
+        invocation: {
+          schemaVersion: 1,
+          callId: input.callId,
+          correlationId: input.correlationId,
+          operation: { packageId: "reservations", operationId: "slots.reserve" },
+          actorBindingId: input.actorBindingId,
+          arguments: { slot: "morning" },
+          idempotencyKey: `${input.callId}-key`,
+        },
+        actorId: "scheduler",
+        outcome: { status: "ok", value: { reserved: true } },
+        idempotency: "recorded",
+      });
+
+    const first = operation({
+      callId: "call_compare01",
+      correlationId: "corr_compare01",
+      transactionId: "txn_compare01",
+      actorBindingId: "actor_compare01",
+    });
+    const second = operation({
+      callId: "call_compare02",
+      correlationId: "corr_compare02",
+      transactionId: "txn_compare02",
+      actorBindingId: "actor_compare02",
+    });
+
+    expect(semanticHash(first)).not.toBe(semanticHash(second));
+    expect(trajectoryHash({ interactions: [], checkpoints: [], evidence: [first] })).toBe(
+      trajectoryHash({ interactions: [], checkpoints: [], evidence: [second] }),
+    );
+
+    const differentActor = EvidenceEntrySchema.parse({ ...second, actorId: "reviewer" });
+    expect(trajectoryHash({ interactions: [], checkpoints: [], evidence: [differentActor] })).not.toBe(
+      trajectoryHash({ interactions: [], checkpoints: [], evidence: [first] }),
+    );
   });
 });
