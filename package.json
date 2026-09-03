@@ -35,7 +35,7 @@
     "registry:check": "tsx tooling/generate-registry.mts --check",
     "skill:check": "tsx tooling/check-skill.mts",
     "quickstart:check": "tsx tooling/check-quickstart.mts",
-    "pack:artifacts": "tsx tooling/pack-public.mts",
+    "pack:artifacts": "pnpm build && tsx tooling/pack-public.mts",
     "pack:check": "tsx tooling/check-pack.mts",
     "release:portability": "tsx tooling/check-portable-install.mts",
     "release:prepare": "tsx tooling/prepare-release.mts",
