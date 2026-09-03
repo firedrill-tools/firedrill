@@ -1,6 +1,6 @@
 {
   "name": "@firedrill/compiler",
-  "version": "0.0.0",
+  "version": "0.1.0-rc.1",
   "description": "Deterministic repository compiler for local Firedrill worlds",
   "license": "Apache-2.0",
   "engines": {

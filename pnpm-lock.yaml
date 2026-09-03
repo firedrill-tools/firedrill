@@ -43,6 +43,9 @@ importers:
       '@firedrill/compiler':
         specifier: workspace:*
         version: link:../compiler
+      '@firedrill/contracts':
+        specifier: workspace:*
+        version: link:../contracts
       '@firedrill/sdk':
         specifier: workspace:*
         version: link:../sdk

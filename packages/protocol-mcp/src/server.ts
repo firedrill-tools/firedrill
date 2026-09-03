@@ -2,7 +2,7 @@ import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
 import type { IncomingMessage, Server, ServerResponse } from "node:http";
 import { createServer } from "node:http";
 import type { JsonObject, JsonValue, OperationContract, ToolPackageManifest } from "@firedrill/contracts";
-import { JsonObjectSchema, JsonValueSchema } from "@firedrill/contracts";
+import { FIREDRILL_FRAMEWORK_VERSION, JsonObjectSchema, JsonValueSchema } from "@firedrill/contracts";
 import type { BoundWorldClient } from "@firedrill/world-kernel";
 import {
   localhostHostValidation,
@@ -118,7 +118,10 @@ function buildServer(
   registered: readonly RegisteredOperation[],
   bindingScope: string,
 ): McpServer {
-  const server = new McpServer({ name: "firedrill-local-world", version: "0.0.0" });
+  const server = new McpServer({
+    name: "firedrill-local-world",
+    version: FIREDRILL_FRAMEWORK_VERSION,
+  });
   for (const item of registered) {
     server.registerTool(
       item.toolName,

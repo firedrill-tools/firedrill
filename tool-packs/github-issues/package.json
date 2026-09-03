@@ -1,6 +1,6 @@
 {
   "name": "@firedrill/tool-github-issues",
-  "version": "0.1.0",
+  "version": "0.1.0-rc.1",
   "description": "A bounded, stateful GitHub Issues-compatible Tool pack for Firedrill",
   "keywords": [
     "ai-agent",
@@ -49,5 +49,14 @@
   "devDependencies": {
     "@octokit/rest": "22.0.1",
     "typescript": "5.9.3"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/firedrill-tools/firedrill.git",
+    "directory": "tool-packs/github-issues"
+  },
+  "homepage": "https://firedrill.tools",
+  "bugs": {
+    "url": "https://github.com/firedrill-tools/firedrill/issues"
   }
 }

@@ -1,4 +1,5 @@
 import { compileWorld, formatWorldSources } from "@firedrill/compiler";
+import { FIREDRILL_FRAMEWORK_VERSION } from "@firedrill/contracts";
 import { FiredrillProjectError, inspectTool, runDrills, testTool, validateTool } from "@firedrill/sdk";
 import { createSdkMcpServer, tool } from "@anthropic-ai/claude-agent-sdk";
 import { z } from "zod";
@@ -260,7 +261,7 @@ export function createFiredrillAuthoringTools(repositoryRoot: string) {
 export function createFiredrillAuthoringServer(repositoryRoot: string) {
   return createSdkMcpServer({
     name: "firedrill",
-    version: "0.0.0",
+    version: FIREDRILL_FRAMEWORK_VERSION,
     instructions:
       "Use these tools instead of a shell for Firedrill validation, formatting, planning, Tool checks, and drill execution. Treat their structured results as authoritative.",
     alwaysLoad: true,

@@ -1,6 +1,6 @@
 {
   "name": "@firedrill/world-store",
-  "version": "0.0.0",
+  "version": "0.1.0-rc.1",
   "description": "Storage port for a durable Firedrill world",
   "license": "Apache-2.0",
   "engines": {

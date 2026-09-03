@@ -10,7 +10,7 @@ Package-manager availability depends on each pack's release status. Follow the l
 
 A bounded, stateful GitHub Issues-compatible Tool pack for Firedrill
 
-- Version: `0.1.0`
+- Version: `0.1.0-rc.1`
 - Tool ID: `github-issues`
 - Lifecycle: `active`
 - License: `Apache-2.0`
@@ -50,7 +50,7 @@ Compatibility profile `octokit-rest-22`:
 
 Reference stateful work-queue Tool pack for Firedrill
 
-- Version: `0.1.0`
+- Version: `0.1.0-rc.1`
 - Tool ID: `work-queue`
 - Lifecycle: `active`
 - License: `Apache-2.0`

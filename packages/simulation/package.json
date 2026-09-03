@@ -1,6 +1,6 @@
 {
   "name": "@firedrill/simulation",
-  "version": "0.0.0",
+  "version": "0.1.0-rc.1",
   "description": "Versioned local simulation views and loopback control API for Firedrill",
   "license": "Apache-2.0",
   "engines": {

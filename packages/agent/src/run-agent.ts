@@ -4,6 +4,7 @@ import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { EffortLevel, SDKMessage } from "@anthropic-ai/claude-agent-sdk";
 import { query } from "@anthropic-ai/claude-agent-sdk";
+import { FIREDRILL_FRAMEWORK_VERSION } from "@firedrill/contracts";
 import { createFiredrillAuthoringServer } from "./firedrill-tools.js";
 import { repositoryGuardHook } from "./repository-policy.js";
 
@@ -115,7 +116,7 @@ function agentEnvironment(environment: Readonly<Record<string, string | undefine
     ["HOME", runtimeHome],
     ["XDG_CONFIG_HOME", resolve(runtimeHome, "config")],
     ["CLAUDE_CONFIG_DIR", resolve(runtimeHome, ".claude")],
-    ["CLAUDE_AGENT_SDK_CLIENT_APP", "firedrill-agent/0.0.0"],
+    ["CLAUDE_AGENT_SDK_CLIENT_APP", `firedrill-agent/${FIREDRILL_FRAMEWORK_VERSION}`],
   ]);
 }
 

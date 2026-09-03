@@ -1,6 +1,6 @@
 {
   "name": "@firedrill/inspector",
-  "version": "0.0.0",
+  "version": "0.1.0-rc.1",
   "description": "Offline local inspector for Firedrill worlds and drill evidence",
   "license": "Apache-2.0",
   "engines": {

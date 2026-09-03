@@ -3,7 +3,7 @@ module: ./dist/behavior.js
 manifest:
   schemaVersion: 1
   id: github-issues
-  version: 0.1.0
+  version: 0.1.0-rc.1
   engine: ">=0.1.0 <0.2.0"
   capabilities:
     - clock.read

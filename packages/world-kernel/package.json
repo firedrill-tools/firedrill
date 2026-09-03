@@ -1,6 +1,6 @@
 {
   "name": "@firedrill/world-kernel",
-  "version": "0.0.0",
+  "version": "0.1.0-rc.1",
   "description": "Generic deterministic execution kernel for Firedrill worlds",
   "license": "Apache-2.0",
   "engines": {

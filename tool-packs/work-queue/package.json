@@ -1,6 +1,6 @@
 {
   "name": "@firedrill/tool-work-queue",
-  "version": "0.1.0",
+  "version": "0.1.0-rc.1",
   "description": "Reference stateful work-queue Tool pack for Firedrill",
   "keywords": [
     "ai-agent",
@@ -47,5 +47,14 @@
   },
   "devDependencies": {
     "typescript": "5.9.3"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/firedrill-tools/firedrill.git",
+    "directory": "tool-packs/work-queue"
+  },
+  "homepage": "https://firedrill.tools",
+  "bugs": {
+    "url": "https://github.com/firedrill-tools/firedrill/issues"
   }
 }

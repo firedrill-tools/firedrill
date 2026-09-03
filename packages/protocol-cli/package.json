@@ -1,6 +1,6 @@
 {
   "name": "@firedrill/protocol-cli",
-  "version": "0.0.0",
+  "version": "0.1.0-rc.1",
   "description": "Local CLI binding and client for Firedrill worlds",
   "license": "Apache-2.0",
   "engines": {

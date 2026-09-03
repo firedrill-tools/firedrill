@@ -1,6 +1,6 @@
 {
   "name": "@firedrill/reporters",
-  "version": "0.0.0",
+  "version": "0.1.0-rc.1",
   "description": "Local terminal, JSON, JUnit, and self-contained HTML reports for Firedrill",
   "license": "Apache-2.0",
   "engines": {

@@ -1,6 +1,6 @@
 {
   "name": "@firedrill/world-build",
-  "version": "0.0.0",
+  "version": "0.1.0-rc.1",
   "description": "Verified loader for immutable Firedrill world builds",
   "license": "Apache-2.0",
   "engines": {

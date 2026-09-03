@@ -1,6 +1,6 @@
 {
   "name": "firedrill",
-  "version": "0.0.0",
+  "version": "0.1.0-rc.1",
   "private": true,
   "description": "Open-source stateful simulation and testing framework for action-taking AI agents",
   "license": "Apache-2.0",
@@ -18,6 +18,7 @@
     "genericity": "tsx tooling/check-genericity.mts",
     "determinism": "tsx tooling/check-determinism.mts",
     "public:check": "tsx tooling/check-public-tree.mts",
+    "release:check": "tsx tooling/check-release-policy.mts",
     "typecheck": "pnpm -r --if-present typecheck",
     "test": "pnpm -r --if-present test",
     "build": "pnpm -r --if-present build",
@@ -29,7 +30,7 @@
     "pack:artifacts": "tsx tooling/pack-public.mts",
     "pack:check": "tsx tooling/check-pack.mts",
     "release:prepare": "tsx tooling/prepare-release.mts",
-    "check": "pnpm format:check && pnpm lint && pnpm boundaries && pnpm genericity && pnpm determinism && pnpm public:check && pnpm build && pnpm schema:check && pnpm registry:check && pnpm skill:check && pnpm typecheck && pnpm test && pnpm quickstart:check && pnpm pack:check"
+    "check": "pnpm format:check && pnpm lint && pnpm boundaries && pnpm genericity && pnpm determinism && pnpm public:check && pnpm release:check && pnpm build && pnpm schema:check && pnpm registry:check && pnpm skill:check && pnpm typecheck && pnpm test && pnpm quickstart:check && pnpm pack:check"
   },
   "devDependencies": {
     "@arethetypeswrong/cli": "0.18.5",
