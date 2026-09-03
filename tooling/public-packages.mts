@@ -149,6 +149,23 @@ function repackDeterministically(rawArchive: string, destination: string, tempor
   );
 }
 
+function runPnpm(arguments_: readonly string[], cwd: string) {
+  const pnpmEntrypoint = process.env.npm_execpath;
+  if (pnpmEntrypoint && existsSync(pnpmEntrypoint)) {
+    return spawnSync(process.execPath, [pnpmEntrypoint, ...arguments_], {
+      cwd,
+      encoding: "utf8",
+      stdio: "pipe",
+    });
+  }
+  return spawnSync("pnpm", [...arguments_], {
+    cwd,
+    encoding: "utf8",
+    shell: process.platform === "win32",
+    stdio: "pipe",
+  });
+}
+
 export function packPublicPackages(options: {
   readonly repositoryRoot: string;
   readonly outputDirectory: string;
@@ -166,11 +183,7 @@ export function packPublicPackages(options: {
   for (const package_ of discoverPublicPackages(root)) {
     const temporary = mkdtempSync(join(tmpdir(), "firedrill-raw-pack-"));
     try {
-      const result = spawnSync("pnpm", ["pack", "--pack-destination", temporary], {
-        cwd: join(root, package_.directory),
-        encoding: "utf8",
-        stdio: "pipe",
-      });
+      const result = runPnpm(["pack", "--pack-destination", temporary], join(root, package_.directory));
       if (result.status !== 0) {
         throw new Error(`packing ${package_.name} failed\n${result.stdout ?? ""}\n${result.stderr ?? ""}`);
       }

@@ -29,6 +29,7 @@
     "quickstart:check": "tsx tooling/check-quickstart.mts",
     "pack:artifacts": "tsx tooling/pack-public.mts",
     "pack:check": "tsx tooling/check-pack.mts",
+    "release:portability": "tsx tooling/check-portable-install.mts",
     "release:prepare": "tsx tooling/prepare-release.mts",
     "check": "pnpm format:check && pnpm lint && pnpm boundaries && pnpm genericity && pnpm determinism && pnpm public:check && pnpm release:check && pnpm build && pnpm schema:check && pnpm registry:check && pnpm skill:check && pnpm typecheck && pnpm test && pnpm quickstart:check && pnpm pack:check"
   },

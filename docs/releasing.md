@@ -28,6 +28,8 @@ The output contains:
 
 The manual `Release evidence` workflow runs the complete framework gate, prepares the bundle, and uploads it without publishing anything. On a public repository it also creates GitHub/Sigstore provenance and SBOM attestations for the package archives. Consumers can later verify those attestations with `gh attestation verify` against the public repository.
 
+Every pull request and main-branch commit also installs the packed npm artifacts into an external project on Linux, macOS, and Windows with both the minimum supported Node version and the current release-line version. The project path contains spaces and non-ASCII characters, commands run without a TTY under CI and a non-English locale, and the gate exercises native SQLite, pass/fail reports, exact reproduction, and Tool conformance through the installed CLI. This is the portability claim; a workspace-source test is not a substitute.
+
 Npm provenance is a separate registry operation. It requires a public repository URL in each package manifest and a supported hosted publisher or npm trusted publishing. Those values and actual publication require explicit release-owner authorization; this repository contains no publish token and the evidence workflow never invokes `npm publish`.
 
 Before the first release, the release owner must:
