@@ -418,7 +418,9 @@ try {
         type: "module",
         dependencies: {
           "@firedrill/cli": `file:${archives.get("@firedrill/cli")}`,
+          "@firedrill/tool-github-issues": `file:${archives.get("@firedrill/tool-github-issues")}`,
           "@firedrill/tool-work-queue": `file:${archives.get("@firedrill/tool-work-queue")}`,
+          "@octokit/rest": "22.0.1",
         },
         pnpm: {
           overrides: Object.fromEntries(
@@ -435,7 +437,7 @@ try {
   mkdirSync(join(installedPackProject, "world"), { recursive: true });
   writeFileSync(
     join(installedPackProject, "firedrill.json"),
-    `${JSON.stringify({ schemaVersion: 1, sourceRoot: "world", world: "world.json", toolPackages: ["@firedrill/tool-work-queue"] })}\n`,
+    `${JSON.stringify({ schemaVersion: 1, sourceRoot: "world", world: "world.json", toolPackages: ["@firedrill/tool-github-issues", "@firedrill/tool-work-queue"] })}\n`,
   );
   writeFileSync(
     join(installedPackProject, "world", "world.json"),
@@ -446,9 +448,14 @@ try {
         {
           id: "worker",
           grants: [
+            { packageId: "github-issues", operationId: "comments.create" },
+            { packageId: "github-issues", operationId: "comments.list" },
+            { packageId: "github-issues", operationId: "issues.get" },
+            { packageId: "github-issues", operationId: "issues.update" },
             { packageId: "work-queue", operationId: "items.claim" },
             { packageId: "work-queue", operationId: "items.complete" },
           ],
+          attributes: { login: "packed-client" },
         },
       ],
     })}\n`,
@@ -494,6 +501,83 @@ try {
     join(installedPackProject, "agent.mjs"),
     `let input = ""; for await (const chunk of process.stdin) input += chunk; JSON.parse(input); const baseUrl = process.env.FIREDRILL_HTTP_URL; const token = process.env.FIREDRILL_HTTP_TOKEN; const basic = Buffer.from("firedrill:" + token, "utf8").toString("base64"); const claimed = await fetch(baseUrl + "/api/work-items/item-1/claim", { method: "POST", headers: { authorization: "Basic " + basic, "idempotency-key": "claim-item-1" } }); if (claimed.status !== 204) throw new Error(await claimed.text()); const completed = await fetch(baseUrl + "/api/work-items/item-1?access_token=" + encodeURIComponent(token), { method: "PATCH", headers: { "content-type": "text/plain", "idempotency-key": "complete-item-1" }, body: "done" }); if (!completed.ok || await completed.text() !== "completed\\n") throw new Error("completion route failed"); process.stdout.write(JSON.stringify({ completed: true }));\n`,
   );
+  writeFileSync(
+    join(installedPackProject, "world", "github-baseline.scenario.json"),
+    `${JSON.stringify({
+      schemaVersion: 1,
+      id: "github-baseline",
+      state: [
+        {
+          action: "upsert",
+          packageId: "github-issues",
+          namespace: "issues",
+          rowId: "octo/example#42",
+          value: {
+            owner: "octo",
+            repo: "example",
+            number: 42,
+            id: 420042,
+            nodeId: "I_packed_420042",
+            title: "Release evidence is incomplete",
+            body: "Attach evidence before closing this issue.",
+            state: "open",
+            locked: false,
+            comments: 0,
+            author: "repository-owner",
+            createdAt: "2025-12-31T23:00:00.000Z",
+            updatedAt: "2025-12-31T23:30:00.000Z",
+          },
+        },
+      ],
+    })}\n`,
+  );
+  writeFileSync(
+    join(installedPackProject, "world", "github-agent.target.json"),
+    `${JSON.stringify({ schemaVersion: 1, target: { id: "github-client-agent", kind: "command", bindings: ["http"], executable: "node", arguments: ["github-agent.mjs"], workingDirectory: ".", timeoutMs: 10000 } })}\n`,
+  );
+  writeFileSync(
+    join(installedPackProject, "world", "github-client.drill.json"),
+    `${JSON.stringify({
+      schemaVersion: 1,
+      id: "github-official-client",
+      targetId: "github-client-agent",
+      actorId: "worker",
+      scenarioId: "github-baseline",
+      task: { instruction: "Use the installed official client to inspect, comment on, and close issue 42." },
+      assertions: [
+        {
+          id: "issue-closed",
+          kind: "state.value",
+          packageId: "github-issues",
+          namespace: "issues",
+          rowId: "octo/example#42",
+          path: ["state"],
+          comparison: { operator: "equals", value: "closed" },
+        },
+        {
+          id: "one-comment",
+          kind: "state.count",
+          packageId: "github-issues",
+          namespace: "comments",
+          comparison: { operator: "equals", value: 1 },
+        },
+        {
+          id: "client-flow",
+          kind: "operation.order",
+          sequence: [
+            { anyOf: [{ packageId: "github-issues", operationId: "issues.get" }] },
+            { anyOf: [{ packageId: "github-issues", operationId: "comments.create" }] },
+            { anyOf: [{ packageId: "github-issues", operationId: "comments.list" }] },
+            { anyOf: [{ packageId: "github-issues", operationId: "issues.update" }] },
+          ],
+        },
+      ],
+    })}\n`,
+  );
+  writeFileSync(
+    join(installedPackProject, "github-agent.mjs"),
+    `import { Octokit } from "@octokit/rest"; let input = ""; for await (const chunk of process.stdin) input += chunk; JSON.parse(input); const baseUrl = process.env.FIREDRILL_HTTP_URL; const auth = process.env.FIREDRILL_HTTP_TOKEN; if (!baseUrl || !auth) throw new Error("Firedrill HTTP binding is missing"); const client = new Octokit({ baseUrl, auth }); const repository = { owner: "octo", repo: "example", issue_number: 42 }; const before = await client.rest.issues.get(repository); const created = await client.rest.issues.createComment({ ...repository, body: "Packed-client evidence is attached." }); const comments = await client.rest.issues.listComments(repository); const closed = await client.rest.issues.update({ ...repository, state: "closed", state_reason: "completed" }); let unsupported = false; try { await client.rest.issues.create({ owner: "octo", repo: "example", title: "must not escape" }); } catch (error) { unsupported = error?.status === 404 && error?.request?.url?.startsWith(baseUrl); } if (before.data.state !== "open" || created.data.user?.login !== "packed-client" || comments.data.length !== 1 || closed.data.state !== "closed" || !unsupported) throw new Error("installed official client observed an invalid synthetic flow"); process.stdout.write(JSON.stringify({ completed: true }));\n`,
+  );
   const packInspect = spawnSync(installedPackCli, ["tool", "inspect", "work-queue", "--json"], {
     cwd: installedPackProject,
     encoding: "utf8",
@@ -510,6 +594,44 @@ try {
   run(installedPackCli, ["validate", "--json"], installedPackProject);
   run(installedPackCli, ["tool", "validate", "work-queue", "--json"], installedPackProject);
   run(installedPackCli, ["run", "complete-installed-item", "--json"], installedPackProject);
+  const compatibleInspect = spawnSync(installedPackCli, ["tool", "inspect", "github-issues", "--json"], {
+    cwd: installedPackProject,
+    encoding: "utf8",
+    stdio: "pipe",
+  });
+  const compatibleInspection = compatibleInspect.stdout ? JSON.parse(compatibleInspect.stdout) : null;
+  if (
+    compatibleInspect.status !== 0 ||
+    compatibleInspection?.tool?.origin?.packageName !== "@firedrill/tool-github-issues" ||
+    compatibleInspection?.tool?.manifest?.compatibility?.[0]?.client?.name !== "@octokit/rest" ||
+    compatibleInspection?.tool?.manifest?.compatibility?.[0]?.routes?.length !== 4
+  ) {
+    throw new Error(
+      `installed compatible Tool pack inspection failed\n${compatibleInspect.stdout}\n${compatibleInspect.stderr}`,
+    );
+  }
+  const compatibleRun = spawnSync(installedPackCli, ["run", "github-official-client", "--json"], {
+    cwd: installedPackProject,
+    encoding: "utf8",
+    stdio: "pipe",
+    timeout: 30000,
+  });
+  const compatibleRunResult = compatibleRun.stdout ? JSON.parse(compatibleRun.stdout) : null;
+  const compatibleTrial = compatibleRunResult?.drills?.[0]?.trials?.[0];
+  const compatibleReport = compatibleTrial?.jsonReport
+    ? JSON.parse(readFileSync(compatibleTrial.jsonReport, "utf8"))
+    : null;
+  if (
+    compatibleRun.status !== 0 ||
+    compatibleRunResult?.verdict !== "passed" ||
+    compatibleTrial?.result?.bindingEvidence !== "observed" ||
+    compatibleReport?.tools?.[0]?.compatibility?.[0]?.client?.name !== "@octokit/rest" ||
+    compatibleReport?.tools?.[0]?.compatibility?.[0]?.routes?.length !== 4
+  ) {
+    throw new Error(
+      `installed official-client Tool flow failed\n${compatibleRun.stdout}\n${compatibleRun.stderr}`,
+    );
+  }
   const refusedContribution = spawnSync(
     installedPackCli,
     ["tool", "contribute", "work-queue", "--accept-apache-2.0", "--json"],

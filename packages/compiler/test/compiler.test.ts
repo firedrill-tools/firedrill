@@ -15,10 +15,15 @@ import { fileURLToPath } from "node:url";
 import { loadWorldBuild } from "@firedrill/world-build";
 import { WorldKernel } from "@firedrill/world-kernel";
 import { SqliteWorldStore } from "@firedrill/world-store-sqlite";
-import type { InlineScenarioDefinition, JsonObject } from "@firedrill/contracts";
+import {
+  ToolPackageManifestSchema,
+  type InlineScenarioDefinition,
+  type JsonObject,
+} from "@firedrill/contracts";
 import { parse as parseYaml } from "yaml";
 import { afterEach, describe, expect, it } from "vitest";
 import { compileWorld, formatWorldSources } from "../src/index.js";
+import { normalizeManifest } from "../src/normalize.js";
 
 const fixtureRoot = fileURLToPath(new URL("./fixtures/", import.meta.url));
 const temporaryDirectories: string[] = [];
@@ -176,6 +181,78 @@ function installReservationsPack(
 }
 
 describe("source to executable world", () => {
+  it("normalizes equivalent compatibility claims to one canonical manifest", () => {
+    const route = (id: "read-record" | "update-record") => ({
+      id,
+      operationId: "records.read",
+      method: id === "read-record" ? ("GET" as const) : ("PATCH" as const),
+      path: id === "read-record" ? "/records/{recordId}" : "/records/{recordId}/status",
+      auth: { kind: "bearer" as const, schemes: id === "read-record" ? ["token", "Bearer"] : ["Bearer"] },
+      requestBody: id === "read-record" ? ("none" as const) : ("json" as const),
+      response: { successStatus: 200, errors: [] },
+    });
+    const profile = (reversed: boolean) => ({
+      id: "official-client",
+      mode: "translated" as const,
+      protocol: "http" as const,
+      service: "Example records",
+      client: { ecosystem: "npm" as const, name: "@example/client", version: "2.0.0" },
+      configuration: { endpoint: "baseUrl", credential: "token" },
+      routes: (reversed
+        ? [
+            { routeId: "update-record", clientMethod: "records.update" },
+            { routeId: "read-record", clientMethod: "records.get" },
+          ]
+        : [
+            { routeId: "read-record", clientMethod: "records.get" },
+            { routeId: "update-record", clientMethod: "records.update" },
+          ]) as Array<{ routeId: string; clientMethod: string }>,
+      flows: reversed
+        ? [
+            {
+              id: "update-and-read",
+              description: "Update and then read one record.",
+              routeIds: ["update-record", "read-record"],
+            },
+            { id: "read", description: "Read one record.", routeIds: ["read-record"] },
+          ]
+        : [
+            { id: "read", description: "Read one record.", routeIds: ["read-record"] },
+            {
+              id: "update-and-read",
+              description: "Update and then read one record.",
+              routeIds: ["read-record", "update-record"],
+            },
+          ],
+      limitations: reversed
+        ? ["Writes cover status only.", "Reads return a bounded field set."]
+        : ["Reads return a bounded field set.", "Writes cover status only."],
+    });
+    const manifest = (reversed: boolean) =>
+      ToolPackageManifestSchema.parse({
+        schemaVersion: 1,
+        id: "records",
+        version: "1.0.0",
+        engine: ">=0.1.0 <0.2.0",
+        capabilities: ["state.read"],
+        operations: [
+          {
+            id: "records.read",
+            inputSchema: { type: "object" },
+            outputSchema: { type: "object" },
+            idempotency: "none",
+            fidelity: "validated",
+          },
+        ],
+        http: reversed
+          ? [route("update-record"), route("read-record")]
+          : [route("read-record"), route("update-record")],
+        compatibility: [profile(reversed)],
+      });
+
+    expect(normalizeManifest(manifest(false))).toEqual(normalizeManifest(manifest(true)));
+  });
+
   it("loads an explicitly selected installed Tool pack through the ordinary world path", async () => {
     const repository = temporaryFixture("appointments");
     installReservationsPack(repository);

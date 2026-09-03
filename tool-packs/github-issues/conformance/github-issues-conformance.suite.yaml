@@ -1,0 +1,5 @@
+schemaVersion: 1
+id: github-issues-conformance
+drills:
+  - official-client-flow
+  - official-client-rate-limit

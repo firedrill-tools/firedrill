@@ -278,6 +278,140 @@ describe("generic Tool contracts", () => {
       "HTTP route conflicts with a framework route at GET /v1/tools",
     );
   });
+
+  it("bounds official-client compatibility claims to declared HTTP routes and flows", () => {
+    const manifest = {
+      schemaVersion: 1,
+      id: "issue-tracker",
+      version: "1.0.0",
+      engine: ">=0.1.0",
+      capabilities: [],
+      operations: [
+        {
+          id: "issues.get",
+          inputSchema: { type: "object" },
+          outputSchema: { type: "object" },
+          idempotency: "none",
+          fidelity: "validated",
+        },
+      ],
+      http: [
+        {
+          id: "get-issue",
+          operationId: "issues.get",
+          method: "GET",
+          path: "/repos/{owner}/{repo}/issues/{issueNumber}",
+          auth: { kind: "bearer", schemes: ["Bearer", "token"] },
+          requestBody: "none",
+          response: { successStatus: 200, errors: [] },
+        },
+      ],
+      compatibility: [
+        {
+          id: "official-js-client",
+          mode: "translated",
+          protocol: "http",
+          service: "Issue tracker",
+          apiVersion: "2026-03-10",
+          client: { ecosystem: "npm", name: "@example/client", version: "4.2.0" },
+          configuration: { endpoint: "baseUrl", credential: "auth" },
+          routes: [{ routeId: "get-issue", clientMethod: "issues.get" }],
+          flows: [
+            {
+              id: "read-one",
+              description: "Read one issue through the official client.",
+              routeIds: ["get-issue"],
+            },
+          ],
+          limitations: ["Only the listed route is covered."],
+        },
+      ],
+    } as const;
+    const parsed = ToolPackageManifestSchema.parse(manifest);
+    expect(parsed.compatibility[0]?.routes[0]?.routeId).toBe("get-issue");
+    expect(parsed.http[0]?.auth).toEqual({ kind: "bearer", schemes: ["Bearer", "token"] });
+
+    const unknownRoute = ToolPackageManifestSchema.safeParse({
+      ...manifest,
+      compatibility: [
+        {
+          ...manifest.compatibility[0],
+          routes: [{ routeId: "create-issue", clientMethod: "issues.create" }],
+          flows: [
+            {
+              id: "create-one",
+              description: "Create one issue.",
+              routeIds: ["create-issue"],
+            },
+          ],
+        },
+      ],
+    });
+    expect(unknownRoute.success).toBe(false);
+    expect(unknownRoute.error?.issues.map((issue) => issue.message)).toContain(
+      "compatibility profile references unknown HTTP route create-issue",
+    );
+
+    const uncoveredFlowRoute = ToolPackageManifestSchema.safeParse({
+      ...manifest,
+      compatibility: [
+        {
+          ...manifest.compatibility[0],
+          flows: [
+            {
+              id: "invalid-flow",
+              description: "Claims an uncovered route.",
+              routeIds: ["create-issue"],
+            },
+          ],
+        },
+      ],
+    });
+    expect(uncoveredFlowRoute.success).toBe(false);
+    expect(uncoveredFlowRoute.error?.issues.map((issue) => issue.message)).toContain(
+      "flow references uncovered compatibility route create-issue",
+    );
+  });
+
+  it("accepts the default Bearer scheme and rejects duplicate case-insensitive schemes", () => {
+    const base = {
+      schemaVersion: 1,
+      id: "documents",
+      version: "1.0.0",
+      engine: ">=0.1.0",
+      capabilities: [],
+      operations: [
+        {
+          id: "documents.get",
+          inputSchema: {},
+          outputSchema: {},
+          idempotency: "none",
+          fidelity: "contract",
+        },
+      ],
+      http: [
+        {
+          id: "get-document",
+          operationId: "documents.get",
+          method: "GET",
+          path: "/documents/{documentId}",
+          auth: { kind: "bearer" },
+          requestBody: "none",
+          response: { successStatus: 200, errors: [] },
+        },
+      ],
+    } as const;
+    expect(ToolPackageManifestSchema.parse(base).http[0]?.auth).toEqual({
+      kind: "bearer",
+      schemes: ["Bearer"],
+    });
+    expect(
+      ToolPackageManifestSchema.safeParse({
+        ...base,
+        http: [{ ...base.http[0], auth: { kind: "bearer", schemes: ["Bearer", "bearer"] } }],
+      }).success,
+    ).toBe(false);
+  });
 });
 
 describe("agent target contracts", () => {

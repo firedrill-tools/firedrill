@@ -61,7 +61,16 @@ export function normalizeManifest(input: ToolPackageManifest): ToolPackageManife
       .map((route) => ({
         ...route,
         auth:
-          route.auth.kind === "header" ? { ...route.auth, name: route.auth.name.toLowerCase() } : route.auth,
+          route.auth.kind === "header"
+            ? { ...route.auth, name: route.auth.name.toLowerCase() }
+            : route.auth.kind === "bearer"
+              ? {
+                  ...route.auth,
+                  schemes: [...route.auth.schemes].sort((left, right) =>
+                    compareStableStrings(left.toLowerCase(), right.toLowerCase()),
+                  ),
+                }
+              : route.auth,
         response: {
           ...route.response,
           errors: [...route.response.errors].sort((left, right) =>
@@ -78,6 +87,19 @@ export function normalizeManifest(input: ToolPackageManifest): ToolPackageManife
           callback.signature.kind === "hmac-sha256"
             ? { ...callback.signature, header: callback.signature.header.toLowerCase() }
             : callback.signature,
+      }))
+      .sort((left, right) => compareStableStrings(left.id, right.id)),
+    compatibility: input.compatibility
+      .map((profile) => ({
+        ...profile,
+        routes: [...profile.routes].sort((left, right) => compareStableStrings(left.routeId, right.routeId)),
+        flows: profile.flows
+          .map((flow) => ({
+            ...flow,
+            routeIds: [...flow.routeIds].sort(compareStableStrings),
+          }))
+          .sort((left, right) => compareStableStrings(left.id, right.id)),
+        limitations: [...profile.limitations].sort(compareStableStrings),
       }))
       .sort((left, right) => compareStableStrings(left.id, right.id)),
   });

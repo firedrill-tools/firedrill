@@ -1287,6 +1287,20 @@ function writeToolInspection(io: CliIo, inspection: ToolInspection): void {
       `  HTTP ${route.method} ${route.path} → ${route.operationId}${fidelity === undefined ? "" : ` — ${fidelity}`}\n`,
     );
   }
+  for (const profile of manifest.compatibility) {
+    io.stdout.write(
+      `Compatibility ${profile.id}: ${profile.client.name}@${profile.client.version} via ${profile.configuration.endpoint} + ${profile.configuration.credential}\n`,
+    );
+    for (const route of profile.routes) {
+      io.stdout.write(`  ${route.clientMethod} → ${route.routeId}\n`);
+    }
+    for (const flow of profile.flows) {
+      io.stdout.write(`  Flow ${flow.id} — ${flow.description}\n`);
+    }
+    for (const limitation of profile.limitations) {
+      io.stdout.write(`  Limitation — ${limitation}\n`);
+    }
+  }
 }
 
 function summarizedConformance(result: ToolConformanceResult) {

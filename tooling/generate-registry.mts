@@ -38,6 +38,31 @@ interface RegistryEntry {
       readonly id: string;
       readonly fidelity: string;
     }[];
+    readonly http: readonly {
+      readonly id: string;
+      readonly operationId: string;
+      readonly method: string;
+      readonly path: string;
+    }[];
+    readonly compatibility: readonly {
+      readonly id: string;
+      readonly mode: string;
+      readonly service: string;
+      readonly apiVersion?: string;
+      readonly client: {
+        readonly ecosystem: string;
+        readonly name: string;
+        readonly version: string;
+      };
+      readonly configuration: { readonly endpoint: string; readonly credential: string };
+      readonly routes: readonly { readonly routeId: string; readonly clientMethod: string }[];
+      readonly flows: readonly {
+        readonly id: string;
+        readonly description: string;
+        readonly routeIds: readonly string[];
+      }[];
+      readonly limitations: readonly string[];
+    }[];
     readonly events: readonly string[];
     readonly faults: readonly string[];
     readonly subscriptions: readonly string[];
@@ -100,6 +125,27 @@ function renderMarkdown(entries: readonly RegistryRecord[]): string {
       ...entry.tool.operations.map((operation) => `- \`${operation.id}\` — ${operation.fidelity} fidelity`),
       "",
     );
+    if (entry.tool.http.length > 0) {
+      lines.push(
+        "Synthetic HTTP routes:",
+        "",
+        ...entry.tool.http.map((route) => `- \`${route.method} ${route.path}\` → \`${route.operationId}\``),
+        "",
+      );
+    }
+    for (const profile of entry.tool.compatibility) {
+      lines.push(
+        `Compatibility profile \`${profile.id}\`:`,
+        "",
+        `- Service: ${profile.service}${profile.apiVersion === undefined ? "" : ` (API ${profile.apiVersion})`}`,
+        `- Client: \`${profile.client.name}@${profile.client.version}\``,
+        `- Configuration: \`${profile.configuration.endpoint}\` + \`${profile.configuration.credential}\``,
+        `- Covered methods: ${inlineList(profile.routes.map((route) => route.clientMethod))}`,
+        `- Verified flows: ${inlineList(profile.flows.map((flow) => flow.id))}`,
+        ...profile.limitations.map((limitation) => `- Limitation: ${limitation}`),
+        "",
+      );
+    }
   }
 
   return `${lines.join("\n").trimEnd()}\n`;
@@ -162,6 +208,13 @@ for (const entry of readdirSync(packsRoot, { withFileTypes: true }).sort((left, 
           id: operation.id,
           fidelity: operation.fidelity,
         })),
+        http: tool.http.map((route) => ({
+          id: route.id,
+          operationId: route.operationId,
+          method: route.method,
+          path: route.path,
+        })),
+        compatibility: tool.compatibility,
         events: tool.events.map((event) => event.id),
         faults: tool.faults.map((fault) => fault.id),
         subscriptions: tool.subscriptions.map((subscription) => subscription.id),

@@ -1,5 +1,14 @@
 import { z } from "zod";
-import { RunIdSchema, SeedSchema, Sha256Schema, StableIdSchema } from "./identifiers.js";
+import {
+  OperationIdSchema,
+  PackageIdSchema,
+  RunIdSchema,
+  SeedSchema,
+  SemverSchema,
+  Sha256Schema,
+  StableIdSchema,
+} from "./identifiers.js";
+import { FidelitySchema, HttpMethodSchema, ToolCompatibilityProfileSchema } from "./operation.js";
 
 const RelativeArtifactPathSchema = z
   .string()
@@ -57,6 +66,36 @@ export const ReproductionDescriptorSchema = z
     message: "originalAttempt cannot exceed originalAttemptLimit",
   });
 
+export const ReportToolDescriptorSchema = z
+  .object({
+    id: PackageIdSchema,
+    version: SemverSchema,
+    operations: z
+      .array(
+        z
+          .object({
+            id: OperationIdSchema,
+            fidelity: FidelitySchema,
+          })
+          .strict(),
+      )
+      .min(1),
+    http: z
+      .array(
+        z
+          .object({
+            id: StableIdSchema,
+            operationId: OperationIdSchema,
+            method: HttpMethodSchema,
+            path: z.string().min(1).max(512),
+          })
+          .strict(),
+      )
+      .default([]),
+    compatibility: z.array(ToolCompatibilityProfileSchema).default([]),
+  })
+  .strict();
+
 export const EvidenceBundleManifestSchema = z
   .object({
     schemaVersion: z.literal(1),
@@ -73,6 +112,8 @@ export const EvidenceBundleManifestSchema = z
     projectedTrajectoryHash: Sha256Schema.optional(),
     redaction: ReportRedactionSchema,
     reproduction: ReproductionDescriptorSchema,
+    /** The exact declared Tool surface active for this run, without executable code or state. */
+    tools: z.array(ReportToolDescriptorSchema).default([]),
     artifacts: z.array(ReportArtifactSchema).min(1),
   })
   .passthrough()
@@ -101,3 +142,4 @@ export type EvidenceBundleManifest = z.infer<typeof EvidenceBundleManifestSchema
 export type ReportArtifact = z.infer<typeof ReportArtifactSchema>;
 export type ReportRedaction = z.infer<typeof ReportRedactionSchema>;
 export type ReproductionDescriptor = z.infer<typeof ReproductionDescriptorSchema>;
+export type ReportToolDescriptor = z.infer<typeof ReportToolDescriptorSchema>;

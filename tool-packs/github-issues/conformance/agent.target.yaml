@@ -1,0 +1,9 @@
+schemaVersion: 1
+target:
+  id: official-client
+  kind: command
+  bindings: [http]
+  executable: node
+  arguments: [conformance/agent.mjs]
+  workingDirectory: .
+  timeoutMs: 15000

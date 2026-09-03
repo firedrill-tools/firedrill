@@ -207,6 +207,14 @@ function handler(options: {
       });
       return;
     }
+    if (options.syntheticRoutes && url.pathname !== "/health" && !url.pathname.startsWith("/v1/")) {
+      writeJson(response, 404, {
+        schemaVersion: 1,
+        code: "framework.HTTP_ROUTE_NOT_FOUND",
+        error: "synthetic API route not found",
+      });
+      return;
+    }
     if (request.method === "GET" && url.pathname === "/health") {
       writeJson(response, 200, { schemaVersion: 1, status: "ready" });
       return;

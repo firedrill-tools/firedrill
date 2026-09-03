@@ -6,6 +6,46 @@ A Tool pack adds a reusable action surface to a Firedrill world. This catalog he
 
 Package-manager availability depends on each pack's release status. Follow the linked pack documentation instead of assuming every catalog entry has been published.
 
+## [`@firedrill/tool-github-issues`](../tool-packs/github-issues/README.md)
+
+A bounded, stateful GitHub Issues-compatible Tool pack for Firedrill
+
+- Version: `0.1.0`
+- Tool ID: `github-issues`
+- Lifecycle: `active`
+- License: `Apache-2.0`
+- Engine compatibility: `>=0.1.0 <0.2.0`
+- Capabilities: `clock.read`, `event.emit`, `state.read`, `state.write`
+- State namespaces: `comments`, `issues`
+- Events: `issue-comment.created`, `issue.updated`
+- Faults: `comment-rate-limited`
+- Subscriptions: None
+
+Operations:
+
+- `comments.create` — validated fidelity
+- `comments.list` — validated fidelity
+- `issues.get` — validated fidelity
+- `issues.update` — validated fidelity
+
+Synthetic HTTP routes:
+
+- `POST /repos/{owner}/{repo}/issues/{issueNumber}/comments` → `comments.create`
+- `GET /repos/{owner}/{repo}/issues/{issueNumber}` → `issues.get`
+- `GET /repos/{owner}/{repo}/issues/{issueNumber}/comments` → `comments.list`
+- `PATCH /repos/{owner}/{repo}/issues/{issueNumber}` → `issues.update`
+
+Compatibility profile `octokit-rest-22`:
+
+- Service: GitHub REST API, Issues subset (API 2026-03-10)
+- Client: `@octokit/rest@22.0.1`
+- Configuration: `baseUrl` + `auth`
+- Covered methods: `rest.issues.createComment`, `rest.issues.get`, `rest.issues.listComments`, `rest.issues.update`
+- Verified flows: `rate-limited-comment`, `read-comment-close`
+- Limitation: Authentication validates the isolated world token but does not emulate GitHub permission scopes.
+- Limitation: Only the four listed Issues and issue-comment routes are implemented.
+- Limitation: Pagination metadata, conditional requests, custom media types, and the complete response field set are not implemented.
+
 ## [`@firedrill/tool-work-queue`](../tool-packs/work-queue/README.md)
 
 Reference stateful work-queue Tool pack for Firedrill
@@ -26,3 +66,9 @@ Operations:
 - `items.claim` — stateful fidelity
 - `items.complete` — behavioral fidelity
 - `items.list` — stateful fidelity
+
+Synthetic HTTP routes:
+
+- `POST /api/work-items/{itemId}/claim` → `items.claim`
+- `PATCH /api/work-items/{itemId}` → `items.complete`
+- `GET /api/work-items` → `items.list`

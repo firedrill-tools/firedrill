@@ -39,6 +39,8 @@ The last command creates a deterministic local review bundle. It does not upload
 
 A community Tool contribution must disclose provenance and license, declare its capabilities and fidelity honestly, cover every declared operation/error/event/fault/subscription in conformance drills, and pass the repository-wide gate. Its package metadata must identify `firedrill.layer: "tool-pack"`, the declaration path, conformance suite, owner, and an `active`, `deprecated`, or `revoked` lifecycle. Run `pnpm registry:write` after an accepted metadata change; the root gate rejects a stale catalog.
 
+An unchanged-client compatibility claim must name one exact client version and only the routes and flows its conformance target actually exercises. The target must use the client through its normal configuration seam, verify provider-shaped success and failure behavior, and prove undeclared routes fail locally. List omitted permissions, pagination, response fields, or other fidelity limits explicitly; never promote partial compatibility to a whole-service claim.
+
 The contribution command must be run from the Tool's owned source repository. Firedrill intentionally refuses to repackage an installed dependency from a consumer project.
 
 ## License

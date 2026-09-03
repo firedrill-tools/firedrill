@@ -57,6 +57,18 @@ function world() {
             errors: [{ code: "BOARD_LOCKED", status: 409 }],
           },
         },
+        {
+          id: "add-score-compatible",
+          operationId: "scores.add",
+          method: "POST",
+          path: "/compatible/boards/{board}/scores",
+          auth: { kind: "bearer", schemes: ["Bearer", "token"] },
+          requestBody: "json",
+          response: {
+            successStatus: 201,
+            errors: [{ code: "BOARD_LOCKED", status: 409 }],
+          },
+        },
       ],
     },
     operations: {
@@ -77,6 +89,45 @@ function world() {
       "add-score": {
         decode: (request) => {
           if (request.headers["x-api-key"] !== undefined) {
+            throw new TypeError("the route credential must not be exposed to the codec");
+          }
+          const payload =
+            request.body.kind === "json" &&
+            typeof request.body.value === "object" &&
+            request.body.value !== null &&
+            !Array.isArray(request.body.value)
+              ? request.body.value
+              : undefined;
+          if (typeof payload?.delta !== "number" || !Number.isSafeInteger(payload.delta)) {
+            throw new TypeError("delta must be an integer");
+          }
+          const idempotencyKey = request.headers["idempotency-key"]?.[0];
+          return {
+            arguments: { board: request.path.board ?? "", points: payload.delta },
+            ...(idempotencyKey === undefined ? {} : { idempotencyKey }),
+          };
+        },
+        encode: ({ outcome }) => ({
+          headers: { "x-synthetic-service": "scoreboard" },
+          body:
+            outcome.status === "ok"
+              ? {
+                  kind: "json",
+                  value: {
+                    total:
+                      typeof outcome.value === "object" &&
+                      outcome.value !== null &&
+                      !Array.isArray(outcome.value)
+                        ? (outcome.value.score ?? null)
+                        : null,
+                  },
+                }
+              : { kind: "json", value: { error: outcome.error?.message ?? "request failed" } },
+        }),
+      },
+      "add-score-compatible": {
+        decode: (request) => {
+          if (request.headers.authorization !== undefined) {
             throw new TypeError("the route credential must not be exposed to the codec");
           }
           const payload =
@@ -311,6 +362,54 @@ describe("HTTP world binding", () => {
           error: { code: "tool.BOARD_LOCKED" },
         },
       });
+    } finally {
+      await binding.close();
+      fixture.store.close();
+    }
+  });
+
+  it("accepts declared provider auth schemes and fails closed for undeclared routes", async () => {
+    const fixture = world();
+    const binding = await startHttpWorldBinding({
+      client: fixture.client,
+      tools: [fixture.tool],
+      token: "test-world-token-00000004",
+    });
+    try {
+      const called = await fetch(`${binding.baseUrl}/compatible/boards/north/scores`, {
+        method: "POST",
+        headers: {
+          authorization: `token ${binding.token}`,
+          "content-type": "application/json",
+          "idempotency-key": "north-add-three",
+        },
+        body: JSON.stringify({ delta: 3 }),
+      });
+      expect(called.status).toBe(201);
+      expect(await called.json()).toEqual({ total: 3 });
+      expect(fixture.store.readState("scoreboard", "scores", "north")?.value).toEqual({ score: 3 });
+
+      const wrongScheme = await fetch(`${binding.baseUrl}/compatible/boards/south/scores`, {
+        method: "POST",
+        headers: {
+          authorization: `Basic ${binding.token}`,
+          "content-type": "application/json",
+          "idempotency-key": "south-add-three",
+        },
+        body: JSON.stringify({ delta: 3 }),
+      });
+      expect(wrongScheme.status).toBe(401);
+      expect(fixture.store.readState("scoreboard", "scores", "south")).toBeNull();
+
+      const undeclared = await fetch(`${binding.baseUrl}/compatible/boards/north/missing`, {
+        headers: { authorization: `token ${binding.token}` },
+      });
+      expect(undeclared.status).toBe(404);
+      expect(await undeclared.json()).toMatchObject({
+        code: "framework.HTTP_ROUTE_NOT_FOUND",
+        error: "synthetic API route not found",
+      });
+      expect(fixture.client.callsIssued()).toBe(1);
     } finally {
       await binding.close();
       fixture.store.close();

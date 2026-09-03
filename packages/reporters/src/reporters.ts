@@ -17,6 +17,7 @@ import type {
   EvidenceEntry,
   ReportArtifact,
   ReportRedaction,
+  ReportToolDescriptor,
   RunResult,
   ToolPackageManifest,
 } from "@firedrill/contracts";
@@ -27,6 +28,7 @@ import {
   JsonValueSchema,
   RunResultSchema,
   ToolPackageManifestSchema,
+  compareStableStrings,
 } from "@firedrill/contracts";
 import { trajectoryHash } from "@firedrill/world-ir";
 
@@ -40,6 +42,7 @@ export interface LocalReportInput {
 interface CheckedLocalReport {
   readonly result: RunResult;
   readonly evidence: readonly EvidenceEntry[];
+  readonly tools: readonly ReportToolDescriptor[];
   readonly sourceRunResultHash: string;
   readonly sourceEvidenceHash: string;
   readonly redaction: ReportRedaction;
@@ -64,6 +67,7 @@ export interface VerifiedLocalReport {
   readonly manifest: EvidenceBundleManifest;
   readonly result: RunResult;
   readonly evidence: readonly EvidenceEntry[];
+  readonly tools: readonly ReportToolDescriptor[];
 }
 
 export type LocalReportVerificationErrorCode =
@@ -315,9 +319,28 @@ function checkedInput(input: LocalReportInput): CheckedLocalReport {
     throw new TypeError("report trajectory hash does not match the sealed run");
   }
   const redacted = redactReportValues(result, evidence, tools);
+  const reportTools = tools
+    .map((tool) => ({
+      id: tool.id,
+      version: tool.version,
+      operations: tool.operations
+        .map((operation) => ({ id: operation.id, fidelity: operation.fidelity }))
+        .sort((left, right) => compareStableStrings(left.id, right.id)),
+      http: tool.http
+        .map((route) => ({
+          id: route.id,
+          operationId: route.operationId,
+          method: route.method,
+          path: route.path,
+        }))
+        .sort((left, right) => compareStableStrings(left.id, right.id)),
+      compatibility: [...tool.compatibility].sort((left, right) => compareStableStrings(left.id, right.id)),
+    }))
+    .sort((left, right) => compareStableStrings(left.id, right.id));
   return {
     result: redacted.result,
     evidence: redacted.evidence,
+    tools: reportTools,
     sourceRunResultHash: semanticHash(result),
     sourceEvidenceHash: evidenceHash,
     redaction: redacted.summary,
@@ -344,7 +367,7 @@ function reproductionCommand(result: RunResult): string {
   return `firedrill run ${result.identity.drillId} --build-hash ${result.identity.buildHash} --seed ${result.identity.seed} --trials 1`;
 }
 
-function terminalReport({ result, evidence }: CheckedLocalReport): string {
+function terminalReport({ result, evidence, tools }: CheckedLocalReport): string {
   const outcome =
     result.status === "sealed" ? result.verdict.toUpperCase() : result.status.replace("_", " ").toUpperCase();
   const lines = [
@@ -353,6 +376,13 @@ function terminalReport({ result, evidence }: CheckedLocalReport): string {
     `Build ${result.identity.buildHash}  seed ${result.identity.seed}`,
   ];
   if (result.setup !== undefined) lines.push(`Setup ${result.setup.setupHash}`);
+  const compatibility = tools.flatMap((tool) =>
+    tool.compatibility.map(
+      (profile) =>
+        `${tool.id}: ${profile.client.name}@${profile.client.version} (${profile.routes.length} covered route${profile.routes.length === 1 ? "" : "s"})`,
+    ),
+  );
+  if (compatibility.length > 0) lines.push(`Compatibility ${compatibility.join("; ")}`);
   if (result.status === "sealed") {
     const completed = result.interactions.filter(
       (interaction) => interaction.targetResult.status === "completed",
@@ -413,7 +443,11 @@ export function renderJsonReport(rawInput: LocalReportInput): string {
 }
 
 function jsonReport(input: CheckedLocalReport): string {
-  return `${JSON.stringify({ schemaVersion: 1, run: input.result, evidence: input.evidence }, null, 2)}\n`;
+  return `${JSON.stringify(
+    { schemaVersion: 1, run: input.result, tools: input.tools, evidence: input.evidence },
+    null,
+    2,
+  )}\n`;
 }
 
 function validXmlText(value: unknown): string {
@@ -638,7 +672,30 @@ function checkpointRows(result: RunResult): string {
     .join("")}</div>`;
 }
 
-function htmlReport({ result, evidence }: CheckedLocalReport): string {
+function toolRows(tools: readonly ReportToolDescriptor[]): string {
+  if (tools.length === 0) return '<p class="empty">No Tool manifests were attached to this report.</p>';
+  return `<table><thead><tr><th scope="col">Tool</th><th scope="col">Operations</th><th scope="col">Client compatibility</th></tr></thead><tbody>${tools
+    .map((tool) => {
+      const operations = tool.operations
+        .map((operation) => `${operation.id} — ${operation.fidelity}`)
+        .join("\n");
+      const compatibility =
+        tool.compatibility.length === 0
+          ? '<span class="meta">No official-client compatibility claimed.</span>'
+          : tool.compatibility
+              .map((profile) => {
+                const covered = profile.routes
+                  .map((route) => `${route.clientMethod} → ${route.routeId}`)
+                  .join("\n");
+                return `<div><strong>${html(`${profile.client.name}@${profile.client.version}`)}</strong><p class="meta">${html(`${profile.service}${profile.apiVersion === undefined ? "" : ` · API ${profile.apiVersion}`} · ${profile.mode}`)}</p><details><summary>${profile.routes.length} covered route${profile.routes.length === 1 ? "" : "s"}</summary><pre>${html(covered)}</pre></details><details><summary>Known limitations</summary><ul>${profile.limitations.map((limitation) => `<li>${html(limitation)}</li>`).join("")}</ul></details></div>`;
+              })
+              .join("");
+      return `<tr><td><strong>${html(tool.id)}</strong><p class="meta mono">${html(tool.version)}</p></td><td><pre>${html(operations)}</pre>${tool.http.length === 0 ? "" : `<p class="meta">${tool.http.length} synthetic HTTP route${tool.http.length === 1 ? "" : "s"}</p>`}</td><td>${compatibility}</td></tr>`;
+    })
+    .join("")}</tbody></table>`;
+}
+
+function htmlReport({ result, evidence, tools }: CheckedLocalReport): string {
   const verdict = result.status === "sealed" ? result.verdict : result.status;
   const operations = evidence.filter((entry) => entry.kind === "operation").length;
   const stateChanges = evidence.filter((entry) => entry.kind === "state_change").length;
@@ -663,6 +720,7 @@ function htmlReport({ result, evidence }: CheckedLocalReport): string {
 <p class="summary">${html(summary)}</p>
 ${result.status === "runner_failed" ? `<section><h2>Runner failure</h2><div class="panel"><strong>${html(result.error.code)}</strong><p class="meta">${html(result.error.message)}</p></div></section>` : result.status === "cancelled" ? `<section><h2>Cancelled</h2><div class="panel"><p>${html(result.reason)}</p></div></section>` : ""}
 <section><h2>Resource budgets</h2><div class="panel"><p>${result.budgetUsage.toolCalls.attempted}/${result.budgetUsage.toolCalls.limit} Tool calls${result.budgetUsage.toolCalls.rejected === 0 ? "" : ` · ${result.budgetUsage.toolCalls.rejected} rejected`}</p><p class="meta">${result.budgetUsage.scheduledEvents.processed}/${result.budgetUsage.scheduledEvents.limit} scheduled events processed${result.budgetUsage.scheduledEvents.exhausted ? " · budget exhausted" : ""}</p></div></section>
+<section><h2>World capabilities</h2>${toolRows(tools)}</section>
 <section><h2>Agent interactions</h2>${interactionRows(result)}</section>
 <section><h2>Invariant checkpoints</h2>${checkpointRows(result)}</section>
 <section><h2>Final assertions</h2>${assertionRows(result.assertionResults)}</section>
@@ -756,6 +814,7 @@ export function writeLocalReport(rawInput: LocalReportInput, outputDirectory: st
       originalAttempt: input.result.identity.attempt,
       originalAttemptLimit: input.result.identity.attemptLimit,
     },
+    tools: input.tools,
     artifacts,
   });
   try {
@@ -988,6 +1047,7 @@ export function verifyLocalReport(outputDirectory: string): VerifiedLocalReport 
   const checked: CheckedLocalReport = {
     result,
     evidence,
+    tools: manifest.tools,
     sourceRunResultHash: manifest.runResultHash,
     sourceEvidenceHash: manifest.evidenceHash,
     redaction: manifest.redaction,
@@ -1032,5 +1092,5 @@ export function verifyLocalReport(outputDirectory: string): VerifiedLocalReport 
       "unredacted report content does not match its source hashes",
     );
   }
-  return { directory, manifest, result, evidence };
+  return { directory, manifest, result, evidence, tools: manifest.tools };
 }

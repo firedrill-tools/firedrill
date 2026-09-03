@@ -1,0 +1,264 @@
+schemaVersion: 1
+module: ./dist/behavior.js
+manifest:
+  schemaVersion: 1
+  id: github-issues
+  version: 0.1.0
+  engine: ">=0.1.0 <0.2.0"
+  capabilities:
+    - clock.read
+    - event.emit
+    - state.read
+    - state.write
+  state:
+    - namespace: issues
+      description: Issues visible to the agent through the covered REST surface.
+      schema:
+        type: object
+        required: [owner, repo, number, id, nodeId, title, body, state, locked, comments, author, createdAt, updatedAt]
+        properties:
+          owner: { type: string }
+          repo: { type: string }
+          number: { type: integer, minimum: 1 }
+          id: { type: integer, minimum: 1 }
+          nodeId: { type: string }
+          title: { type: string }
+          body: { type: string }
+          state: { type: string, enum: [open, closed] }
+          stateReason: { type: string, enum: [completed, not_planned, reopened] }
+          locked: { type: boolean }
+          comments: { type: integer, minimum: 0 }
+          author: { type: string }
+          createdAt: { type: string }
+          updatedAt: { type: string }
+          closedAt: { type: string }
+        additionalProperties: false
+    - namespace: comments
+      description: Issue comments created or read through the covered REST surface.
+      schema:
+        type: object
+        required: [owner, repo, issueNumber, id, nodeId, body, author, createdAt, updatedAt]
+        properties:
+          owner: { type: string }
+          repo: { type: string }
+          issueNumber: { type: integer, minimum: 1 }
+          id: { type: integer, minimum: 1 }
+          nodeId: { type: string }
+          body: { type: string }
+          author: { type: string }
+          createdAt: { type: string }
+          updatedAt: { type: string }
+        additionalProperties: false
+  operations:
+    - id: issues.get
+      description: Read one issue.
+      inputSchema:
+        type: object
+        required: [owner, repo, issueNumber]
+        properties:
+          owner: { type: string, minLength: 1 }
+          repo: { type: string, minLength: 1 }
+          issueNumber: { type: integer, minimum: 1 }
+        additionalProperties: false
+      outputSchema: &issueOutput
+        type: object
+        required: [issue]
+        properties:
+          issue:
+            type: object
+            required: [owner, repo, number, id, nodeId, title, body, state, locked, comments, author, createdAt, updatedAt]
+            properties:
+              owner: { type: string }
+              repo: { type: string }
+              number: { type: integer }
+              id: { type: integer }
+              nodeId: { type: string }
+              title: { type: string }
+              body: { type: string }
+              state: { type: string, enum: [open, closed] }
+              stateReason: { type: string, enum: [completed, not_planned, reopened] }
+              locked: { type: boolean }
+              comments: { type: integer }
+              author: { type: string }
+              createdAt: { type: string }
+              updatedAt: { type: string }
+              closedAt: { type: string }
+            additionalProperties: false
+        additionalProperties: false
+      declaredErrors: [NOT_FOUND]
+      idempotency: none
+      fidelity: validated
+    - id: issues.update
+      description: Open or close one issue.
+      inputSchema:
+        type: object
+        required: [owner, repo, issueNumber, state]
+        properties:
+          owner: { type: string, minLength: 1 }
+          repo: { type: string, minLength: 1 }
+          issueNumber: { type: integer, minimum: 1 }
+          state: { type: string }
+          stateReason: { type: string }
+        additionalProperties: false
+      outputSchema: *issueOutput
+      declaredErrors: [NOT_FOUND, VALIDATION_FAILED]
+      idempotency: optional
+      fidelity: validated
+    - id: comments.create
+      description: Add one issue comment.
+      inputSchema:
+        type: object
+        required: [owner, repo, issueNumber, body]
+        properties:
+          owner: { type: string, minLength: 1 }
+          repo: { type: string, minLength: 1 }
+          issueNumber: { type: integer, minimum: 1 }
+          body: { type: string }
+        additionalProperties: false
+      outputSchema:
+        type: object
+        required: [comment]
+        properties:
+          comment: &commentRecord
+            type: object
+            required: [owner, repo, issueNumber, id, nodeId, body, author, createdAt, updatedAt]
+            properties:
+              owner: { type: string }
+              repo: { type: string }
+              issueNumber: { type: integer }
+              id: { type: integer }
+              nodeId: { type: string }
+              body: { type: string }
+              author: { type: string }
+              createdAt: { type: string }
+              updatedAt: { type: string }
+            additionalProperties: false
+        additionalProperties: false
+      declaredErrors: [NOT_FOUND, RATE_LIMITED, VALIDATION_FAILED]
+      idempotency: optional
+      fidelity: validated
+    - id: comments.list
+      description: List comments for one issue.
+      inputSchema:
+        type: object
+        required: [owner, repo, issueNumber]
+        properties:
+          owner: { type: string, minLength: 1 }
+          repo: { type: string, minLength: 1 }
+          issueNumber: { type: integer, minimum: 1 }
+          page: { type: integer, minimum: 1 }
+          perPage: { type: integer, minimum: 1, maximum: 100 }
+        additionalProperties: false
+      outputSchema:
+        type: object
+        required: [comments]
+        properties:
+          comments:
+            type: array
+            items: *commentRecord
+        additionalProperties: false
+      declaredErrors: [NOT_FOUND]
+      idempotency: none
+      fidelity: validated
+  events:
+    - id: issue.updated
+      payloadSchema:
+        type: object
+        required: [owner, repo, issueNumber, state]
+        properties:
+          owner: { type: string }
+          repo: { type: string }
+          issueNumber: { type: integer }
+          state: { type: string, enum: [open, closed] }
+        additionalProperties: false
+    - id: issue-comment.created
+      payloadSchema:
+        type: object
+        required: [owner, repo, issueNumber, commentId]
+        properties:
+          owner: { type: string }
+          repo: { type: string }
+          issueNumber: { type: integer }
+          commentId: { type: integer }
+        additionalProperties: false
+  faults:
+    - id: comment-rate-limited
+      appliesTo: [comments.create]
+      timing: before
+      error:
+        code: RATE_LIMITED
+        message: API rate limit exceeded
+        retryable: true
+  http:
+    - id: get-issue
+      operationId: issues.get
+      method: GET
+      path: /repos/{owner}/{repo}/issues/{issueNumber}
+      auth: { kind: bearer, schemes: [Bearer, token] }
+      requestBody: none
+      response:
+        successStatus: 200
+        errors:
+          - { code: NOT_FOUND, status: 404 }
+    - id: update-issue
+      operationId: issues.update
+      method: PATCH
+      path: /repos/{owner}/{repo}/issues/{issueNumber}
+      auth: { kind: bearer, schemes: [Bearer, token] }
+      requestBody: json
+      response:
+        successStatus: 200
+        errors:
+          - { code: NOT_FOUND, status: 404 }
+          - { code: VALIDATION_FAILED, status: 422 }
+    - id: create-comment
+      operationId: comments.create
+      method: POST
+      path: /repos/{owner}/{repo}/issues/{issueNumber}/comments
+      auth: { kind: bearer, schemes: [Bearer, token] }
+      requestBody: json
+      response:
+        successStatus: 201
+        errors:
+          - { code: NOT_FOUND, status: 404 }
+          - { code: RATE_LIMITED, status: 403 }
+          - { code: VALIDATION_FAILED, status: 422 }
+    - id: list-comments
+      operationId: comments.list
+      method: GET
+      path: /repos/{owner}/{repo}/issues/{issueNumber}/comments
+      auth: { kind: bearer, schemes: [Bearer, token] }
+      requestBody: none
+      response:
+        successStatus: 200
+        errors:
+          - { code: NOT_FOUND, status: 404 }
+  compatibility:
+    - id: octokit-rest-22
+      mode: translated
+      protocol: http
+      service: GitHub REST API, Issues subset
+      apiVersion: 2026-03-10
+      client:
+        ecosystem: npm
+        name: "@octokit/rest"
+        version: 22.0.1
+      configuration:
+        endpoint: baseUrl
+        credential: auth
+      routes:
+        - { routeId: create-comment, clientMethod: rest.issues.createComment }
+        - { routeId: get-issue, clientMethod: rest.issues.get }
+        - { routeId: list-comments, clientMethod: rest.issues.listComments }
+        - { routeId: update-issue, clientMethod: rest.issues.update }
+      flows:
+        - id: read-comment-close
+          description: Read an issue, add and list a comment, then close the issue through the official client.
+          routeIds: [create-comment, get-issue, list-comments, update-issue]
+        - id: rate-limited-comment
+          description: Observe a provider-shaped rate-limit response without mutating issue or comment state.
+          routeIds: [create-comment]
+      limitations:
+        - Authentication validates the isolated world token but does not emulate GitHub permission scopes.
+        - Only the four listed Issues and issue-comment routes are implemented.
+        - Pagination metadata, conditional requests, custom media types, and the complete response field set are not implemented.

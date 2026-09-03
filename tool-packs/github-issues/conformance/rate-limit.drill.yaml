@@ -1,0 +1,26 @@
+schemaVersion: 1
+id: official-client-rate-limit
+title: Reject a rate-limited comment without changing state
+targetId: official-client
+scenarioId: rate-limited
+actorId: maintainer
+task:
+  instruction: Exercise the declared official-client rate-limit flow.
+assertions:
+  - id: comment-rejected
+    kind: operation.count
+    operation: { packageId: github-issues, operationId: comments.create }
+    outcomes: [tool_error]
+    comparison: { operator: equals, value: 1 }
+  - id: no-comment-retained
+    kind: state.count
+    packageId: github-issues
+    namespace: comments
+    comparison: { operator: equals, value: 0 }
+  - id: issue-unchanged
+    kind: state.value
+    packageId: github-issues
+    namespace: issues
+    rowId: octo/example#42
+    path: [state]
+    comparison: { operator: equals, value: open }

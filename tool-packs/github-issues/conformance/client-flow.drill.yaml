@@ -1,0 +1,38 @@
+schemaVersion: 1
+id: official-client-flow
+title: Read, comment on, and close an issue with the official client
+targetId: official-client
+scenarioId: baseline
+actorId: maintainer
+task:
+  instruction: Exercise the declared official-client read-comment-close flow.
+assertions:
+  - id: issue-closed
+    kind: state.value
+    packageId: github-issues
+    namespace: issues
+    rowId: octo/example#42
+    path: [state]
+    comparison: { operator: equals, value: closed }
+  - id: one-comment-retained
+    kind: state.count
+    packageId: github-issues
+    namespace: comments
+    comparison: { operator: equals, value: 1 }
+  - id: comment-created
+    kind: event.count
+    event: { packageId: github-issues, eventId: issue-comment.created }
+    phase: emitted
+    comparison: { operator: equals, value: 1 }
+  - id: issue-updated
+    kind: event.count
+    event: { packageId: github-issues, eventId: issue.updated }
+    phase: emitted
+    comparison: { operator: equals, value: 1 }
+  - id: official-flow-order
+    kind: operation.order
+    sequence:
+      - anyOf: [{ packageId: github-issues, operationId: issues.get }]
+      - anyOf: [{ packageId: github-issues, operationId: comments.create }]
+      - anyOf: [{ packageId: github-issues, operationId: comments.list }]
+      - anyOf: [{ packageId: github-issues, operationId: issues.update }]

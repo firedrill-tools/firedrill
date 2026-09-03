@@ -5,6 +5,7 @@ import {
   CorrelationIdSchema,
   EventIdSchema,
   EventRefSchema,
+  NodePackageNameSchema,
   OperationIdSchema,
   OperationRefSchema,
   PackageIdSchema,
@@ -170,7 +171,19 @@ export const HttpPathTemplateSchema = z
   });
 
 export const HttpRouteAuthSchema = z.discriminatedUnion("kind", [
-  z.object({ kind: z.literal("bearer") }).strict(),
+  z
+    .object({
+      kind: z.literal("bearer"),
+      /** Case-insensitive HTTP authentication schemes accepted before the per-world token. */
+      schemes: z.array(z.string().min(1).max(64).regex(HTTP_NAME)).min(1).default(["Bearer"]),
+    })
+    .strict()
+    .superRefine((auth, context) => {
+      const normalized = auth.schemes.map((scheme) => scheme.toLowerCase());
+      if (new Set(normalized).size !== normalized.length) {
+        context.addIssue({ code: "custom", path: ["schemes"], message: "bearer schemes must be unique" });
+      }
+    }),
   z
     .object({
       kind: z.literal("header"),
@@ -255,6 +268,87 @@ export const HttpRouteContractSchema = z
     }
   });
 
+export const ToolCompatibilityClientSchema = z
+  .object({
+    ecosystem: z.enum(["npm", "pypi", "other"]),
+    name: z.string().min(1).max(256),
+    version: z.string().min(1).max(128),
+  })
+  .strict()
+  .superRefine((client, context) => {
+    if (client.ecosystem === "npm" && !NodePackageNameSchema.safeParse(client.name).success) {
+      context.addIssue({
+        code: "custom",
+        path: ["name"],
+        message: "npm compatibility clients require a valid package name",
+      });
+    }
+  });
+
+export const ToolCompatibilityRouteSchema = z
+  .object({
+    routeId: StableIdSchema,
+    clientMethod: z.string().min(1).max(256),
+  })
+  .strict();
+
+export const ToolCompatibilityFlowSchema = z
+  .object({
+    id: StableIdSchema,
+    description: z.string().min(1).max(1000),
+    routeIds: z.array(StableIdSchema).min(1),
+  })
+  .strict()
+  .superRefine((flow, context) => {
+    if (new Set(flow.routeIds).size !== flow.routeIds.length) {
+      context.addIssue({ code: "custom", path: ["routeIds"], message: "flow routes must be unique" });
+    }
+  });
+
+/** A bounded wire-compatibility claim backed by a pack-owned official-client check. */
+export const ToolCompatibilityProfileSchema = z
+  .object({
+    id: StableIdSchema,
+    mode: z.literal("translated"),
+    protocol: z.literal("http"),
+    service: z.string().min(1).max(256),
+    apiVersion: z.string().min(1).max(128).optional(),
+    client: ToolCompatibilityClientSchema,
+    configuration: z
+      .object({
+        endpoint: z.string().min(1).max(128),
+        credential: z.string().min(1).max(128),
+      })
+      .strict(),
+    routes: z.array(ToolCompatibilityRouteSchema).min(1),
+    flows: z.array(ToolCompatibilityFlowSchema).min(1),
+    limitations: z.array(z.string().min(1).max(1000)).min(1).max(100),
+  })
+  .strict()
+  .superRefine((profile, context) => {
+    for (const [field, values] of [
+      ["routes", profile.routes.map((route) => route.routeId)],
+      ["flows", profile.flows.map((flow) => flow.id)],
+      ["limitations", profile.limitations],
+    ] as const) {
+      if (new Set(values).size !== values.length) {
+        context.addIssue({ code: "custom", path: [field], message: `${field} must not contain duplicates` });
+      }
+    }
+    const routeIds = new Set(profile.routes.map((route) => route.routeId));
+    for (const [flowIndex, flow] of profile.flows.entries()) {
+      for (const [routeIndex, routeId] of flow.routeIds.entries()) {
+        if (!routeIds.has(routeId)) {
+          context.addIssue({
+            code: "custom",
+            path: ["flows", flowIndex, "routeIds", routeIndex],
+            message: `flow references uncovered compatibility route ${routeId}`,
+          });
+        }
+      }
+    }
+  });
+
 const CallbackPathSchema = HttpPathTemplateSchema.refine(
   (path) => httpPathSegments(path).every((segment) => httpPathParameter(segment) === undefined),
   "callback paths must be static; encode dynamic identifiers in the body or headers",
@@ -318,6 +412,7 @@ export const ToolPackageManifestSchema = z
     subscriptions: z.array(ToolSubscriptionContractSchema).default([]),
     http: z.array(HttpRouteContractSchema).default([]),
     callbacks: z.array(CallbackContractSchema).default([]),
+    compatibility: z.array(ToolCompatibilityProfileSchema).default([]),
   })
   .strict()
   .superRefine((manifest, context) => {
@@ -357,6 +452,7 @@ export const ToolPackageManifestSchema = z
       ["subscriptions", manifest.subscriptions.map((subscription) => subscription.id)],
       ["http", manifest.http.map((route) => route.id)],
       ["callbacks", manifest.callbacks.map((callback) => callback.id)],
+      ["compatibility", manifest.compatibility.map((profile) => profile.id)],
     ] as const) {
       if (new Set(values).size !== values.length) {
         context.addIssue({
@@ -410,6 +506,18 @@ export const ToolPackageManifestSchema = z
             code: "custom",
             path: ["http", routeIndex, "path"],
             message: `HTTP route overlaps ${other.method} ${other.path}`,
+          });
+        }
+      }
+    }
+    const httpRouteIds = new Set(manifest.http.map((route) => route.id));
+    for (const [profileIndex, profile] of manifest.compatibility.entries()) {
+      for (const [routeIndex, route] of profile.routes.entries()) {
+        if (!httpRouteIds.has(route.routeId)) {
+          context.addIssue({
+            code: "custom",
+            path: ["compatibility", profileIndex, "routes", routeIndex, "routeId"],
+            message: `compatibility profile references unknown HTTP route ${route.routeId}`,
           });
         }
       }
@@ -493,6 +601,10 @@ export type HttpRouteContract = z.infer<typeof HttpRouteContractSchema>;
 export type CallbackSignature = z.infer<typeof CallbackSignatureSchema>;
 export type CallbackRetryPolicy = z.infer<typeof CallbackRetryPolicySchema>;
 export type CallbackContract = z.infer<typeof CallbackContractSchema>;
+export type ToolCompatibilityClient = z.infer<typeof ToolCompatibilityClientSchema>;
+export type ToolCompatibilityRoute = z.infer<typeof ToolCompatibilityRouteSchema>;
+export type ToolCompatibilityFlow = z.infer<typeof ToolCompatibilityFlowSchema>;
+export type ToolCompatibilityProfile = z.infer<typeof ToolCompatibilityProfileSchema>;
 export type ToolPackageManifest = z.infer<typeof ToolPackageManifestSchema>;
 export type OperationInvocation = z.infer<typeof OperationInvocationSchema>;
 export type OperationOutcome = z.infer<typeof OperationOutcomeSchema>;

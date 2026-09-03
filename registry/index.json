@@ -2,6 +2,123 @@
   "schemaVersion": 1,
   "packages": [
     {
+      "packageName": "@firedrill/tool-github-issues",
+      "packageVersion": "0.1.0",
+      "description": "A bounded, stateful GitHub Issues-compatible Tool pack for Firedrill",
+      "license": "Apache-2.0",
+      "lifecycle": "active",
+      "maintainers": ["Firedrill contributors"],
+      "keywords": ["ai-agent", "firedrill", "github", "issues", "testing", "tool-pack"],
+      "conformanceSuite": "github-issues-conformance",
+      "tool": {
+        "id": "github-issues",
+        "version": "0.1.0",
+        "engine": ">=0.1.0 <0.2.0",
+        "capabilities": ["clock.read", "event.emit", "state.read", "state.write"],
+        "state": ["comments", "issues"],
+        "operations": [
+          {
+            "id": "comments.create",
+            "fidelity": "validated"
+          },
+          {
+            "id": "comments.list",
+            "fidelity": "validated"
+          },
+          {
+            "id": "issues.get",
+            "fidelity": "validated"
+          },
+          {
+            "id": "issues.update",
+            "fidelity": "validated"
+          }
+        ],
+        "http": [
+          {
+            "id": "create-comment",
+            "operationId": "comments.create",
+            "method": "POST",
+            "path": "/repos/{owner}/{repo}/issues/{issueNumber}/comments"
+          },
+          {
+            "id": "get-issue",
+            "operationId": "issues.get",
+            "method": "GET",
+            "path": "/repos/{owner}/{repo}/issues/{issueNumber}"
+          },
+          {
+            "id": "list-comments",
+            "operationId": "comments.list",
+            "method": "GET",
+            "path": "/repos/{owner}/{repo}/issues/{issueNumber}/comments"
+          },
+          {
+            "id": "update-issue",
+            "operationId": "issues.update",
+            "method": "PATCH",
+            "path": "/repos/{owner}/{repo}/issues/{issueNumber}"
+          }
+        ],
+        "compatibility": [
+          {
+            "id": "octokit-rest-22",
+            "mode": "translated",
+            "protocol": "http",
+            "service": "GitHub REST API, Issues subset",
+            "apiVersion": "2026-03-10",
+            "client": {
+              "ecosystem": "npm",
+              "name": "@octokit/rest",
+              "version": "22.0.1"
+            },
+            "configuration": {
+              "endpoint": "baseUrl",
+              "credential": "auth"
+            },
+            "routes": [
+              {
+                "routeId": "create-comment",
+                "clientMethod": "rest.issues.createComment"
+              },
+              {
+                "routeId": "get-issue",
+                "clientMethod": "rest.issues.get"
+              },
+              {
+                "routeId": "list-comments",
+                "clientMethod": "rest.issues.listComments"
+              },
+              {
+                "routeId": "update-issue",
+                "clientMethod": "rest.issues.update"
+              }
+            ],
+            "flows": [
+              {
+                "id": "rate-limited-comment",
+                "description": "Observe a provider-shaped rate-limit response without mutating issue or comment state.",
+                "routeIds": ["create-comment"]
+              },
+              {
+                "id": "read-comment-close",
+                "description": "Read an issue, add and list a comment, then close the issue through the official client.",
+                "routeIds": ["create-comment", "get-issue", "list-comments", "update-issue"]
+              }
+            ],
+            "limitations": [
+              "Authentication validates the isolated world token but does not emulate GitHub permission scopes.",
+              "Only the four listed Issues and issue-comment routes are implemented.",
+              "Pagination metadata, conditional requests, custom media types, and the complete response field set are not implemented."
+            ]
+          }
+        ],
+        "events": ["issue-comment.created", "issue.updated"],
+        "faults": ["comment-rate-limited"],
+        "subscriptions": []
+      }
+    },
+    {
       "packageName": "@firedrill/tool-work-queue",
       "packageVersion": "0.1.0",
       "description": "Reference stateful work-queue Tool pack for Firedrill",
@@ -30,6 +147,27 @@
             "fidelity": "stateful"
           }
         ],
+        "http": [
+          {
+            "id": "claim-item",
+            "operationId": "items.claim",
+            "method": "POST",
+            "path": "/api/work-items/{itemId}/claim"
+          },
+          {
+            "id": "complete-item",
+            "operationId": "items.complete",
+            "method": "PATCH",
+            "path": "/api/work-items/{itemId}"
+          },
+          {
+            "id": "list-items",
+            "operationId": "items.list",
+            "method": "GET",
+            "path": "/api/work-items"
+          }
+        ],
+        "compatibility": [],
         "events": ["item.completed"],
         "faults": [],
         "subscriptions": []

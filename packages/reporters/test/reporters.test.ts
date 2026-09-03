@@ -185,8 +185,38 @@ function tools(): readonly ToolPackageManifest[] {
       events: [],
       faults: [],
       subscriptions: [],
-      http: [],
+      http: [
+        {
+          id: "update-item",
+          operationId: "items.update",
+          method: "PATCH",
+          path: "/items/{itemId}",
+          auth: { kind: "bearer", schemes: ["Bearer"] },
+          requestBody: "json",
+          response: { successStatus: 200, errors: [] },
+        },
+      ],
       callbacks: [],
+      compatibility: [
+        {
+          id: "official-client",
+          mode: "translated",
+          protocol: "http",
+          service: "Generic records",
+          apiVersion: "2026-01-01",
+          client: { ecosystem: "npm", name: "@example/records", version: "2.1.0" },
+          configuration: { endpoint: "baseUrl", credential: "auth" },
+          routes: [{ routeId: "update-item", clientMethod: "items.update" }],
+          flows: [
+            {
+              id: "update-one",
+              description: "Update one record.",
+              routeIds: ["update-item"],
+            },
+          ],
+          limitations: ["Only update is covered."],
+        },
+      ],
     },
   ];
 }
@@ -198,9 +228,16 @@ describe("local evidence reporters", () => {
     expect(renderTerminalReport(input)).toContain("PASSED  generic-agent-behavior");
     expect(renderTerminalReport(input)).toContain(`Trajectory ${run(entries).trajectoryHash}`);
     expect(renderTerminalReport(input)).toContain("Budgets: 0/1000 Tool calls");
+    expect(renderTerminalReport(input)).toContain("@example/records@2.1.0 (1 covered route)");
     expect(JSON.parse(renderJsonReport(input))).toMatchObject({
       schemaVersion: 1,
       run: { identity: { runId: "run_report001" } },
+      tools: [
+        {
+          id: "generic-tool",
+          compatibility: [{ client: { name: "@example/records", version: "2.1.0" } }],
+        },
+      ],
     });
     expect(renderJunitReport(input)).toContain('<testsuites tests="2" failures="0"');
     expect(renderJunitReport(input)).toContain('name="firedrill.trajectoryHash"');
@@ -208,6 +245,9 @@ describe("local evidence reporters", () => {
     const html = renderHtmlReport(input);
     expect(html).toContain("Firedrill report");
     expect(html).toContain("Resource budgets");
+    expect(html).toContain("World capabilities");
+    expect(html).toContain("@example/records@2.1.0");
+    expect(html).toContain("Only update is covered.");
     expect(html).not.toContain('class="eyebrow"');
     expect(html).toContain("Verify the agent changes only the intended record.");
     expect(html).toContain("generic-tool.records/item-1");
@@ -323,6 +363,9 @@ describe("local evidence reporters", () => {
       seed: "41",
     });
     expect(written.manifest.trajectoryHash).toBe(input.result.trajectoryHash);
+    expect(written.manifest.tools).toMatchObject([
+      { id: "generic-tool", compatibility: [{ id: "official-client" }] },
+    ]);
     expect(written.manifest.projectedRunResultHash).toBe(
       semanticHash(JSON.parse(readFileSync(written.files.run, "utf8"))),
     );
@@ -335,6 +378,7 @@ describe("local evidence reporters", () => {
     expect(verifyLocalReport(destination)).toMatchObject({
       manifest: { runId: "run_report001", complete: true },
       result: { identity: { drillId: "generic-agent-behavior" } },
+      tools: [{ id: "generic-tool", compatibility: [{ id: "official-client" }] }],
     });
     expect(() => writeLocalReport(input, destination)).toThrow(/refusing to overwrite/);
   });

@@ -202,9 +202,14 @@ export function wireRouteAuthorized(
   if (auth.kind === "none") return true;
   if (auth.kind === "bearer") {
     const header = request.headers.authorization;
-    return typeof header === "string" && header.startsWith("Bearer ")
-      ? equalSecret(header.slice("Bearer ".length), token)
-      : false;
+    if (typeof header !== "string") return false;
+    const separator = header.indexOf(" ");
+    if (separator <= 0) return false;
+    const scheme = header.slice(0, separator).toLowerCase();
+    return (
+      auth.schemes.some((candidate) => candidate.toLowerCase() === scheme) &&
+      equalSecret(header.slice(separator + 1), token)
+    );
   }
   if (auth.kind === "header") {
     const header = request.headers[auth.name.toLowerCase()];
