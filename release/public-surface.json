@@ -1,0 +1,139 @@
+{
+  "schemaVersion": 1,
+  "node": ">=20.19",
+  "pnpm": ">=9.15 <11",
+  "packageManager": "pnpm@9.15.4",
+  "cli": {
+    "package": "@firedrill/cli",
+    "binary": "firedrill",
+    "entrypoint": "./dist/bin.js"
+  },
+  "packages": [
+    {
+      "name": "@firedrill/agent",
+      "directory": "packages/agent",
+      "layer": "adapter",
+      "exports": ["."]
+    },
+    {
+      "name": "@firedrill/assertions",
+      "directory": "packages/assertions",
+      "layer": "core",
+      "exports": ["."]
+    },
+    {
+      "name": "@firedrill/cli",
+      "directory": "packages/cli",
+      "layer": "app",
+      "exports": ["."]
+    },
+    {
+      "name": "@firedrill/compiler",
+      "directory": "packages/compiler",
+      "layer": "adapter",
+      "exports": [".", "./schema/*"]
+    },
+    {
+      "name": "@firedrill/contracts",
+      "directory": "packages/contracts",
+      "layer": "core",
+      "exports": [".", "./schema/*", "./schemas"]
+    },
+    {
+      "name": "@firedrill/drills",
+      "directory": "packages/drills",
+      "layer": "adapter",
+      "exports": ["."]
+    },
+    {
+      "name": "@firedrill/inspector",
+      "directory": "packages/inspector",
+      "layer": "adapter",
+      "exports": ["."]
+    },
+    {
+      "name": "@firedrill/protocol-cli",
+      "directory": "packages/protocol-cli",
+      "layer": "adapter",
+      "exports": ["."]
+    },
+    {
+      "name": "@firedrill/protocol-http",
+      "directory": "packages/protocol-http",
+      "layer": "adapter",
+      "exports": ["."]
+    },
+    {
+      "name": "@firedrill/protocol-mcp",
+      "directory": "packages/protocol-mcp",
+      "layer": "adapter",
+      "exports": ["."]
+    },
+    {
+      "name": "@firedrill/reporters",
+      "directory": "packages/reporters",
+      "layer": "adapter",
+      "exports": ["."]
+    },
+    {
+      "name": "@firedrill/sdk",
+      "directory": "packages/sdk",
+      "layer": "adapter",
+      "exports": ["."]
+    },
+    {
+      "name": "@firedrill/simulation",
+      "directory": "packages/simulation",
+      "layer": "adapter",
+      "exports": ["."]
+    },
+    {
+      "name": "@firedrill/tool-sdk",
+      "directory": "packages/tool-sdk",
+      "layer": "core",
+      "exports": [".", "./behavior-runtime", "./package.json"]
+    },
+    {
+      "name": "@firedrill/world-build",
+      "directory": "packages/world-build",
+      "layer": "adapter",
+      "exports": ["."]
+    },
+    {
+      "name": "@firedrill/world-ir",
+      "directory": "packages/world-ir",
+      "layer": "core",
+      "exports": [".", "./schema/*"]
+    },
+    {
+      "name": "@firedrill/world-kernel",
+      "directory": "packages/world-kernel",
+      "layer": "core",
+      "exports": ["."]
+    },
+    {
+      "name": "@firedrill/world-store",
+      "directory": "packages/world-store",
+      "layer": "core",
+      "exports": ["."]
+    },
+    {
+      "name": "@firedrill/world-store-sqlite",
+      "directory": "packages/world-store-sqlite",
+      "layer": "core",
+      "exports": ["."]
+    },
+    {
+      "name": "@firedrill/tool-github-issues",
+      "directory": "tool-packs/github-issues",
+      "layer": "tool-pack",
+      "exports": ["./package.json"]
+    },
+    {
+      "name": "@firedrill/tool-work-queue",
+      "directory": "tool-packs/work-queue",
+      "layer": "tool-pack",
+      "exports": ["./package.json"]
+    }
+  ]
+}

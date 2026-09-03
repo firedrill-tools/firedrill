@@ -1,5 +1,5 @@
 import { existsSync, readFileSync, readdirSync } from "node:fs";
-import { join, relative, resolve } from "node:path";
+import { join, relative, resolve, sep } from "node:path";
 
 interface PackageManifest {
   readonly name?: string;
@@ -7,7 +7,8 @@ interface PackageManifest {
   readonly private?: boolean;
   readonly description?: string;
   readonly license?: string;
-  readonly engines?: { readonly node?: string };
+  readonly engines?: { readonly node?: string; readonly pnpm?: string };
+  readonly packageManager?: string;
   readonly bin?: Readonly<Record<string, string>>;
   readonly publishConfig?: { readonly access?: string };
   readonly repository?: { readonly type?: string; readonly url?: string; readonly directory?: string };
@@ -17,6 +18,22 @@ interface PackageManifest {
   readonly devDependencies?: Readonly<Record<string, string>>;
   readonly optionalDependencies?: Readonly<Record<string, string>>;
   readonly peerDependencies?: Readonly<Record<string, string>>;
+  readonly exports?: Readonly<Record<string, unknown>>;
+  readonly firedrill?: { readonly layer?: string };
+}
+
+interface PublicSurface {
+  readonly schemaVersion: number;
+  readonly node: string;
+  readonly pnpm: string;
+  readonly packageManager: string;
+  readonly cli: { readonly package: string; readonly binary: string; readonly entrypoint: string };
+  readonly packages: readonly {
+    readonly name: string;
+    readonly directory: string;
+    readonly layer: string;
+    readonly exports: readonly string[];
+  }[];
 }
 
 const root = resolve(import.meta.dirname, "..");
@@ -31,6 +48,9 @@ function manifestAt(path: string): PackageManifest {
 }
 
 const rootManifest = manifestAt(join(root, "package.json"));
+const publicSurface = JSON.parse(
+  readFileSync(join(root, "release", "public-surface.json"), "utf8"),
+) as PublicSurface;
 const frameworkVersion = rootManifest.version;
 if (rootManifest.name !== "firedrill" || rootManifest.private !== true) {
   violations.push("the workspace root must remain the private firedrill package");
@@ -39,6 +59,14 @@ if (!frameworkVersion || !/^0\.1\.0-rc\.[1-9][0-9]*$/.test(frameworkVersion)) {
   violations.push(
     `workspace version must be a 0.1.0 release candidate; found ${frameworkVersion ?? "missing"}`,
   );
+}
+if (
+  publicSurface.schemaVersion !== 1 ||
+  publicSurface.node !== expectedNode ||
+  publicSurface.pnpm !== rootManifest.engines?.pnpm ||
+  publicSurface.packageManager !== rootManifest.packageManager
+) {
+  violations.push("release/public-surface.json does not match the root toolchain contract");
 }
 
 const engineSource = readFileSync(join(root, "packages", "contracts", "src", "engine.ts"), "utf8");
@@ -65,8 +93,17 @@ for (const group of packageGroups) {
 }
 
 const publicNames = new Set(publicPackages.flatMap(({ manifest }) => (manifest.name ? [manifest.name] : [])));
+const declaredSurface = new Map(publicSurface.packages.map((package_) => [package_.name, package_]));
+if (declaredSurface.size !== publicSurface.packages.length) {
+  violations.push("release/public-surface.json contains duplicate package names");
+}
+const actualNames = [...publicNames].sort();
+const declaredNames = [...declaredSurface.keys()].sort();
+if (JSON.stringify(actualNames) !== JSON.stringify(declaredNames)) {
+  violations.push("publishable package names differ from release/public-surface.json");
+}
 for (const { path, manifest } of publicPackages) {
-  const label = relative(root, path);
+  const label = relative(root, path).split(sep).join("/");
   if (!manifest.name?.startsWith("@firedrill/"))
     violations.push(`${label}: package name must use @firedrill`);
   if (!manifest.description?.trim()) violations.push(`${label}: description is required`);
@@ -83,6 +120,22 @@ for (const { path, manifest } of publicPackages) {
   if (manifest.homepage !== expectedHomepage)
     violations.push(`${label}: homepage must be ${expectedHomepage}`);
   if (manifest.bugs?.url !== expectedBugs) violations.push(`${label}: bugs URL must be ${expectedBugs}`);
+
+  const declared = manifest.name ? declaredSurface.get(manifest.name) : undefined;
+  if (declared !== undefined) {
+    const directory = label.replace(/\/package\.json$/, "");
+    if (declared.directory !== directory) {
+      violations.push(`${label}: package directory differs from the frozen public surface`);
+    }
+    if (declared.layer !== manifest.firedrill?.layer) {
+      violations.push(`${label}: package layer differs from the frozen public surface`);
+    }
+    const actualExports = Object.keys(manifest.exports ?? {}).sort();
+    const expectedExports = [...declared.exports].sort();
+    if (JSON.stringify(actualExports) !== JSON.stringify(expectedExports)) {
+      violations.push(`${label}: export paths differ from the frozen public surface`);
+    }
+  }
 
   const isFrameworkPackage = label.startsWith("packages/");
   if (isFrameworkPackage && manifest.version !== frameworkVersion) {
@@ -107,8 +160,12 @@ for (const { path, manifest } of publicPackages) {
 }
 
 const cli = publicPackages.find(({ manifest }) => manifest.name === "@firedrill/cli")?.manifest;
-if (cli?.bin?.firedrill !== "./dist/bin.js") {
-  violations.push("@firedrill/cli must expose the firedrill executable at ./dist/bin.js");
+if (
+  publicSurface.cli.package !== "@firedrill/cli" ||
+  publicSurface.cli.binary !== "firedrill" ||
+  cli?.bin?.[publicSurface.cli.binary] !== publicSurface.cli.entrypoint
+) {
+  violations.push("@firedrill/cli does not match the frozen executable surface");
 }
 
 for (const group of ["packages"] as const) {

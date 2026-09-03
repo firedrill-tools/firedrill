@@ -10,6 +10,12 @@
     "node": ">=20.19",
     "pnpm": ">=9.15 <11"
   },
+  "pnpm": {
+    "overrides": {
+      "fast-uri": "3.1.6",
+      "qs": "6.16.0"
+    }
+  },
   "scripts": {
     "format": "biome format --write .",
     "format:check": "biome format .",

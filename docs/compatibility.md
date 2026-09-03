@@ -6,6 +6,8 @@ Firedrill keeps package releases, the Tool engine contract, authored source, gen
 
 All packages under `packages/` ship as one versioned release train. Use one release line across direct Firedrill dependencies; the package manager resolves the exact internal versions from the published manifests. The initial unpublished candidate is `0.1.0-rc.1`.
 
+The exact package names, directories, export paths, CLI binary, and supported toolchain are checked against [`release/public-surface.json`](../release/public-surface.json). Changing that file is an intentional public-contract decision, not an incidental consequence of adding code.
+
 Reusable Tool packs are independently versioned. A Tool declaration's version must equal its npm package version, and its `engine` range declares which local runtime contract it supports.
 
 ## Engine contract
