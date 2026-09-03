@@ -47,7 +47,7 @@
     "@firedrill/tool-sdk": "workspace:*"
   },
   "devDependencies": {
-    "@octokit/rest": "22.0.1",
+    "@octokit/rest": "21.1.1",
     "typescript": "5.9.3"
   },
   "repository": {
