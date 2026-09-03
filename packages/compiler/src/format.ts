@@ -27,6 +27,7 @@ import {
   WorldSourceSchema,
 } from "./source-schemas.js";
 import type { FormatWorldOptions, FormatWorldResult, ResourceKind } from "./types.js";
+import { authoredSourceVersionDiagnostic } from "./versioning.js";
 
 function schemaFor(kind: ResourceKind | "config"): z.ZodType {
   if (kind === "config") return ProjectConfigSchema;
@@ -200,6 +201,10 @@ function formatDocument(input: {
   const absolutePath = join(input.repositoryRoot, ...input.path.split("/"));
   const parsed = parseSource(absolutePath, input.path);
   if (parsed.status === "failed") return parsed;
+  const versionDiagnostic = authoredSourceVersionDiagnostic(parsed.document);
+  if (versionDiagnostic !== undefined) {
+    return { status: "failed", diagnostics: [versionDiagnostic] };
+  }
   const validated = schemaFor(input.kind).safeParse(parsed.document.value);
   if (!validated.success) {
     return { status: "failed", diagnostics: schemaDiagnostics(parsed.document, validated.error.issues) };

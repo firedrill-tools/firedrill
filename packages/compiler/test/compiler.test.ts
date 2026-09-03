@@ -884,6 +884,46 @@ describe("source to executable world", () => {
 });
 
 describe("compiler failures", () => {
+  it("rejects unknown authored schema versions before interpreting their fields", async () => {
+    const futureConfig = temporaryFixture("appointments");
+    const configPath = join(futureConfig, "firedrill.json");
+    writeFileSync(
+      configPath,
+      readFileSync(configPath, "utf8").replace('"schemaVersion": 1', '"schemaVersion": 2'),
+    );
+    const future = await compileWorld({ repositoryRoot: futureConfig, materialize: false });
+    expect(future.status).toBe("failed");
+    if (future.status === "failed") {
+      expect(future.diagnostics).toEqual([
+        expect.objectContaining({
+          code: "FD1103",
+          message: "unsupported authored source schemaVersion 2; this release supports 1",
+          path: ["schemaVersion"],
+          suggestion: expect.stringContaining("do not relabel"),
+        }),
+      ]);
+      expect(future.diagnostics[0]?.span?.path).toBe("firedrill.json");
+    }
+
+    const legacyScenario = temporaryFixture("appointments");
+    const scenarioPath = join(legacyScenario, "world", "busy-morning.scenario.yaml");
+    writeFileSync(
+      scenarioPath,
+      readFileSync(scenarioPath, "utf8").replace("schemaVersion: 1", "schemaVersion: 0"),
+    );
+    const legacy = await formatWorldSources({ repositoryRoot: legacyScenario, check: true });
+    expect(legacy.status).toBe("failed");
+    if (legacy.status === "failed") {
+      expect(legacy.diagnostics).toContainEqual(
+        expect.objectContaining({
+          code: "FD1103",
+          message: "unsupported authored source schemaVersion 0; this release supports 1",
+          suggestion: expect.stringContaining("Migrate this resource"),
+        }),
+      );
+    }
+  });
+
   it("rejects unknown, duplicate, and escaped test-local Tool setup", async () => {
     const unknown = temporaryFixture("appointments");
     const unknownResult = await compileWorld({

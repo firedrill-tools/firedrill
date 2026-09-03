@@ -89,6 +89,7 @@ import type {
   ToolSourceOrigin,
 } from "./types.js";
 import { validateWorldData, type WorldDataIssue } from "./validate-world-data.js";
+import { authoredSourceVersionDiagnostic } from "./versioning.js";
 
 export const FIREDRILL_COMPILER_VERSION = "0.1.0";
 
@@ -124,6 +125,10 @@ function parseTyped<T>(
   | { readonly status: "failed"; readonly diagnostics: readonly Diagnostic[] } {
   const parsed = parseSource(path.absolutePath, path.repositoryPath);
   if (parsed.status === "failed") return parsed;
+  const versionDiagnostic = authoredSourceVersionDiagnostic(parsed.document);
+  if (versionDiagnostic !== undefined) {
+    return { status: "failed", diagnostics: [versionDiagnostic] };
+  }
   const validated = schema.safeParse(parsed.document.value);
   if (!validated.success) {
     return { status: "failed", diagnostics: schemaDiagnostics(parsed.document, validated.error.issues) };

@@ -144,6 +144,8 @@ Still pre-release: published community Tool packs, CI integrations, hosted compo
 
 Hosted services are developed separately and are not required by this framework. No npm package or public release exists yet. The non-publishing [release-evidence process](docs/releasing.md) prepares reproducible package archives, checksums, SPDX SBOMs, and public-repository attestations without crossing that boundary.
 
+Package, Tool-engine, authored-source, generated-build, and report versions are separate compatibility boundaries. See the [compatibility policy](docs/compatibility.md) for the exact fail-closed behavior of this release candidate.
+
 ## Contributing
 
 Node.js 20.19 or newer and pnpm 9.15 through 10 are required.

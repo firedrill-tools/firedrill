@@ -1,5 +1,6 @@
 export { compileWorld, FIREDRILL_COMPILER_VERSION } from "./compile.js";
 export { formatWorldSources } from "./format.js";
+export { AUTHORED_SOURCE_SCHEMA_VERSION } from "./versioning.js";
 export {
   ProjectConfigSchema,
   ScenarioSourceSchema,

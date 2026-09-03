@@ -12,10 +12,13 @@ import type {
   ToolSubscriptionHandler,
 } from "@firedrill/tool-sdk";
 import {
+  BUILD_MANIFEST_SCHEMA_VERSION,
   BuildManifestSchema,
   CanonicalWorldIrSchema,
+  PACKAGE_LOCK_SCHEMA_VERSION,
   PackageLockSchema,
   ResolvedRunSetupSchema,
+  WORLD_IR_SCHEMA_VERSION,
   semanticHash,
   sha256Text,
 } from "@firedrill/world-ir";
@@ -57,6 +60,7 @@ function parseArtifact<T>(
   path: string,
   schema: { safeParse(value: unknown): { success: true; data: T } | { success: false; error: Error } },
   label: string,
+  expectedSchemaVersion: number,
 ):
   | { readonly status: "success"; readonly value: T }
   | { readonly status: "failed"; readonly diagnostic: Diagnostic } {
@@ -82,6 +86,23 @@ function parseArtifact<T>(
   }
   try {
     const value = JSON.parse(readFileSync(realPath, "utf8")) as unknown;
+    if (
+      typeof value === "object" &&
+      value !== null &&
+      !Array.isArray(value) &&
+      Number.isSafeInteger((value as Record<string, unknown>).schemaVersion) &&
+      (value as Record<string, unknown>).schemaVersion !== expectedSchemaVersion
+    ) {
+      return {
+        status: "failed",
+        diagnostic: diagnostic(
+          "FD1604",
+          `unsupported ${label} schemaVersion ${String((value as Record<string, unknown>).schemaVersion)}; this release supports ${expectedSchemaVersion}`,
+          path,
+          "Rebuild the world with a compatible Firedrill release; generated build files must not be edited or relabeled.",
+        ),
+      };
+    }
     const parsed = schema.safeParse(value);
     if (!parsed.success) {
       return {
@@ -246,18 +267,36 @@ export async function loadWorldBuild(buildDirectory: string): Promise<LoadWorldB
       ],
     };
   }
-  const manifestResult = parseArtifact(root, "build.json", BuildManifestSchema, "build manifest");
+  const manifestResult = parseArtifact(
+    root,
+    "build.json",
+    BuildManifestSchema,
+    "build manifest",
+    BUILD_MANIFEST_SCHEMA_VERSION,
+  );
   if (manifestResult.status === "failed")
     return { status: "failed", diagnostics: [manifestResult.diagnostic] };
   const manifest = manifestResult.value;
-  const irResult = parseArtifact(root, manifest.artifacts.worldIr, CanonicalWorldIrSchema, "world IR");
+  const irResult = parseArtifact(
+    root,
+    manifest.artifacts.worldIr,
+    CanonicalWorldIrSchema,
+    "world IR",
+    WORLD_IR_SCHEMA_VERSION,
+  );
   if (irResult.status === "failed") return { status: "failed", diagnostics: [irResult.diagnostic] };
-  const lockResult = parseArtifact(root, manifest.artifacts.packageLock, PackageLockSchema, "package lock");
+  const lockResult = parseArtifact(
+    root,
+    manifest.artifacts.packageLock,
+    PackageLockSchema,
+    "package lock",
+    PACKAGE_LOCK_SCHEMA_VERSION,
+  );
   if (lockResult.status === "failed") return { status: "failed", diagnostics: [lockResult.diagnostic] };
   const setupResult =
     manifest.artifacts.setup === undefined
       ? undefined
-      : parseArtifact(root, manifest.artifacts.setup, ResolvedRunSetupSchema, "run setup");
+      : parseArtifact(root, manifest.artifacts.setup, ResolvedRunSetupSchema, "run setup", 1);
   if (setupResult?.status === "failed") {
     return { status: "failed", diagnostics: [setupResult.diagnostic] };
   }

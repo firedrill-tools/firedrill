@@ -1,4 +1,4 @@
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { FIREDRILL_ENGINE_VERSION } from "@firedrill/contracts";
@@ -144,6 +144,25 @@ describe("verified world build loading", () => {
     if (loaded.status === "failed") {
       expect(loaded.diagnostics.map((item) => item.code)).toContain("FD1603");
       expect(loaded.diagnostics[0]?.message).toMatch(/handlers do not match/);
+    }
+  });
+
+  it("rejects an unknown generated-build schema version without loading Tool code", async () => {
+    const fixture = createBuild('throw new Error("Tool code must not load");');
+    const manifestPath = join(fixture.directory, "build.json");
+    const manifest = JSON.parse(readFileSync(manifestPath, "utf8")) as Record<string, unknown>;
+    writeFileSync(manifestPath, `${JSON.stringify({ ...manifest, schemaVersion: 2 })}\n`);
+
+    const loaded = await loadWorldBuild(fixture.directory);
+    expect(loaded.status).toBe("failed");
+    if (loaded.status === "failed") {
+      expect(loaded.diagnostics).toEqual([
+        expect.objectContaining({
+          code: "FD1604",
+          message: "unsupported build manifest schemaVersion 2; this release supports 1",
+          suggestion: expect.stringContaining("must not be edited or relabeled"),
+        }),
+      ]);
     }
   });
 });
