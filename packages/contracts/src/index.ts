@@ -1,4 +1,5 @@
 export * from "./assertions.js";
+export * from "./attestation.js";
 export * from "./diagnostics.js";
 export * from "./drill.js";
 export * from "./engine.js";

@@ -1,4 +1,9 @@
 import { AssertionDefinitionSchema, AssertionResultSchema } from "./assertions.js";
+import {
+  EvidenceAttestationEnvelopeSchema,
+  EvidenceAttestationStatementSchema,
+  EvidenceVerificationKeySchema,
+} from "./attestation.js";
 import { DiagnosticSchema } from "./diagnostics.js";
 import { DrillDefinitionSchema } from "./drill.js";
 import { ErrorEnvelopeSchema } from "./errors.js";
@@ -17,9 +22,12 @@ export const ContractSchemas = {
   diagnostic: DiagnosticSchema,
   drillDefinition: DrillDefinitionSchema,
   errorEnvelope: ErrorEnvelopeSchema,
+  evidenceAttestationEnvelope: EvidenceAttestationEnvelopeSchema,
+  evidenceAttestationStatement: EvidenceAttestationStatementSchema,
   evidenceBundleManifest: EvidenceBundleManifestSchema,
   evidenceEntry: EvidenceEntrySchema,
   evidencePage: EvidencePageSchema,
+  evidenceVerificationKey: EvidenceVerificationKeySchema,
   operationInvocation: OperationInvocationSchema,
   operationOutcome: OperationOutcomeSchema,
   runProgress: RunProgressSchema,
