@@ -13,11 +13,11 @@ import {
 import { tmpdir } from "node:os";
 import { basename, join, relative, resolve, sep } from "node:path";
 import { discoverPublicPackages, packPublicPackages } from "./public-packages.mts";
+import { releaseSourceTreeDigest } from "./release-source.mts";
 import { compareStableStrings } from "./stable-order.mts";
 
 const SYFT_VERSION = "1.51.0";
 const repositoryRoot = resolve(import.meta.dirname, "..");
-const excludedSourceDirectories = new Set([".firedrill", ".git", "coverage", "dist", "node_modules"]);
 
 interface SpdxPackage {
   readonly name?: string;
@@ -68,32 +68,6 @@ function ensureEmptyOutput(path: string): void {
     return;
   }
   mkdirSync(path, { recursive: true });
-}
-
-function sourceFiles(): readonly string[] {
-  const files: string[] = [];
-  const visit = (directory: string) => {
-    for (const entry of readdirSync(directory, { withFileTypes: true })) {
-      if (entry.isDirectory() && excludedSourceDirectories.has(entry.name)) continue;
-      const path = join(directory, entry.name);
-      if (entry.isDirectory()) visit(path);
-      else if (entry.isFile()) files.push(relative(repositoryRoot, path));
-      else throw new Error(`public source contains an unsupported entry: ${relative(repositoryRoot, path)}`);
-    }
-  };
-  visit(repositoryRoot);
-  return files.sort();
-}
-
-function sourceTreeDigest(): string {
-  const hash = createHash("sha256");
-  for (const path of sourceFiles()) {
-    hash.update(path);
-    hash.update("\0");
-    hash.update(readFileSync(join(repositoryRoot, path)));
-    hash.update("\0");
-  }
-  return hash.digest("hex");
 }
 
 function gitState(): { readonly clean: boolean; readonly revision: string | null } {
@@ -311,7 +285,7 @@ if (!outputArgument) {
       source: {
         clean: source.clean,
         revision: source.revision,
-        treeSha256: sourceTreeDigest(),
+        treeSha256: releaseSourceTreeDigest(repositoryRoot),
       },
       toolchain: {
         node: process.version,

@@ -22,7 +22,7 @@ The output contains:
 - `SHA256SUMS`; and
 - `release.json`, which records source state, source-tree digest, toolchain versions, package digests, and SBOM digests.
 
-`release:prepare` requires Syft `1.51.0`, verifies SPDX 2.3 structure and expected package coverage, installs the packed runtime without lifecycle scripts or network access, and packs every artifact twice to prove byte equality. Syft SBOM documents include build-time metadata and are hashed as the concrete generated artifacts; Firedrill does not claim independently regenerated SBOM bytes are deterministic.
+`release:prepare` requires Syft `1.51.0`, verifies SPDX 2.3 structure and expected package coverage, installs the packed runtime without lifecycle scripts or network access, and packs every artifact twice to prove byte equality. The source digest covers Git-tracked and non-ignored source, so ignored workstation files and secrets cannot perturb release identity. Syft SBOM documents include build-time metadata and are hashed as the concrete generated artifacts; Firedrill does not claim independently regenerated SBOM bytes are deterministic.
 
 ## CI evidence
 

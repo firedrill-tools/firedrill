@@ -24,7 +24,7 @@
     "genericity": "tsx tooling/check-genericity.mts",
     "determinism": "tsx tooling/check-determinism.mts",
     "public:check": "tsx tooling/check-public-tree.mts",
-    "release:check": "tsx tooling/check-release-policy.mts",
+    "release:check": "tsx tooling/check-release-policy.mts && tsx tooling/check-release-source.mts",
     "docs:cli:write": "tsx tooling/generate-cli-reference.mts --write",
     "docs:cli:check": "tsx tooling/generate-cli-reference.mts --check",
     "typecheck": "pnpm -r --if-present typecheck",
