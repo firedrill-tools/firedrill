@@ -1,4 +1,12 @@
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync,
+} from "node:fs";
 import { createServer } from "node:http";
 import type { Server } from "node:http";
 import { tmpdir } from "node:os";
@@ -392,6 +400,113 @@ describe("repository-level TypeScript API", () => {
         details: { reporterCode: "reporter.ARTIFACT_MISMATCH" },
       }),
     );
+  });
+
+  it("copies caller-owned file evidence into a verified report without leaking its source path", async () => {
+    const root = repository();
+    mkdirSync(join(root, "test-results"));
+    const source = join(root, "test-results", "agent-screen.png");
+    const bytes = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 1, 2, 3, 4]);
+    writeFileSync(source, bytes);
+
+    const result = await runDrills({
+      root,
+      drill: "set-record",
+      agent: (invocation) => {
+        invocation.attach({
+          path: "test-results/agent-screen.png",
+          mediaType: "image/png",
+          redaction: {
+            status: "applied_by_caller",
+            note: "Test fixture contains no customer data.",
+          },
+        });
+        writeFileSync(source, "changed after registration");
+        return setValueAgent(invocation);
+      },
+    });
+
+    const trial = result.drills[0]?.trials[0];
+    const attachment = trial?.result.interactions[0]?.targetResult.attachments[0];
+    expect(result.verdict).toBe("passed");
+    expect(attachment).toMatchObject({
+      schemaVersion: 1,
+      kind: "file",
+      name: "agent-screen.png",
+      mediaType: "image/png",
+      bytes: bytes.byteLength,
+      redaction: { status: "applied_by_caller" },
+    });
+    expect(JSON.stringify(attachment)).not.toContain(source);
+    expect(trial?.report.attachments).toHaveLength(1);
+    expect(readFileSync(trial?.report.attachments[0]?.path ?? "")).toEqual(bytes);
+    expect(trial?.report.manifest.artifacts).toContainEqual(
+      expect.objectContaining({ role: "attachment", mediaType: "image/png", bytes: bytes.byteLength }),
+    );
+    const verified = verifyReport({ report: trial?.report.directory ?? "" });
+    expect(verified.attachments).toHaveLength(1);
+    expect(verified.attachments[0]?.attachment).toMatchObject({ name: "agent-screen.png" });
+    expect(readFileSync(trial?.report.files.html ?? "", "utf8")).toContain("Open attachment");
+  });
+
+  it("fails closed when an agent tries to attach an outside or symlinked file", async () => {
+    const root = repository();
+    const otherRoot = repository();
+    const outside = join(otherRoot, "outside.png");
+    writeFileSync(outside, "outside");
+    const outsideResult = await runDrills({
+      root,
+      drill: "set-record",
+      agent: ({ attach }) => {
+        attach({ path: outside, mediaType: "image/png" });
+      },
+    });
+    expect(outsideResult.drills[0]?.trials[0]?.result.interactions[0]?.targetResult).toMatchObject({
+      status: "failed",
+      error: { code: "target.ATTACHMENT_PATH_OUTSIDE_REPOSITORY" },
+      attachments: [],
+    });
+
+    const owned = join(root, "owned.png");
+    writeFileSync(owned, "owned");
+    symlinkSync(owned, join(root, "linked.png"));
+    const linkedResult = await runDrills({
+      root,
+      drill: "set-record",
+      agent: ({ attach }) => {
+        attach({ path: "linked.png", mediaType: "image/png" });
+      },
+    });
+    expect(linkedResult.drills[0]?.trials[0]?.result.interactions[0]?.targetResult).toMatchObject({
+      status: "failed",
+      error: { code: "target.ATTACHMENT_SYMLINK_FORBIDDEN" },
+      attachments: [],
+    });
+  });
+
+  it("retains an attachment when the caller-owned agent fails afterward", async () => {
+    const root = repository();
+    const source = join(root, "failure-screen.png");
+    writeFileSync(source, "failure evidence");
+    const result = await runDrills({
+      root,
+      drill: "set-record",
+      agent: ({ attach }) => {
+        attach({ path: "failure-screen.png", mediaType: "image/png" });
+        throw new Error("UI agent failed after rendering its error state");
+      },
+    });
+
+    const trial = result.drills[0]?.trials[0];
+    expect(result.verdict).toBe("failed");
+    expect(trial?.result.interactions[0]?.targetResult).toMatchObject({
+      status: "failed",
+      error: { code: "target.EXECUTION_FAILED" },
+      attachments: [{ kind: "file", name: "failure-screen.png" }],
+    });
+    expect(trial?.report.attachments).toHaveLength(1);
+    expect(readFileSync(trial?.report.attachments[0]?.path ?? "", "utf8")).toBe("failure evidence");
+    expect(verifyReport({ report: trial?.report.directory ?? "" }).attachments).toHaveLength(1);
   });
 
   it("returns a failed drill as data so the customer's test runner stays in control", async () => {

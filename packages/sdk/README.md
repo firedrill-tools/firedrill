@@ -72,6 +72,25 @@ Use `callbackReceivers` when the world must send an asynchronous request into th
 
 Callback output may be any ordinary JSON-serializable value; optional `undefined` object properties are omitted just as they are over HTTP or stdout. It is retained as target evidence but does not replace state and operation assertions.
 
+## Supporting file evidence
+
+A caller-owned browser or application harness can copy a screenshot, trace, video, or text artifact into the report for the current attempt:
+
+```ts
+agent: async ({ task, binding, signal, attach }) => {
+  await driveMyAgentUi({ task, environment: binding.environment, signal });
+  attach({
+    path: "test-results/agent-screen.png",
+    mediaType: "image/png",
+    redaction: { status: "applied_by_caller" },
+  });
+}
+```
+
+The path must resolve to a regular, non-symlinked file inside `root`. Firedrill copies it immediately into private temporary staging, records only its portable name, media type, byte count, SHA-256 hash, and caller-declared redaction status, then writes it beneath the attempt's report directory. The source path never enters the run result. One file is limited to 64 MiB; one run is limited to 32 files and 128 MiB. Supported media types are JSON, ZIP, PNG, JPEG, WebP, plain text, HTML, and WebM.
+
+Firedrill does not inspect or redact binary content. Mark `applied_by_caller` only after the harness has removed sensitive content; otherwise the report states that the file was copied verbatim. Attachments remain supporting evidence. A screenshot or DOM result cannot override a failed world-state, Tool-call, event, fault, time, or ordering assertion.
+
 Setup and source problems reject with `FiredrillProjectError`, including stable code, details, and compiler diagnostics. A successful source build returns any non-error compiler diagnostics on `result.diagnostics`; an exact `buildHash` run returns none because it does not recompile source. A drill that executes and fails assertions resolves normally with `verdict: "failed"`, leaving Jest, Vitest, Mocha, or application code in control.
 
 Tool authors and consumers use `inspectTool()` to inspect a selected repository or installed-package contract without executing behavior. `validateTool()` explicitly loads the selected behavior with the developer's local authority. `testTool()` runs a selected repository conformance suite twice and returns ordinary verified drill reports plus operation/error/event/fault/subscription/callback coverage and same-seed state/trajectory reproducibility.

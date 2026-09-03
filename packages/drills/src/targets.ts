@@ -7,12 +7,14 @@ import type {
   JsonObject,
   JsonValue,
   TargetDescriptor,
+  TargetFileAttachment,
   TargetInvocation,
   TargetResult,
 } from "@firedrill/contracts";
 import {
   JsonValueSchema,
   TargetDescriptorSchema,
+  TargetFileAttachmentSchema,
   TargetInvocationSchema,
   TargetResultSchema,
 } from "@firedrill/contracts";
@@ -27,7 +29,29 @@ export interface TargetExecutionContext {
   readonly signal: AbortSignal;
   /** Present only when the target explicitly declares the direct binding. */
   readonly world?: BoundWorldClient;
+  /** Copies one caller-owned file into the eventual report bundle. */
+  readonly attach?: (input: TargetFileAttachmentInput) => TargetFileAttachment;
 }
+
+export interface TargetFileAttachmentInput {
+  /** Repository-relative path to an existing regular file. */
+  readonly path: string;
+  /** Portable report file name. Defaults to the source basename. */
+  readonly name?: string;
+  readonly mediaType: string;
+  /** Firedrill copies bytes verbatim. Redaction, when needed, is caller-owned. */
+  readonly redaction?: {
+    readonly status: "not_applied" | "applied_by_caller";
+    readonly note?: string;
+  };
+}
+
+export interface TargetAttachmentSinkInput {
+  readonly invocation: TargetInvocation;
+  readonly attachment: TargetFileAttachmentInput;
+}
+
+export type TargetAttachmentSink = (input: TargetAttachmentSinkInput) => TargetFileAttachment;
 
 export type TargetHandler = (
   invocation: TargetInvocation,
@@ -48,6 +72,20 @@ export interface InvokeTargetOptions {
   readonly allowRemoteHttp?: boolean;
   /** Cancels the customer-owned target without converting the run into an internal failure. */
   readonly signal?: AbortSignal;
+  /** Runtime-owned sink used to stage portable report files. */
+  readonly attachmentSink?: TargetAttachmentSink;
+}
+
+export class TargetAttachmentError extends Error {
+  readonly code: string;
+  readonly details: JsonObject | undefined;
+
+  constructor(code: string, message: string, details?: JsonObject) {
+    super(message);
+    this.name = "TargetAttachmentError";
+    this.code = code;
+    this.details = details;
+  }
 }
 
 class TargetExecutionError extends Error {
@@ -147,12 +185,23 @@ function errorEnvelope(
   };
 }
 
-function failure(invocation: TargetInvocation, error: unknown): TargetResult {
+function failure(
+  invocation: TargetInvocation,
+  error: unknown,
+  registeredAttachments: readonly JsonObject[] = [],
+): TargetResult {
+  const errorAttachments =
+    error instanceof TargetExecutionError ||
+    error instanceof TargetTimeoutError ||
+    error instanceof TargetCancelledError
+      ? error.attachments
+      : [];
+  const attachments = [...registeredAttachments, ...errorAttachments];
   if (error instanceof TargetCancelledError) {
     return TargetResultSchema.parse({
       schemaVersion: 1,
       status: "cancelled",
-      attachments: error.attachments,
+      attachments,
       error: errorEnvelope(invocation, "target.CANCELLED", error.message),
     });
   }
@@ -160,7 +209,7 @@ function failure(invocation: TargetInvocation, error: unknown): TargetResult {
     return TargetResultSchema.parse({
       schemaVersion: 1,
       status: "timed_out",
-      attachments: error.attachments,
+      attachments,
       error: errorEnvelope(invocation, "target.TIMEOUT", error.message, {
         timeoutMs: error.timeoutMs,
         clock: "wall",
@@ -170,15 +219,17 @@ function failure(invocation: TargetInvocation, error: unknown): TargetResult {
   const executionError =
     error instanceof TargetExecutionError
       ? error
-      : new TargetExecutionError(
-          "target.EXECUTION_FAILED",
-          `target execution failed: ${boundedDiagnosticMessage(error, "unknown target error")}`,
-          error instanceof Error ? { errorName: error.name } : undefined,
-        );
+      : error instanceof TargetAttachmentError
+        ? new TargetExecutionError(error.code, error.message, error.details)
+        : new TargetExecutionError(
+            "target.EXECUTION_FAILED",
+            `target execution failed: ${boundedDiagnosticMessage(error, "unknown target error")}`,
+            error instanceof Error ? { errorName: error.name } : undefined,
+          );
   return TargetResultSchema.parse({
     schemaVersion: 1,
     status: "failed",
-    attachments: executionError.attachments,
+    attachments,
     error: errorEnvelope(invocation, executionError.code, executionError.message, executionError.details),
   });
 }
@@ -214,12 +265,14 @@ function completed(invocation: TargetInvocation, completion: TargetCompletion): 
       new TargetExecutionError("target.INVALID_OUTPUT", "target output must be JSON serializable", {
         validation: error instanceof Error ? error.message : "serialization failed",
       }),
+      completion.attachments,
     );
   }
   if (serialized === undefined) {
     return failure(
       invocation,
       new TargetExecutionError("target.INVALID_OUTPUT", "target output must be JSON serializable"),
+      completion.attachments,
     );
   }
   const parsed = JsonValueSchema.safeParse(JSON.parse(serialized));
@@ -229,6 +282,7 @@ function completed(invocation: TargetInvocation, completion: TargetCompletion): 
       new TargetExecutionError("target.INVALID_OUTPUT", "target output must be JSON serializable", {
         validation: parsed.error.issues.map((issue) => issue.message).join("; "),
       }),
+      completion.attachments,
     );
   }
   return TargetResultSchema.parse({
@@ -286,23 +340,25 @@ function executionContext(
   descriptor: TargetDescriptor,
   signal: AbortSignal,
   worldClient: BoundWorldClient | undefined,
+  attach: TargetExecutionContext["attach"],
 ): TargetExecutionContext {
   const bindings: readonly string[] = descriptor.bindings;
-  if (!bindings.includes("direct")) return { signal };
+  const attachmentContext = attach === undefined ? {} : { attach };
+  if (!bindings.includes("direct")) return { signal, ...attachmentContext };
   if (worldClient === undefined) {
     throw new TargetExecutionError(
       "target.DIRECT_BINDING_UNAVAILABLE",
       `target ${descriptor.id} declares a direct binding, but the runner did not supply one`,
     );
   }
-  return { signal, world: worldClient };
+  return { signal, world: worldClient, ...attachmentContext };
 }
 
 async function invokeModule(
   descriptor: Extract<TargetDescriptor, { kind: "module" }>,
   invocation: TargetInvocation,
   options: InvokeTargetOptions,
-  signal: AbortSignal,
+  context: TargetExecutionContext,
 ): Promise<unknown> {
   const modulePath = repositoryPath(options.repositoryRoot, descriptor.module, "target module");
   const moduleUrl = pathToFileURL(modulePath);
@@ -328,7 +384,7 @@ async function invokeModule(
     );
   }
   const handler = candidate as TargetHandler;
-  return handler(invocation, executionContext(descriptor, signal, options.worldClient));
+  return handler(invocation, context);
 }
 
 function mappedEnvironment(
@@ -655,7 +711,7 @@ async function invokeExternal(
   descriptor: Extract<TargetDescriptor, { kind: "external" }>,
   invocation: TargetInvocation,
   options: InvokeTargetOptions,
-  signal: AbortSignal,
+  context: TargetExecutionContext,
 ): Promise<unknown> {
   if (options.externalHandler === undefined) {
     throw new TargetExecutionError(
@@ -663,7 +719,7 @@ async function invokeExternal(
       `external target ${descriptor.id} requires a handler from the embedding test process`,
     );
   }
-  return options.externalHandler(invocation, executionContext(descriptor, signal, options.worldClient));
+  return options.externalHandler(invocation, context);
 }
 
 /**
@@ -673,25 +729,49 @@ async function invokeExternal(
 export async function invokeTarget(options: InvokeTargetOptions): Promise<TargetResult> {
   const descriptor = TargetDescriptorSchema.parse(options.descriptor);
   const invocation = TargetInvocationSchema.parse(options.invocation);
+  const registeredAttachments: TargetFileAttachment[] = [];
+  const attach =
+    options.attachmentSink === undefined
+      ? undefined
+      : (input: TargetFileAttachmentInput) => {
+          const attachment = TargetFileAttachmentSchema.parse(
+            options.attachmentSink?.({ invocation, attachment: input }),
+          );
+          if (registeredAttachments.some((candidate) => candidate.id === attachment.id)) {
+            throw new TargetAttachmentError(
+              "target.ATTACHMENT_DUPLICATE",
+              `target attachment id ${attachment.id} was registered more than once`,
+            );
+          }
+          registeredAttachments.push(attachment);
+          return attachment;
+        };
   try {
     const completion = await withinTimeout(
       descriptor.timeoutMs,
       async (signal) => {
+        const context = executionContext(descriptor, signal, options.worldClient, attach);
         if (descriptor.kind === "module") {
-          return { output: await invokeModule(descriptor, invocation, options, signal), attachments: [] };
+          return {
+            output: await invokeModule(descriptor, invocation, options, context),
+            attachments: registeredAttachments,
+          };
         }
         if (descriptor.kind === "command") return invokeCommand(descriptor, invocation, options, signal);
         if (descriptor.kind === "http") {
           return { output: await invokeHttp(descriptor, invocation, options, signal), attachments: [] };
         }
-        return { output: await invokeExternal(descriptor, invocation, options, signal), attachments: [] };
+        return {
+          output: await invokeExternal(descriptor, invocation, options, context),
+          attachments: registeredAttachments,
+        };
       },
       options.signal,
       () => options.worldClient?.revoke(),
     );
     return completed(invocation, completion);
   } catch (error) {
-    return failure(invocation, error);
+    return failure(invocation, error, registeredAttachments);
   } finally {
     options.worldClient?.revoke();
   }

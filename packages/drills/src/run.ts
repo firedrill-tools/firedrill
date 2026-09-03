@@ -39,7 +39,7 @@ import type { BoundWorldClient, WorldKernel } from "@firedrill/world-kernel";
 import type { SqliteWorldStore } from "@firedrill/world-store-sqlite";
 import { createDrillWorld, DrillSetupError } from "./scenario.js";
 import { boundedDiagnosticMessage } from "./diagnostics.js";
-import type { TargetHandler } from "./targets.js";
+import type { TargetAttachmentSink, TargetHandler } from "./targets.js";
 import { invokeTarget } from "./targets.js";
 
 interface WorldBinding {
@@ -85,6 +85,8 @@ export interface RunDrillTrialOptions {
   readonly runId?: RunId;
   readonly worldInstanceId?: WorldInstanceId;
   readonly externalHandler?: TargetHandler;
+  /** Stages files explicitly attached by an in-process target handler. */
+  readonly attachmentSink?: TargetAttachmentSink;
   readonly hostEnvironment?: Readonly<Record<string, string | undefined>>;
   readonly allowRemoteHttp?: boolean;
   /** Local application endpoints that receive world-emitted callbacks during this trial. */
@@ -647,13 +649,14 @@ export async function runDrillTrial(options: RunDrillTrialOptions): Promise<Dril
         ...(options.externalHandler === undefined ? {} : { externalHandler: options.externalHandler }),
         ...(options.hostEnvironment === undefined ? {} : { hostEnvironment: options.hostEnvironment }),
         ...(options.allowRemoteHttp === undefined ? {} : { allowRemoteHttp: options.allowRemoteHttp }),
+        ...(options.attachmentSink === undefined ? {} : { attachmentSink: options.attachmentSink }),
         signal: targetSignal,
       });
       const targetResult = world.kernel.usage().toolCallBudgetExceeded
         ? TargetResultSchema.parse({
             schemaVersion: 1,
             status: "failed",
-            attachments: [],
+            attachments: invokedTargetResult.attachments,
             error: frameworkError(
               runId,
               "framework.TOOL_CALL_BUDGET_EXCEEDED",

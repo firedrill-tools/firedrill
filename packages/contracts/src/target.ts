@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { ErrorEnvelopeSchema } from "./errors.js";
-import { ActorIdSchema, RunIdSchema, StableIdSchema } from "./identifiers.js";
+import { ActorIdSchema, RunIdSchema, Sha256Schema, StableIdSchema } from "./identifiers.js";
 import { JsonObjectSchema, JsonValueSchema } from "./json.js";
 
 const RelativeModulePathSchema = z
@@ -157,6 +157,40 @@ export const TargetInvocationSchema = z
   })
   .strict();
 
+const PortableAttachmentNameSchema = z
+  .string()
+  .min(1)
+  .max(128)
+  .regex(/^[A-Za-z0-9][A-Za-z0-9._-]*$/, {
+    message:
+      "attachment name must be a portable file name using letters, numbers, dots, dashes, or underscores",
+  })
+  .refine((value) => value !== "." && value !== "..", {
+    message: "attachment name cannot be a relative path segment",
+  });
+
+export const TargetFileAttachmentSchema = z
+  .object({
+    schemaVersion: z.literal(1),
+    kind: z.literal("file"),
+    id: StableIdSchema,
+    name: PortableAttachmentNameSchema,
+    mediaType: z.string().min(1).max(200),
+    bytes: z
+      .number()
+      .int()
+      .nonnegative()
+      .max(64 * 1024 * 1024),
+    hash: Sha256Schema,
+    redaction: z
+      .object({
+        status: z.enum(["not_applied", "applied_by_caller"]),
+        note: z.string().min(1).max(500).nullable().default(null),
+      })
+      .strict(),
+  })
+  .strict();
+
 export const TargetResultSchema = z
   .object({
     schemaVersion: z.literal(1),
@@ -181,6 +215,19 @@ export const TargetResultSchema = z
         message: `${result.status} target requires an error`,
       });
     }
+    for (const [index, attachment] of result.attachments.entries()) {
+      if (attachment.kind !== "file") continue;
+      const parsed = TargetFileAttachmentSchema.safeParse(attachment);
+      if (!parsed.success) {
+        for (const issue of parsed.error.issues) {
+          context.addIssue({
+            code: "custom",
+            path: ["attachments", index, ...issue.path],
+            message: issue.message,
+          });
+        }
+      }
+    }
   });
 
 export type TargetDescriptor = z.infer<typeof TargetDescriptorSchema>;
@@ -189,3 +236,4 @@ export type BindingEnvironmentProjection = z.infer<typeof BindingEnvironmentProj
 export type WorldBindingEnvironmentName = z.infer<typeof WorldBindingEnvironmentNameSchema>;
 export type TargetInvocation = z.infer<typeof TargetInvocationSchema>;
 export type TargetResult = z.infer<typeof TargetResultSchema>;
+export type TargetFileAttachment = z.infer<typeof TargetFileAttachmentSchema>;

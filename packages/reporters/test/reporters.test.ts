@@ -383,6 +383,132 @@ describe("local evidence reporters", () => {
     expect(() => writeLocalReport(input, destination)).toThrow(/refusing to overwrite/);
   });
 
+  it("copies, renders, and verifies bounded file attachments as report artifacts", () => {
+    const root = temporaryDirectory();
+    const entries = evidence();
+    const original = run(entries);
+    if (original.status !== "sealed") throw new Error("fixture must be sealed");
+    const body = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 9, 8, 7]);
+    const source = join(root, "screen.png");
+    writeFileSync(source, body);
+    const attachment = {
+      schemaVersion: 1 as const,
+      kind: "file" as const,
+      id: "attachment-report-screen",
+      name: "screen.png",
+      mediaType: "image/png",
+      bytes: body.byteLength,
+      hash: `sha256:${createHash("sha256").update(body).digest("hex")}` as const,
+      redaction: { status: "not_applied" as const, note: null },
+    };
+    const interactions = original.interactions.map((interaction, index) =>
+      index === 0
+        ? {
+            ...interaction,
+            targetResult: { ...interaction.targetResult, attachments: [attachment] },
+          }
+        : interaction,
+    );
+    const result = RunResultSchema.parse({
+      ...original,
+      interactions,
+      trajectoryHash: trajectoryHash({ interactions, checkpoints: original.checkpoints, evidence: entries }),
+    });
+    const destination = join(root, "attachment-report");
+    const written = writeLocalReport(
+      {
+        result,
+        evidence: entries,
+        attachmentSources: [{ attachmentId: attachment.id, path: source }],
+      },
+      destination,
+    );
+
+    expect(written.attachments).toEqual([
+      {
+        attachment,
+        path: join(destination, "attachments", attachment.id, attachment.name),
+      },
+    ]);
+    expect(readFileSync(written.attachments[0]?.path ?? "")).toEqual(body);
+    expect(written.manifest.artifacts).toContainEqual({
+      path: `attachments/${attachment.id}/${attachment.name}`,
+      mediaType: "image/png",
+      bytes: body.byteLength,
+      hash: attachment.hash,
+      role: "attachment",
+    });
+    const verified = verifyLocalReport(destination);
+    expect(verified.attachments).toEqual([
+      {
+        attachment,
+        path: join(destination, "attachments", attachment.id, attachment.name),
+      },
+    ]);
+    expect(readFileSync(written.files.html, "utf8")).toContain("copied verbatim without redaction");
+
+    writeFileSync(written.attachments[0]?.path ?? "", "tampered");
+    expect(() => verifyLocalReport(destination)).toThrowError(
+      expect.objectContaining({ code: "reporter.ARTIFACT_MISMATCH" }),
+    );
+  });
+
+  it("rejects missing, extra, and symlinked attachment sources before publishing a report", () => {
+    const root = temporaryDirectory();
+    const entries = evidence();
+    const original = run(entries);
+    if (original.status !== "sealed") throw new Error("fixture must be sealed");
+    const body = Buffer.from("supporting evidence");
+    const source = join(root, "evidence.txt");
+    writeFileSync(source, body);
+    const attachment = {
+      schemaVersion: 1 as const,
+      kind: "file" as const,
+      id: "attachment-report-evidence",
+      name: "evidence.txt",
+      mediaType: "text/plain",
+      bytes: body.byteLength,
+      hash: `sha256:${createHash("sha256").update(body).digest("hex")}` as const,
+      redaction: { status: "applied_by_caller" as const, note: "Fixture output only" },
+    };
+    const interactions = original.interactions.map((interaction, index) =>
+      index === 0
+        ? { ...interaction, targetResult: { ...interaction.targetResult, attachments: [attachment] } }
+        : interaction,
+    );
+    const result = RunResultSchema.parse({
+      ...original,
+      interactions,
+      trajectoryHash: trajectoryHash({ interactions, checkpoints: original.checkpoints, evidence: entries }),
+    });
+
+    expect(() => writeLocalReport({ result, evidence: entries }, join(root, "missing"))).toThrow(
+      /descriptors and staged sources must match exactly/,
+    );
+    expect(() =>
+      writeLocalReport(
+        {
+          result: original,
+          evidence: entries,
+          attachmentSources: [{ attachmentId: attachment.id, path: source }],
+        },
+        join(root, "extra"),
+      ),
+    ).toThrow(/descriptors and staged sources must match exactly/);
+    const linked = join(root, "linked.txt");
+    symlinkSync(source, linked);
+    expect(() =>
+      writeLocalReport(
+        {
+          result,
+          evidence: entries,
+          attachmentSources: [{ attachmentId: attachment.id, path: linked }],
+        },
+        join(root, "linked-source"),
+      ),
+    ).toThrow(/regular file, not a symlink/);
+  });
+
   it("redacts payload secrets without rewriting structural verdicts or statuses", () => {
     const root = temporaryDirectory();
     const entries = evidence();

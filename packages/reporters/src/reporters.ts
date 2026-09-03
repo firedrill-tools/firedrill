@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import {
   existsSync,
+  lstatSync,
   mkdirSync,
   mkdtempSync,
   readdirSync,
@@ -19,6 +20,7 @@ import type {
   ReportRedaction,
   ReportToolDescriptor,
   RunResult,
+  TargetFileAttachment,
   ToolPackageManifest,
 } from "@firedrill/contracts";
 import {
@@ -27,6 +29,7 @@ import {
   EvidenceEntrySchema,
   JsonValueSchema,
   RunResultSchema,
+  TargetFileAttachmentSchema,
   ToolPackageManifestSchema,
   compareStableStrings,
 } from "@firedrill/contracts";
@@ -37,6 +40,18 @@ export interface LocalReportInput {
   readonly evidence: readonly EvidenceEntry[];
   /** Tool schemas add declared sensitive fields to the conservative built-in redaction policy. */
   readonly tools?: readonly ToolPackageManifest[];
+  /** Runtime-staged files explicitly referenced by file attachments in the run result. */
+  readonly attachmentSources?: readonly LocalReportAttachmentSource[];
+}
+
+export interface LocalReportAttachmentSource {
+  readonly attachmentId: string;
+  readonly path: string;
+}
+
+export interface VerifiedReportAttachment {
+  readonly attachment: TargetFileAttachment;
+  readonly path: string;
 }
 
 interface CheckedLocalReport {
@@ -51,6 +66,7 @@ interface CheckedLocalReport {
 export interface WrittenLocalReport {
   readonly directory: string;
   readonly manifest: EvidenceBundleManifest;
+  readonly attachments: readonly VerifiedReportAttachment[];
   readonly files: {
     readonly manifest: string;
     readonly run: string;
@@ -68,6 +84,7 @@ export interface VerifiedLocalReport {
   readonly result: RunResult;
   readonly evidence: readonly EvidenceEntry[];
   readonly tools: readonly ReportToolDescriptor[];
+  readonly attachments: readonly VerifiedReportAttachment[];
 }
 
 export type LocalReportVerificationErrorCode =
@@ -93,6 +110,7 @@ const MAX_BUNDLE_DEPTH = 32;
 const MAX_MANIFEST_BYTES = 1024 * 1024;
 const MAX_ARTIFACT_BYTES = 64 * 1024 * 1024;
 const MAX_BUNDLE_BYTES = 256 * 1024 * 1024;
+const MAX_FILE_ATTACHMENTS = 32;
 
 function sha256(value: string | Uint8Array): `sha256:${string}` {
   return `sha256:${createHash("sha256").update(value).digest("hex")}`;
@@ -101,6 +119,93 @@ function sha256(value: string | Uint8Array): `sha256:${string}` {
 function semanticHash(value: unknown): `sha256:${string}` {
   const json = JsonValueSchema.parse(JSON.parse(JSON.stringify(value)));
   return sha256(canonicalJson(json));
+}
+
+function fileAttachments(result: RunResult): readonly TargetFileAttachment[] {
+  const attachments = result.interactions.flatMap((interaction) =>
+    interaction.targetResult.attachments.flatMap((attachment) =>
+      attachment.kind === "file" ? [TargetFileAttachmentSchema.parse(attachment)] : [],
+    ),
+  );
+  if (attachments.length > MAX_FILE_ATTACHMENTS) {
+    throw new TypeError(`a report supports at most ${MAX_FILE_ATTACHMENTS} file attachments`);
+  }
+  const ids = new Set<string>();
+  for (const attachment of attachments) {
+    if (ids.has(attachment.id)) throw new TypeError(`duplicate file attachment id ${attachment.id}`);
+    ids.add(attachment.id);
+  }
+  return attachments.sort((left, right) => compareStableStrings(left.id, right.id));
+}
+
+function attachmentArtifactPath(attachment: TargetFileAttachment): string {
+  return `attachments/${attachment.id}/${attachment.name}`;
+}
+
+interface PreparedFileAttachment {
+  readonly attachment: TargetFileAttachment;
+  readonly path: string;
+  readonly body: Buffer;
+  readonly artifact: ReportArtifact;
+}
+
+function prepareFileAttachments(
+  input: LocalReportInput,
+  result: RunResult,
+): readonly PreparedFileAttachment[] {
+  const attachments = fileAttachments(result);
+  const sources = input.attachmentSources ?? [];
+  const sourceById = new Map<string, string>();
+  for (const source of sources) {
+    if (sourceById.has(source.attachmentId)) {
+      throw new TypeError(`duplicate attachment source ${source.attachmentId}`);
+    }
+    sourceById.set(source.attachmentId, source.path);
+  }
+  if (sourceById.size !== attachments.length) {
+    throw new TypeError("file attachment descriptors and staged sources must match exactly");
+  }
+  let totalBytes = 0;
+  const prepared = attachments.map((attachment): PreparedFileAttachment => {
+    const source = sourceById.get(attachment.id);
+    if (source === undefined) throw new TypeError(`file attachment ${attachment.id} has no staged source`);
+    const sourceEntry = lstatSync(source);
+    if (sourceEntry.isSymbolicLink() || !sourceEntry.isFile()) {
+      throw new TypeError(`file attachment ${attachment.id} source must be a regular file, not a symlink`);
+    }
+    if (sourceEntry.size > MAX_ARTIFACT_BYTES) {
+      throw new TypeError(`file attachment ${attachment.id} exceeds 64 MiB`);
+    }
+    const body = readFileSync(source);
+    totalBytes += body.byteLength;
+    if (totalBytes > MAX_BUNDLE_BYTES) throw new TypeError("file attachments exceed 256 MiB");
+    if (
+      body.byteLength !== attachment.bytes ||
+      sourceEntry.size !== attachment.bytes ||
+      sha256(body) !== attachment.hash
+    ) {
+      throw new TypeError(`file attachment ${attachment.id} no longer matches its registered bytes`);
+    }
+    const path = attachmentArtifactPath(attachment);
+    return {
+      attachment,
+      path,
+      body,
+      artifact: {
+        path,
+        mediaType: attachment.mediaType,
+        bytes: attachment.bytes,
+        hash: attachment.hash,
+        role: "attachment",
+      },
+    };
+  });
+  for (const attachmentId of sourceById.keys()) {
+    if (!attachments.some((attachment) => attachment.id === attachmentId)) {
+      throw new TypeError(`staged source ${attachmentId} is not referenced by the run result`);
+    }
+  }
+  return prepared;
 }
 
 function objectValue(value: unknown): value is Record<string, unknown> {
@@ -383,6 +488,12 @@ function terminalReport({ result, evidence, tools }: CheckedLocalReport): string
     ),
   );
   if (compatibility.length > 0) lines.push(`Compatibility ${compatibility.join("; ")}`);
+  const attachments = fileAttachments(result);
+  if (attachments.length > 0) {
+    lines.push(
+      `Attachments ${attachments.map((attachment) => `${attachment.name} (${attachment.bytes} bytes)`).join(", ")}`,
+    );
+  }
   if (result.status === "sealed") {
     const completed = result.interactions.filter(
       (interaction) => interaction.targetResult.status === "completed",
@@ -556,6 +667,7 @@ function junitReport({ result }: CheckedLocalReport): string {
     `<property name="firedrill.toolCalls.limit" value="${result.budgetUsage.toolCalls.limit}" />`,
     `<property name="firedrill.scheduledEvents.processed" value="${result.budgetUsage.scheduledEvents.processed}" />`,
     `<property name="firedrill.scheduledEvents.limit" value="${result.budgetUsage.scheduledEvents.limit}" />`,
+    `<property name="firedrill.attachments" value="${fileAttachments(result).length}" />`,
   ];
   const duration = junitSeconds(result.startedAtVirtualUs, result.finishedAtVirtualUs);
   return [
@@ -644,6 +756,14 @@ function interactionRows(result: RunResult): string {
       const output = interaction.targetResult.output;
       const attachments = interaction.targetResult.attachments
         .map((attachment) => {
+          if (attachment.kind === "file") {
+            const file = TargetFileAttachmentSchema.parse(attachment);
+            const redaction =
+              file.redaction.status === "applied_by_caller"
+                ? "caller applied redaction before attachment"
+                : "copied verbatim without redaction";
+            return `<details><summary>${html(file.name)}</summary><p><a href="${html(attachmentArtifactPath(file))}" download>Open attachment</a> · ${file.bytes} bytes · ${html(file.mediaType)}</p><p class="meta">${html(redaction)}${file.redaction.note === null ? "" : ` · ${html(file.redaction.note)}`}</p></details>`;
+          }
           const label =
             typeof attachment.kind === "string"
               ? attachment.kind.replaceAll(".", " ")
@@ -753,6 +873,7 @@ function artifact(
 /** Writes a complete report directory without ever replacing an existing report. */
 export function writeLocalReport(rawInput: LocalReportInput, outputDirectory: string): WrittenLocalReport {
   const input = checkedInput(rawInput);
+  const fileAttachments = prepareFileAttachments(rawInput, input.result);
   const destination = resolve(outputDirectory);
   if (existsSync(destination)) throw new Error(`refusing to overwrite report directory ${destination}`);
   const parent = dirname(destination);
@@ -773,6 +894,7 @@ export function writeLocalReport(rawInput: LocalReportInput, outputDirectory: st
     artifact("terminal.txt", "text/plain; charset=utf-8", "terminal", bodies.terminal),
     artifact("junit.xml", "application/junit+xml", "junit", bodies.junit),
     artifact("index.html", "text/html; charset=utf-8", "html", bodies.html),
+    ...fileAttachments.map((attachment) => attachment.artifact),
   ];
   const manifest = EvidenceBundleManifestSchema.parse({
     schemaVersion: 1,
@@ -824,6 +946,11 @@ export function writeLocalReport(rawInput: LocalReportInput, outputDirectory: st
     writeFileSync(join(temporary, "terminal.txt"), bodies.terminal);
     writeFileSync(join(temporary, "junit.xml"), bodies.junit);
     writeFileSync(join(temporary, "index.html"), bodies.html);
+    for (const attachment of fileAttachments) {
+      const destinationPath = join(temporary, attachment.path);
+      mkdirSync(dirname(destinationPath), { recursive: true });
+      writeFileSync(destinationPath, attachment.body);
+    }
     writeFileSync(join(temporary, "manifest.json"), `${JSON.stringify(manifest, null, 2)}\n`);
     renameSync(temporary, destination);
   } catch (error) {
@@ -833,6 +960,10 @@ export function writeLocalReport(rawInput: LocalReportInput, outputDirectory: st
   return {
     directory: destination,
     manifest,
+    attachments: fileAttachments.map((attachment) => ({
+      attachment: attachment.attachment,
+      path: join(destination, attachment.path),
+    })),
     files: {
       manifest: join(destination, "manifest.json"),
       run: join(destination, "run.json"),
@@ -1044,6 +1175,40 @@ export function verifyLocalReport(outputDirectory: string): VerifiedLocalReport 
     );
   }
 
+  let verifiedAttachments: readonly VerifiedReportAttachment[];
+  try {
+    const descriptors = fileAttachments(result);
+    const artifacts = manifest.artifacts.filter((artifact) => artifact.role === "attachment");
+    if (artifacts.length !== descriptors.length) {
+      throw new LocalReportVerificationError(
+        "reporter.REPORT_INVALID",
+        "report attachment descriptors and manifest artifacts do not match",
+      );
+    }
+    verifiedAttachments = descriptors.map((attachment) => {
+      const expectedPath = attachmentArtifactPath(attachment);
+      const artifact = artifacts.find((candidate) => candidate.path === expectedPath);
+      if (
+        artifact === undefined ||
+        artifact.mediaType !== attachment.mediaType ||
+        artifact.bytes !== attachment.bytes ||
+        artifact.hash !== attachment.hash
+      ) {
+        throw new LocalReportVerificationError(
+          "reporter.REPORT_INVALID",
+          `report attachment ${attachment.id} is inconsistent with its manifest artifact`,
+        );
+      }
+      return { attachment, path: artifactPath(directory, artifact.path) };
+    });
+  } catch (error) {
+    if (error instanceof LocalReportVerificationError) throw error;
+    throw new LocalReportVerificationError(
+      "reporter.REPORT_INVALID",
+      "report file attachment metadata is invalid",
+    );
+  }
+
   const checked: CheckedLocalReport = {
     result,
     evidence,
@@ -1092,5 +1257,12 @@ export function verifyLocalReport(outputDirectory: string): VerifiedLocalReport 
       "unredacted report content does not match its source hashes",
     );
   }
-  return { directory, manifest, result, evidence, tools: manifest.tools };
+  return {
+    directory,
+    manifest,
+    result,
+    evidence,
+    tools: manifest.tools,
+    attachments: verifiedAttachments,
+  };
 }

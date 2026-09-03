@@ -103,6 +103,8 @@ Setup and source errors throw `FiredrillProjectError`. A completed drill that fa
 
 The optional `setup` is the Jest-like injection surface for one explicit drill. It can layer test-local starting state, actors, virtual time, events, and declared faults; select an installed Tool package; replace a declared Tool's deterministic behavior with a repository module; and project temporary HTTP, MCP, or CLI connection values onto environment names the existing agent already uses. Firedrill compiles the resolved setup into a content-addressed derived build and copies it into the report, so no hidden SQLite mutation or anonymous mock escapes the evidence trail. See the [`@firedrill/sdk` guide](packages/sdk/README.md#per-test-synthetic-data-and-tools) for the complete contract.
 
+For UI-backed agents, the customer's Playwright, browser driver, or application harness still owns the UI and agent lifecycle. The `agent` callback can attach bounded repository-local screenshots, traces, videos, or text files to the portable report. Firedrill hashes and verifies those files, but world consequences remain the verdict authority. See [supporting file evidence](packages/sdk/README.md#supporting-file-evidence).
+
 ## Optional Firedrill Agent
 
 The framework does not require an authoring agent. Developers may write source directly or use any coding agent with the canonical skill. Those who want a built-in local path can separately install `@firedrill/agent` and invoke it through the same CLI:

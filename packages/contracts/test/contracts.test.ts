@@ -15,6 +15,7 @@ import {
   ScenarioDefinitionSchema,
   ToolPackageManifestSchema,
   TargetDescriptorSchema,
+  TargetFileAttachmentSchema,
   canonicalJson,
   expandDrillInteractions,
 } from "../src/index.js";
@@ -48,6 +49,38 @@ describe("canonical JSON", () => {
     const withUndefined = { present: true, optional: undefined } as unknown as { present: true };
     expect(canonicalJson(withUndefined)).toBe('{"present":true}');
     expect(() => canonicalJson([undefined] as unknown as [])).toThrow(/undefined/);
+  });
+});
+
+describe("target file attachments", () => {
+  it("keeps only portable content metadata and rejects path-shaped names", () => {
+    expect(
+      TargetFileAttachmentSchema.parse({
+        schemaVersion: 1,
+        kind: "file",
+        id: "attachment-browser-trace",
+        name: "trace.zip",
+        mediaType: "application/zip",
+        bytes: 2048,
+        hash: HASH,
+        redaction: { status: "not_applied" },
+      }),
+    ).toMatchObject({
+      name: "trace.zip",
+      redaction: { status: "not_applied", note: null },
+    });
+    expect(
+      TargetFileAttachmentSchema.safeParse({
+        schemaVersion: 1,
+        kind: "file",
+        id: "attachment-browser-trace",
+        name: "../trace.zip",
+        mediaType: "application/zip",
+        bytes: 2048,
+        hash: HASH,
+        redaction: { status: "not_applied" },
+      }).success,
+    ).toBe(false);
   });
 });
 
