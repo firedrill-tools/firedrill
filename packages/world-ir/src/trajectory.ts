@@ -1,9 +1,9 @@
 import type {
+  AssertionResult,
   CheckpointResult,
   ErrorEnvelope,
   EvidenceEntry,
   InteractionResult,
-  JsonObject,
   OperationOutcome,
   Sha256,
   TargetResult,
@@ -16,37 +16,62 @@ export interface TrajectoryHashInput {
   readonly evidence: readonly EvidenceEntry[];
 }
 
-function stableError(error: ErrorEnvelope): unknown {
+type EvidenceSequenceMap = ReadonlyMap<number, number>;
+
+function mappedSequence(sequence: number | undefined, sequences: EvidenceSequenceMap): number | undefined {
+  return sequence === undefined ? undefined : sequences.get(sequence);
+}
+
+function stableAssertionResult(result: AssertionResult, sequences: EvidenceSequenceMap): unknown {
+  return {
+    ...result,
+    evidenceSequences: result.evidenceSequences.flatMap((sequence) => {
+      const mapped = sequences.get(sequence);
+      return mapped === undefined ? [] : [mapped];
+    }),
+  };
+}
+
+function stableCheckpoint(checkpoint: CheckpointResult, sequences: EvidenceSequenceMap): unknown {
+  return {
+    ...checkpoint,
+    assertionResults: checkpoint.assertionResults.map((result) => stableAssertionResult(result, sequences)),
+  };
+}
+
+function stableError(error: ErrorEnvelope, sequences: EvidenceSequenceMap): unknown {
   const { correlationId: _correlationId, evidence, ...stable } = error;
-  const stableEvidence = evidence?.sequence === undefined ? undefined : { sequence: evidence.sequence };
+  const sequence = mappedSequence(evidence?.sequence, sequences);
+  const stableEvidence = sequence === undefined ? undefined : { sequence };
   return {
     ...stable,
     ...(stableEvidence === undefined ? {} : { evidence: stableEvidence }),
   };
 }
 
-function stableOutcome(outcome: OperationOutcome): unknown {
-  return outcome.error === undefined ? outcome : { ...outcome, error: stableError(outcome.error) };
+function stableOutcome(outcome: OperationOutcome, sequences: EvidenceSequenceMap): unknown {
+  return outcome.error === undefined ? outcome : { ...outcome, error: stableError(outcome.error, sequences) };
 }
 
-function stableTargetResult(result: TargetResult): unknown {
+function stableTargetResult(result: TargetResult, sequences: EvidenceSequenceMap): unknown {
   const { attachments: _attachments, ...stable } = result;
-  return result.error === undefined ? stable : { ...stable, error: stableError(result.error) };
+  return result.error === undefined ? stable : { ...stable, error: stableError(result.error, sequences) };
 }
 
-function stableLifecycleDetails(details: JsonObject | undefined): unknown {
-  if (details === undefined) return undefined;
+function stableEvidenceEntry(entry: EvidenceEntry, sequences: EvidenceSequenceMap): unknown {
   const {
-    artifactHash: _artifactHash,
-    parentWorldInstanceId: _parentWorldInstanceId,
-    sourceArtifactHash: _sourceArtifactHash,
-    ...stable
-  } = details;
-  return Object.keys(stable).length === 0 ? undefined : stable;
-}
-
-function stableEvidenceEntry(entry: EvidenceEntry): unknown {
-  const { correlationId: _correlationId, transactionId: _transactionId, ...stable } = entry;
+    causeSequence,
+    correlationId: _correlationId,
+    sequence,
+    transactionId: _transactionId,
+    ...fields
+  } = entry;
+  const normalizedCauseSequence = mappedSequence(causeSequence, sequences);
+  const stable: Record<string, unknown> = {
+    ...fields,
+    sequence: sequences.get(sequence),
+    ...(normalizedCauseSequence === undefined ? {} : { causeSequence: normalizedCauseSequence }),
+  };
   if (entry.kind === "operation") {
     const {
       actorBindingId: _actorBindingId,
@@ -55,29 +80,21 @@ function stableEvidenceEntry(entry: EvidenceEntry): unknown {
       idempotencyKey: _idempotencyKey,
       ...invocation
     } = entry.invocation;
+    const replayedFromSequence = mappedSequence(entry.replayedFromSequence, sequences);
+    const { replayedFromSequence: _replayedFromSequence, ...operation } = stable;
     return {
-      ...stable,
+      ...operation,
       invocation,
-      outcome: stableOutcome(entry.outcome),
-    };
-  }
-  if (entry.kind === "lifecycle") {
-    const stableDetails = stableLifecycleDetails(entry.details);
-    const {
-      actorBindingId: _actorBindingId,
-      details: _details,
-      worldInstanceId: _worldInstanceId,
-      snapshotId: _snapshotId,
-      ...lifecycle
-    } = stable;
-    return {
-      ...lifecycle,
-      ...(stableDetails === undefined ? {} : { details: stableDetails }),
+      outcome: stableOutcome(entry.outcome, sequences),
+      ...(replayedFromSequence === undefined ? {} : { replayedFromSequence }),
     };
   }
   if (entry.kind === "callback") {
     const { durationMs: _durationMs, ...callback } = stable;
     return callback;
+  }
+  if (entry.kind === "verification") {
+    return { ...stable, result: stableAssertionResult(entry.result, sequences) };
   }
   return stable;
 }
@@ -87,13 +104,19 @@ function stableEvidenceEntry(entry: EvidenceEntry): unknown {
  * Integrity remains covered separately by the exact evidence hash.
  */
 export function trajectoryHash(input: TrajectoryHashInput): Sha256 {
+  // World lifecycle rows describe how a runtime materialized, snapshotted,
+  // reset, forked, or closed the substrate. They remain in exact evidence but
+  // are not agent/world behavior: local and hosted operation may legitimately
+  // perform different lifecycle plumbing around the same drill.
+  const evidence = input.evidence.filter((entry) => entry.kind !== "lifecycle");
+  const sequences = new Map(evidence.map((entry, index) => [entry.sequence, index + 1]));
   return semanticHash({
     schemaVersion: 1,
     interactions: input.interactions.map((interaction) => ({
       ...interaction,
-      targetResult: stableTargetResult(interaction.targetResult),
+      targetResult: stableTargetResult(interaction.targetResult, sequences),
     })),
-    checkpoints: input.checkpoints,
-    evidence: input.evidence.map(stableEvidenceEntry),
+    checkpoints: input.checkpoints.map((checkpoint) => stableCheckpoint(checkpoint, sequences)),
+    evidence: evidence.map((entry) => stableEvidenceEntry(entry, sequences)),
   });
 }

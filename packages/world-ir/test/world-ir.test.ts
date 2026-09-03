@@ -1,4 +1,4 @@
-import { EvidenceEntrySchema } from "@firedrill/contracts";
+import { CheckpointResultSchema, EvidenceEntrySchema } from "@firedrill/contracts";
 import { describe, expect, it } from "vitest";
 import {
   BuildIdentitySchema,
@@ -448,6 +448,53 @@ describe("behavioral trajectory identity", () => {
     });
     expect(trajectoryHash({ interactions: [], checkpoints: [], evidence: [firstSnapshot] })).toBe(
       trajectoryHash({ interactions: [], checkpoints: [], evidence: [secondSnapshot] }),
+    );
+
+    if (second.kind !== "operation") throw new Error("operation fixture parsed to the wrong evidence kind");
+    const shiftedOperation = EvidenceEntrySchema.parse({
+      ...second,
+      sequence: 2,
+      transactionId: "txn_compare03",
+      correlationId: "corr_compare03",
+      invocation: {
+        ...second.invocation,
+        callId: "call_compare03",
+        correlationId: "corr_compare03",
+        idempotencyKey: "call_compare03-key",
+      },
+    });
+    const checkpoint = (evidenceSequence: number) =>
+      CheckpointResultSchema.parse({
+        schemaVersion: 1,
+        checkpointId: "final",
+        kind: "final",
+        virtualTimeUs: 10,
+        verdict: "passed",
+        assertionResults: [
+          {
+            schemaVersion: 1,
+            assertionId: "operation-observed",
+            kind: "operation.count",
+            status: "passed",
+            gate: true,
+            message: "operation count matched",
+            expected: { operator: "equals", value: 1 },
+            actual: 1,
+            location: {
+              subject: "operation",
+              operations: [{ packageId: "reservations", operationId: "slots.reserve" }],
+            },
+            diff: { operator: "equals", matched: true, details: {} },
+            evidenceSequences: [evidenceSequence],
+          },
+        ],
+      });
+    expect(trajectoryHash({ interactions: [], checkpoints: [checkpoint(1)], evidence: [first] })).toBe(
+      trajectoryHash({
+        interactions: [],
+        checkpoints: [checkpoint(2)],
+        evidence: [firstSnapshot, shiftedOperation],
+      }),
     );
   });
 });
