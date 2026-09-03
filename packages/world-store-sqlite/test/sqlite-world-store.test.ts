@@ -283,6 +283,91 @@ describe("SQLite world transactions", () => {
     reopened.close();
   });
 
+  it("keeps scheduled and callback identities independent of lifecycle evidence", () => {
+    const directory = temporaryDirectory();
+    const direct = createStore(directory, "direct.sqlite");
+    const lifecycleShifted = createStore(directory, "lifecycle-shifted.sqlite");
+    lifecycleShifted.createSnapshot(
+      join(directory, "lifecycle-shifted.snapshot.sqlite"),
+      "corr_snapshot_shift",
+    );
+
+    const exercise = (store: SqliteWorldStore, correlationId: `corr_${string}`) =>
+      store.transact(correlationId, (transaction) => {
+        const payload = { itemId: "event_1" };
+        const scheduledEventId = transaction.scheduleEvent(
+          { packageId: "calendar", eventId: "reminder.due" },
+          payload,
+          2_000,
+          "actor_primary",
+        );
+        const callbackDeliveryId = transaction.enqueueCallback({
+          callback: { packageId: "calendar", callbackId: "notify-application" },
+          receiverId: "application",
+          event: { packageId: "calendar", eventId: "item.changed" },
+          payload,
+          eventSequence: transaction.primarySequence,
+          dueUs: transaction.virtualTimeUs,
+          actorBindingId: "actor_primary",
+          retryDelaysUs: [],
+        });
+        return {
+          value: { callbackDeliveryId, scheduledEventId },
+          primary: {
+            kind: "event" as const,
+            event: { packageId: "calendar", eventId: "item.changed" },
+            phase: "emitted" as const,
+            payload,
+          },
+        };
+      }).value;
+
+    expect(lifecycleShifted.latestEvidenceSequence()).toBe(direct.latestEvidenceSequence() + 1);
+    expect(exercise(direct, "corr_direct_identity")).toEqual(
+      exercise(lifecycleShifted, "corr_shifted_identity"),
+    );
+
+    direct.close();
+    lifecycleShifted.close();
+  });
+
+  it("rolls runtime identity counters back with a failed transaction", () => {
+    const directory = temporaryDirectory();
+    const store = createStore(directory);
+    expect(() =>
+      store.transact("corr_identity_rollback", (transaction) => {
+        transaction.scheduleEvent(
+          { packageId: "calendar", eventId: "reminder.due" },
+          { itemId: "discarded" },
+          2_000,
+          "actor_primary",
+        );
+        throw new Error("discard scheduled identity");
+      }),
+    ).toThrow(/discard scheduled identity/);
+
+    const scheduledEventId = store.transact("corr_identity_commit", (transaction) => {
+      const id = transaction.scheduleEvent(
+        { packageId: "calendar", eventId: "reminder.due" },
+        { itemId: "committed" },
+        2_000,
+        "actor_primary",
+      );
+      return {
+        value: id,
+        primary: {
+          kind: "lifecycle" as const,
+          action: "world_reset" as const,
+          worldInstanceId: "world_store01" as const,
+          details: { scope: "identity-test" },
+        },
+      };
+    }).value;
+
+    expect(scheduledEventId).toBe("pending_world_0000000000001");
+    store.close();
+  });
+
   it("rolls back state and secondary evidence when transaction behavior crashes", () => {
     const directory = temporaryDirectory();
     const store = createStore(directory);

@@ -497,4 +497,48 @@ describe("behavioral trajectory identity", () => {
       }),
     );
   });
+
+  it("normalizes opaque scheduled-event and callback-delivery identities", () => {
+    const scheduled = (sequence: number, scheduledEventId: string) =>
+      EvidenceEntrySchema.parse({
+        schemaVersion: 1,
+        kind: "event",
+        sequence,
+        transactionId: `txn_scheduled${sequence}`,
+        transactionIndex: 0,
+        transactionSize: 1,
+        virtualTimeUs: 10,
+        correlationId: `corr_scheduled${sequence}`,
+        event: { packageId: "reservations", eventId: "slot.released" },
+        phase: "scheduled",
+        payload: { slot: "morning" },
+        scheduledEventId,
+        scheduledForUs: 20,
+      });
+    const callback = (sequence: number, deliveryId: string) =>
+      EvidenceEntrySchema.parse({
+        schemaVersion: 1,
+        kind: "callback",
+        sequence,
+        transactionId: `txn_callback${sequence}`,
+        transactionIndex: 0,
+        transactionSize: 1,
+        virtualTimeUs: 10,
+        correlationId: `corr_callback${sequence}`,
+        callback: { packageId: "reservations", callbackId: "notify-release" },
+        deliveryId,
+        receiverId: "application",
+        event: { packageId: "reservations", eventId: "slot.released" },
+        phase: "queued",
+        idempotencyKey: deliveryId,
+        scheduledForUs: 10,
+      });
+
+    const first = [scheduled(1, "pending_00000001_0001"), callback(2, "delivery_00000002_0001")];
+    const shifted = [scheduled(7, "pending_00000007_0001"), callback(8, "delivery_00000008_0001")];
+    expect(semanticHash(first)).not.toBe(semanticHash(shifted));
+    expect(trajectoryHash({ interactions: [], checkpoints: [], evidence: first })).toBe(
+      trajectoryHash({ interactions: [], checkpoints: [], evidence: shifted }),
+    );
+  });
 });

@@ -17,9 +17,14 @@ export interface TrajectoryHashInput {
 }
 
 type EvidenceSequenceMap = ReadonlyMap<number, number>;
+type OpaqueIdentityMap = ReadonlyMap<string, number>;
 
 function mappedSequence(sequence: number | undefined, sequences: EvidenceSequenceMap): number | undefined {
   return sequence === undefined ? undefined : sequences.get(sequence);
+}
+
+function mappedIdentity(value: string | undefined, identities: OpaqueIdentityMap): number | undefined {
+  return value === undefined ? undefined : identities.get(value);
 }
 
 function stableAssertionResult(result: AssertionResult, sequences: EvidenceSequenceMap): unknown {
@@ -58,7 +63,12 @@ function stableTargetResult(result: TargetResult, sequences: EvidenceSequenceMap
   return result.error === undefined ? stable : { ...stable, error: stableError(result.error, sequences) };
 }
 
-function stableEvidenceEntry(entry: EvidenceEntry, sequences: EvidenceSequenceMap): unknown {
+function stableEvidenceEntry(
+  entry: EvidenceEntry,
+  sequences: EvidenceSequenceMap,
+  scheduledEvents: OpaqueIdentityMap,
+  callbackDeliveries: OpaqueIdentityMap,
+): unknown {
   const {
     causeSequence,
     correlationId: _correlationId,
@@ -89,9 +99,27 @@ function stableEvidenceEntry(entry: EvidenceEntry, sequences: EvidenceSequenceMa
       ...(replayedFromSequence === undefined ? {} : { replayedFromSequence }),
     };
   }
+  if (entry.kind === "event") {
+    const { scheduledEventId: _scheduledEventId, ...event } = stable;
+    const scheduledEventId = mappedIdentity(entry.scheduledEventId, scheduledEvents);
+    return {
+      ...event,
+      ...(scheduledEventId === undefined ? {} : { scheduledEventId }),
+    };
+  }
   if (entry.kind === "callback") {
-    const { durationMs: _durationMs, ...callback } = stable;
-    return callback;
+    const {
+      deliveryId: _deliveryId,
+      durationMs: _durationMs,
+      idempotencyKey: _idempotencyKey,
+      ...callback
+    } = stable;
+    const deliveryId = mappedIdentity(entry.deliveryId, callbackDeliveries);
+    return {
+      ...callback,
+      ...(deliveryId === undefined ? {} : { deliveryId }),
+      idempotencyKey: entry.idempotencyKey === entry.deliveryId ? deliveryId : entry.idempotencyKey,
+    };
   }
   if (entry.kind === "verification") {
     return { ...stable, result: stableAssertionResult(entry.result, sequences) };
@@ -110,6 +138,18 @@ export function trajectoryHash(input: TrajectoryHashInput): Sha256 {
   // perform different lifecycle plumbing around the same drill.
   const evidence = input.evidence.filter((entry) => entry.kind !== "lifecycle");
   const sequences = new Map(evidence.map((entry, index) => [entry.sequence, index + 1]));
+  const scheduledEvents = new Map<string, number>();
+  const callbackDeliveries = new Map<string, number>();
+  for (const entry of evidence) {
+    if (entry.kind === "event" && entry.scheduledEventId !== undefined) {
+      if (!scheduledEvents.has(entry.scheduledEventId)) {
+        scheduledEvents.set(entry.scheduledEventId, scheduledEvents.size + 1);
+      }
+    }
+    if (entry.kind === "callback" && !callbackDeliveries.has(entry.deliveryId)) {
+      callbackDeliveries.set(entry.deliveryId, callbackDeliveries.size + 1);
+    }
+  }
   return semanticHash({
     schemaVersion: 1,
     interactions: input.interactions.map((interaction) => ({
@@ -117,6 +157,8 @@ export function trajectoryHash(input: TrajectoryHashInput): Sha256 {
       targetResult: stableTargetResult(interaction.targetResult, sequences),
     })),
     checkpoints: input.checkpoints.map((checkpoint) => stableCheckpoint(checkpoint, sequences)),
-    evidence: evidence.map((entry) => stableEvidenceEntry(entry, sequences)),
+    evidence: evidence.map((entry) =>
+      stableEvidenceEntry(entry, sequences, scheduledEvents, callbackDeliveries),
+    ),
   });
 }

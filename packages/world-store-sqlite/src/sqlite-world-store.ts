@@ -162,6 +162,8 @@ export class SqliteWorldStore implements WorldStore {
           ["virtual_time_us", String(virtualTimeUs)],
           ["random_state", seed],
           ["random_draws", "0"],
+          ["scheduled_event_id_counter", "0"],
+          ["callback_delivery_id_counter", "0"],
         ] as const) {
           insertMeta.run(key, value);
         }

@@ -198,8 +198,6 @@ export class SqliteWorldTransaction implements WorldTransaction {
   private active = true;
   private currentVirtualTimeUs: VirtualTime;
   private readonly secondaryEvidence: InternalEvidenceDraft[] = [];
-  private scheduledEventCount = 0;
-  private callbackDeliveryCount = 0;
 
   constructor(
     private readonly database: Database.Database,
@@ -421,10 +419,8 @@ export class SqliteWorldTransaction implements WorldTransaction {
     const parsedDue = VirtualTimeSchema.parse(dueUs);
     const parsedActorBindingId = ActorBindingIdSchema.parse(actorBindingId);
     if (parsedDue < this.virtualTimeUs) throw new RangeError("cannot schedule an event in the past");
-    this.scheduledEventCount += 1;
-    const id = ScheduledEventIdSchema.parse(
-      `pending_${this.primarySequence.toString(36).padStart(8, "0")}_${String(this.scheduledEventCount).padStart(4, "0")}`,
-    );
+    const identity = this.nextRuntimeIdentity("scheduled_event_id_counter", "scheduled event");
+    const id = ScheduledEventIdSchema.parse(`pending_world_${identity.toString(36).padStart(13, "0")}`);
     this.database
       .prepare(
         `INSERT INTO scheduled_events
@@ -503,10 +499,8 @@ export class SqliteWorldTransaction implements WorldTransaction {
     }
     if (dueUs < this.virtualTimeUs) throw new RangeError("cannot queue a callback in the past");
 
-    this.callbackDeliveryCount += 1;
-    const id = CallbackDeliveryIdSchema.parse(
-      `delivery_${this.primarySequence.toString(36).padStart(8, "0")}_${String(this.callbackDeliveryCount).padStart(4, "0")}`,
-    );
+    const identity = this.nextRuntimeIdentity("callback_delivery_id_counter", "callback delivery");
+    const id = CallbackDeliveryIdSchema.parse(`delivery_world_${identity.toString(36).padStart(13, "0")}`);
     this.database
       .prepare(
         `INSERT INTO callback_deliveries
@@ -820,6 +814,22 @@ export class SqliteWorldTransaction implements WorldTransaction {
     this.assertActive();
     const changed = this.database.prepare("UPDATE world_meta SET value = ? WHERE key = ?").run(value, key);
     if (changed.changes !== 1) throw new Error(`world metadata ${key} is missing`);
+  }
+
+  private nextRuntimeIdentity(key: string, label: string): bigint {
+    this.assertActive();
+    this.database.prepare("INSERT OR IGNORE INTO world_meta (key, value) VALUES (?, '0')").run(key);
+    const encoded = this.meta(key);
+    if (!/^(0|[1-9]\d*)$/.test(encoded)) {
+      throw new Error(`world metadata ${key} is not a valid counter`);
+    }
+    const current = BigInt(encoded);
+    if (current >= 0xffff_ffff_ffff_ffffn) {
+      throw new RangeError(`${label} identity space is exhausted`);
+    }
+    const next = current + 1n;
+    this.setMeta(key, next.toString());
+    return next;
   }
 
   private requireCallback(id: CallbackDeliveryId): CallbackDelivery {
