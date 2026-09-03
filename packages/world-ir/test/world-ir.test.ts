@@ -410,5 +410,44 @@ describe("behavioral trajectory identity", () => {
     expect(trajectoryHash({ interactions: [], checkpoints: [], evidence: [differentActor] })).not.toBe(
       trajectoryHash({ interactions: [], checkpoints: [], evidence: [first] }),
     );
+
+    const lifecycle = (input: {
+      correlationId: string;
+      transactionId: string;
+      worldInstanceId: string;
+      snapshotId: string;
+      artifactHash: string;
+    }) =>
+      EvidenceEntrySchema.parse({
+        schemaVersion: 1,
+        kind: "lifecycle",
+        sequence: 1,
+        transactionId: input.transactionId,
+        transactionIndex: 0,
+        transactionSize: 1,
+        virtualTimeUs: 10,
+        correlationId: input.correlationId,
+        action: "snapshot_created",
+        worldInstanceId: input.worldInstanceId,
+        snapshotId: input.snapshotId,
+        details: { artifactHash: input.artifactHash },
+      });
+    const firstSnapshot = lifecycle({
+      correlationId: "corr_snapshot01",
+      transactionId: "txn_snapshot01",
+      worldInstanceId: "world_snapshot01",
+      snapshotId: "snap_snapshot01",
+      artifactHash: HASH_A,
+    });
+    const secondSnapshot = lifecycle({
+      correlationId: "corr_snapshot02",
+      transactionId: "txn_snapshot02",
+      worldInstanceId: "world_snapshot02",
+      snapshotId: "snap_snapshot02",
+      artifactHash: HASH_B,
+    });
+    expect(trajectoryHash({ interactions: [], checkpoints: [], evidence: [firstSnapshot] })).toBe(
+      trajectoryHash({ interactions: [], checkpoints: [], evidence: [secondSnapshot] }),
+    );
   });
 });

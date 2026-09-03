@@ -3,6 +3,7 @@ import type {
   ErrorEnvelope,
   EvidenceEntry,
   InteractionResult,
+  JsonObject,
   OperationOutcome,
   Sha256,
   TargetResult,
@@ -33,6 +34,17 @@ function stableTargetResult(result: TargetResult): unknown {
   return result.error === undefined ? stable : { ...stable, error: stableError(result.error) };
 }
 
+function stableLifecycleDetails(details: JsonObject | undefined): unknown {
+  if (details === undefined) return undefined;
+  const {
+    artifactHash: _artifactHash,
+    parentWorldInstanceId: _parentWorldInstanceId,
+    sourceArtifactHash: _sourceArtifactHash,
+    ...stable
+  } = details;
+  return Object.keys(stable).length === 0 ? undefined : stable;
+}
+
 function stableEvidenceEntry(entry: EvidenceEntry): unknown {
   const { correlationId: _correlationId, transactionId: _transactionId, ...stable } = entry;
   if (entry.kind === "operation") {
@@ -50,13 +62,18 @@ function stableEvidenceEntry(entry: EvidenceEntry): unknown {
     };
   }
   if (entry.kind === "lifecycle") {
+    const stableDetails = stableLifecycleDetails(entry.details);
     const {
       actorBindingId: _actorBindingId,
+      details: _details,
       worldInstanceId: _worldInstanceId,
       snapshotId: _snapshotId,
       ...lifecycle
     } = stable;
-    return lifecycle;
+    return {
+      ...lifecycle,
+      ...(stableDetails === undefined ? {} : { details: stableDetails }),
+    };
   }
   if (entry.kind === "callback") {
     const { durationMs: _durationMs, ...callback } = stable;
