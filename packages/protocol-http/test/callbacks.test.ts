@@ -9,7 +9,7 @@ import { defineTool } from "@firedrill/tool-sdk";
 import { WorldKernel } from "@firedrill/world-kernel";
 import { SqliteWorldStore } from "@firedrill/world-store-sqlite";
 import { afterEach, describe, expect, it } from "vitest";
-import type { CallbackDispatcherOptions, CallbackTransport } from "../src/index.js";
+import type { CallbackDispatcherOptions, CallbackTransport, CallbackTransportContext } from "../src/index.js";
 import {
   CallbackDispatcher,
   MAX_CALLBACK_HEADER_BYTES,
@@ -350,6 +350,119 @@ describe("outbound callback delivery", () => {
       response: { status: 302 },
       error: { code: "framework.CALLBACK_HTTP_REJECTED" },
     });
+    fixture.store.close();
+  });
+
+  it("preserves the ordinary two-argument test fetch call", async () => {
+    const fixture = world();
+    let requests = 0;
+    const baseUrl = await receiver((_request, response) => {
+      requests += 1;
+      response.writeHead(204);
+      response.end();
+    });
+    fixture.invoke();
+    const dispatcher = new CallbackDispatcher({
+      store: fixture.store,
+      tools: [fixture.installed],
+      receivers: { application: { baseUrl, secret: "callback-secret" } },
+      fetch: (...args: Parameters<typeof globalThis.fetch>) => {
+        expect(args).toHaveLength(2);
+        return globalThis.fetch(...args);
+      },
+    });
+    expect(await dispatcher.dispatchDue()).toMatchObject({ outcomes: [{ status: "delivered" }] });
+    expect(requests).toBe(1);
+    fixture.store.close();
+  });
+
+  it("supplies immutable receiver context for independent same-origin attempts and retries", async () => {
+    const fixture = world([1_000], {
+      encode: (input) => {
+        // Mutating the codec's input or naming a receiver in HTTP data cannot
+        // change the independent context derived from the durable delivery.
+        Reflect.set(input, "receiverId", "forged-receiver");
+        return {
+          headers: { "x-receiver-id": "forged-receiver" },
+          body: { kind: "json", value: { receiverId: "forged-receiver" } },
+        };
+      },
+    });
+    const contract = fixture.installed.manifest.callbacks[0];
+    const codec = fixture.installed.callbacks["notify-application"];
+    if (contract === undefined || codec === undefined) throw new Error("fixture callback missing");
+    const installed = defineTool({
+      manifest: {
+        ...fixture.installed.manifest,
+        callbacks: [contract, { ...contract, id: "notify-secondary", receiverId: "secondary" }],
+      },
+      operations: fixture.installed.operations,
+      callbacks: { ...fixture.installed.callbacks, "notify-secondary": codec },
+    });
+    const kernel = new WorldKernel({ store: fixture.store, packageLockHash: HASH_B, tools: [installed] });
+    kernel.invoke({
+      schemaVersion: 1,
+      callId: "call_receiver_context",
+      correlationId: "corr_receiver_context",
+      operation: { packageId: "work-items", operationId: "items.complete" },
+      actorBindingId: "actor_callback",
+      arguments: { itemId: "item_42" },
+    });
+    const received: ReceivedCallback[] = [];
+    let retry = false;
+    const baseUrl = await receiver((request, response, body) => {
+      received.push({ path: request.url ?? "", headers: request.headers, body });
+      response.writeHead(retry ? 204 : 503);
+      response.end();
+    });
+    const contexts: CallbackTransportContext[] = [];
+    const urls: string[] = [];
+    const dispatcher = new CallbackDispatcher({
+      store: fixture.store,
+      tools: [installed],
+      receivers: {
+        application: { baseUrl, secret: "callback-secret" },
+        secondary: { baseUrl, secret: "callback-secret" },
+      },
+      idempotencyScope: "receiver-context-execution",
+      transport: {
+        authorizeOrigin: ({ receiverId, origin }) =>
+          ["application", "secondary"].includes(receiverId) && origin === baseUrl,
+        fetch: async (input, init, context) => {
+          if (context === undefined) throw new Error("receiver context missing");
+          expect(Object.isFrozen(context)).toBe(true);
+          expect(Reflect.set(context, "receiverId", "forged-receiver")).toBe(false);
+          expect(Reflect.set(context, "extra", "forged-value")).toBe(false);
+          contexts.push(context);
+          urls.push(String(input));
+          if (retry && context.receiverId === "application") throw new Error("receiver no longer approved");
+          return globalThis.fetch(input, init);
+        },
+      },
+    });
+    expect(await dispatcher.dispatchDue()).toMatchObject({
+      outcomes: [{ status: "retry_scheduled" }, { status: "retry_scheduled" }],
+    });
+    retry = true;
+    kernel.advanceTime(1_000, { correlationId: "corr_receiver_retry", maxEvents: 0 });
+    const result = await dispatcher.dispatchDue();
+    expect(result.outcomes.map((outcome) => outcome.status).sort()).toEqual(["delivered", "failed"]);
+    expect(contexts.map((context) => context.receiverId).sort()).toEqual([
+      "application",
+      "application",
+      "secondary",
+      "secondary",
+    ]);
+    expect(contexts.every((context) => Object.keys(context).join() === "receiverId")).toBe(true);
+    expect(new Set(contexts).size).toBe(4);
+    expect(urls).toEqual(Array.from({ length: 4 }, () => `${baseUrl}/hooks/items`));
+    expect(received).toHaveLength(3);
+    for (const request of received) {
+      expect(request.headers["x-receiver-id"]).toBe("forged-receiver");
+      expect(JSON.parse(request.body.toString("utf8"))).toEqual({ receiverId: "forged-receiver" });
+    }
+    expect(fixture.store.listCallbackDeliveries("delivered")).toMatchObject([{ receiverId: "secondary" }]);
+    expect(fixture.store.listCallbackDeliveries("failed")).toMatchObject([{ receiverId: "application" }]);
     fixture.store.close();
   });
 
@@ -821,6 +934,8 @@ describe("outbound callback delivery", () => {
     { headers: { "x-firedrill-signature": "spoofed" }, body: { kind: "empty" as const } },
     { headers: { host: "example.invalid" }, body: { kind: "empty" as const } },
     { url: "https://example.invalid", body: { kind: "empty" as const } },
+    { receiverId: "forged-receiver", body: { kind: "empty" as const } },
+    { context: { receiverId: "forged-receiver" }, body: { kind: "empty" as const } },
   ])("does not let a codec override destination or delivery headers: %j", async (encoded) => {
     const fixture = world([], { encode: () => encoded });
     let requests = 0;

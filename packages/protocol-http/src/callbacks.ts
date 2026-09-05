@@ -50,6 +50,11 @@ export interface CallbackReceiver {
   readonly secret?: string;
 }
 
+/** Dispatcher-owned delivery context, passed separately from codec-controlled HTTP data. */
+export interface CallbackTransportContext {
+  readonly receiverId: string;
+}
+
 /** An explicitly owned network edge, never supplied by a Tool callback codec. */
 export interface CallbackTransport {
   /** Selects an approved origin for this receiver. Anything other than true fails closed. */
@@ -58,9 +63,15 @@ export interface CallbackTransport {
    * Enforces destination/network policy on every connection, including DNS resolution.
    * Must honor the abort signal and reject redirects. Its fetch rejection and response
    * body completion/cancellation must await cleanup of active I/O. Origin selection
-   * alone is not a network-isolation boundary.
+   * alone is not a network-isolation boundary. The dispatcher supplies a frozen context
+   * on every attempt; implementations needing receiver identity must reject its absence.
+   * Ordinary fetch implementations remain assignable and may ignore the third argument.
    */
-  readonly fetch: typeof globalThis.fetch;
+  readonly fetch: (
+    input: Parameters<typeof globalThis.fetch>[0],
+    init?: RequestInit,
+    context?: CallbackTransportContext,
+  ) => Promise<Response>;
 }
 
 export interface CallbackDispatcherOptions {
@@ -484,7 +495,7 @@ export class CallbackDispatcher {
             authorizeOrigin: options.transport.authorizeOrigin.bind(options.transport),
             fetch: options.transport.fetch.bind(options.transport),
           });
-    this.fetchImplementation = this.transport?.fetch ?? options.fetch ?? globalThis.fetch;
+    this.fetchImplementation = options.fetch ?? globalThis.fetch;
     for (const tool of options.tools) {
       for (const contract of tool.manifest.callbacks) {
         const key = runtimeKey(tool.manifest.id, contract.id);
@@ -610,13 +621,21 @@ export class CallbackDispatcher {
       const requestSignal =
         signal === undefined ? controller.signal : AbortSignal.any([signal, controller.signal]);
       try {
-        const received = await this.fetchImplementation(prepared.url, {
+        const request: RequestInit = {
           method: runtime.contract.method,
           headers: prepared.headers,
           body: prepared.body,
           redirect: "manual",
           signal: requestSignal,
-        });
+        };
+        const received =
+          this.transport === undefined
+            ? await this.fetchImplementation(prepared.url, request)
+            : await this.transport.fetch(
+                prepared.url,
+                request,
+                Object.freeze({ receiverId: delivery.receiverId }),
+              );
         if (received.redirected) {
           await received.body?.cancel();
           throw new Error("callback transport followed a redirect");
