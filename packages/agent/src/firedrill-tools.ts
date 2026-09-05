@@ -1,11 +1,16 @@
+import { createSdkMcpServer, tool } from "@anthropic-ai/claude-agent-sdk";
 import { compileWorld, formatWorldSources } from "@firedrill/compiler";
 import { FIREDRILL_FRAMEWORK_VERSION } from "@firedrill/contracts";
 import { FiredrillProjectError, inspectTool, runDrills, testTool, validateTool } from "@firedrill/sdk";
-import { createSdkMcpServer, tool } from "@anthropic-ai/claude-agent-sdk";
 import { z } from "zod";
 import { listRepositoryFiles, searchRepository } from "./repository-inspection.js";
 
 const MAX_TOOL_TEXT = 120_000;
+
+export interface FiredrillAuthoringPolicy {
+  /** Defaults to true. Disable when repository code must not be run by the authoring session. */
+  readonly allowRepositoryExecution?: boolean;
+}
 
 function textResult(value: unknown, isError = false) {
   const serialized = JSON.stringify(value, null, 2);
@@ -70,8 +75,11 @@ function planSummary(build: Awaited<ReturnType<typeof compileWorld>>) {
   };
 }
 
-export function createFiredrillAuthoringTools(repositoryRoot: string) {
-  return [
+export function createFiredrillAuthoringTools(repositoryRoot: string, policy: FiredrillAuthoringPolicy = {}) {
+  if (policy.allowRepositoryExecution !== undefined && typeof policy.allowRepositoryExecution !== "boolean") {
+    throw new TypeError("allowRepositoryExecution must be a boolean");
+  }
+  const tools = [
     tool(
       "repository_files",
       "List ordinary repository files without traversing secrets, generated evidence, dependencies, or symlinks.",
@@ -256,15 +264,38 @@ export function createFiredrillAuthoringTools(repositoryRoot: string) {
       },
     ),
   ];
+  if (policy.allowRepositoryExecution !== false) return tools;
+  // Return a registry with no execution handler, not merely a prompt asking the
+  // model to avoid one. Tool inspection is source-only; validate/test load code.
+  const inspectInput = { toolId: z.string().min(1), check: z.literal("inspect") };
+  const inspectOnly = tool(
+    "tool_check",
+    "Inspect one selected Firedrill Tool without loading or executing its behavior.",
+    inspectInput,
+    async (untrusted) => {
+      try {
+        const { toolId } = z.object(inspectInput).strict().parse(untrusted);
+        return textResult(await inspectTool({ root: repositoryRoot, toolId }));
+      } catch (error) {
+        return failure(error);
+      }
+    },
+  );
+  return [...tools.filter((item) => item.name !== "run" && item.name !== "tool_check"), inspectOnly];
 }
 
-export function createFiredrillAuthoringServer(repositoryRoot: string) {
+export function createFiredrillAuthoringServer(
+  repositoryRoot: string,
+  policy: FiredrillAuthoringPolicy = {},
+) {
   return createSdkMcpServer({
     name: "firedrill",
     version: FIREDRILL_FRAMEWORK_VERSION,
     instructions:
-      "Use these tools instead of a shell for Firedrill validation, formatting, planning, Tool checks, and drill execution. Treat their structured results as authoritative.",
+      policy.allowRepositoryExecution === false
+        ? "Use these tools for source-only authoring, compilation, formatting, planning, and Tool inspection. Repository execution is disabled; do not claim drills or executable checks ran."
+        : "Use these tools instead of a shell for Firedrill validation, formatting, planning, Tool checks, and drill execution. Treat their structured results as authoritative.",
     alwaysLoad: true,
-    tools: createFiredrillAuthoringTools(repositoryRoot),
+    tools: createFiredrillAuthoringTools(repositoryRoot, policy),
   });
 }

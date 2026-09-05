@@ -5,7 +5,7 @@ import { fileURLToPath } from "node:url";
 import type { EffortLevel, SDKMessage } from "@anthropic-ai/claude-agent-sdk";
 import { query } from "@anthropic-ai/claude-agent-sdk";
 import { FIREDRILL_FRAMEWORK_VERSION } from "@firedrill/contracts";
-import { createFiredrillAuthoringServer } from "./firedrill-tools.js";
+import { createFiredrillAuthoringServer, type FiredrillAuthoringPolicy } from "./firedrill-tools.js";
 import { repositoryGuardHook } from "./repository-policy.js";
 
 export type FiredrillAgentEffort = Extract<EffortLevel, "low" | "medium" | "high" | "xhigh" | "max">;
@@ -16,7 +16,7 @@ export type FiredrillAgentEvent =
   | { readonly type: "tool"; readonly name: string }
   | { readonly type: "diagnostic"; readonly message: string };
 
-export interface RunFiredrillAgentOptions {
+export interface RunFiredrillAgentOptions extends FiredrillAuthoringPolicy {
   readonly root?: string;
   readonly prompt?: string;
   readonly model?: string;
@@ -66,7 +66,7 @@ function skillDirectory(): string {
   throw new FiredrillAgentError("agent.EXECUTION_FAILED", "the canonical Firedrill skill is missing");
 }
 
-function canonicalInstructions(): string {
+function canonicalInstructions(allowRepositoryExecution: boolean): string {
   const directory = skillDirectory();
   const skill = readFileSync(resolve(directory, "SKILL.md"), "utf8");
   const authoring = readFileSync(resolve(directory, "references/authoring.md"), "utf8");
@@ -85,19 +85,47 @@ function canonicalInstructions(): string {
     authoring,
     "\n--- BINDING REFERENCE ---\n",
     bindings,
+    ...(allowRepositoryExecution
+      ? []
+      : [
+          "\n--- THIS SESSION'S EXECUTION POLICY ---\n",
+          "Repository execution is disabled for this authoring session. Author and compile source only. Do not run drills, Tool validation/conformance, or customer agent code; those tools are unavailable. Treat any skill execution steps as handoff instructions for the repository owner. Report what was compiled and what still needs execution, never claim a runtime result.",
+        ]),
   ].join("\n");
 }
 
-function defaultPrompt(): string {
+function defaultPrompt(allowRepositoryExecution: boolean): string {
   return [
     "Set up or repair Firedrill in this repository and carry the canonical skill to its definition of done.",
     "Start by inspecting the actual product agent, its normal entry point, and the smallest tool/client composition seam.",
-    "Author one useful domain-neutral vertical slice first, iterate machine-readable Firedrill diagnostics to green, then run the smallest real binding canary.",
+    allowRepositoryExecution
+      ? "Author one useful domain-neutral vertical slice first, iterate machine-readable Firedrill diagnostics to green, then run the smallest real binding canary."
+      : "Author one useful domain-neutral vertical slice first, iterate source-only compiler diagnostics to green, and hand off exact execution instructions without running repository code.",
     "Preserve the product agent's normal behavior. Do not stop at plans or generated files, and do not claim checks you could not execute.",
   ].join(" ");
 }
 
 function agentEnvironment(environment: Readonly<Record<string, string | undefined>>, runtimeHome: string) {
+  for (const name of ["HTTP_PROXY", "HTTPS_PROXY"] as const) {
+    const value = environment[name];
+    if (value === undefined || value === "") continue;
+    try {
+      const parsed = new URL(value);
+      if (value.length > 8_192 || /[\r\n\0]/.test(value) || !["http:", "https:"].includes(parsed.protocol))
+        throw new Error("invalid proxy");
+    } catch {
+      throw new FiredrillAgentError("agent.INVALID_OPTIONS", `${name} must be an HTTP or HTTPS proxy URL`);
+    }
+  }
+  if (
+    environment.NO_PROXY !== undefined &&
+    (environment.NO_PROXY.length > 8_192 || /[\r\n\0]/.test(environment.NO_PROXY))
+  ) {
+    throw new FiredrillAgentError("agent.INVALID_OPTIONS", "NO_PROXY is invalid");
+  }
+  if (environment.NODE_USE_ENV_PROXY !== undefined && !["0", "1"].includes(environment.NODE_USE_ENV_PROXY)) {
+    throw new FiredrillAgentError("agent.INVALID_OPTIONS", "NODE_USE_ENV_PROXY must be 0 or 1");
+  }
   const allowed = [
     "ANTHROPIC_API_KEY",
     "LANG",
@@ -108,6 +136,10 @@ function agentEnvironment(environment: Readonly<Record<string, string | undefine
     "TMP",
     "TMPDIR",
     "USER",
+    "HTTP_PROXY",
+    "HTTPS_PROXY",
+    "NO_PROXY",
+    "NODE_USE_ENV_PROXY",
   ] as const;
   return Object.fromEntries([
     ...allowed.flatMap((name) =>
@@ -117,6 +149,9 @@ function agentEnvironment(environment: Readonly<Record<string, string | undefine
     ["XDG_CONFIG_HOME", resolve(runtimeHome, "config")],
     ["CLAUDE_CONFIG_DIR", resolve(runtimeHome, ".claude")],
     ["CLAUDE_AGENT_SDK_CLIENT_APP", `firedrill-agent/${FIREDRILL_FRAMEWORK_VERSION}`],
+    ["CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC", "1"],
+    ["DISABLE_TELEMETRY", "1"],
+    ["DISABLE_ERROR_REPORTING", "1"],
   ]);
 }
 
@@ -130,6 +165,12 @@ function assistantContent(message: SDKMessage): readonly FiredrillAgentEvent[] {
 }
 
 function validatedOptions(options: RunFiredrillAgentOptions) {
+  if (
+    options.allowRepositoryExecution !== undefined &&
+    typeof options.allowRepositoryExecution !== "boolean"
+  ) {
+    throw new FiredrillAgentError("agent.INVALID_OPTIONS", "allowRepositoryExecution must be a boolean");
+  }
   const root = resolve(options.root ?? process.cwd());
   if (!existsSync(root) || !lstatSync(root).isDirectory()) {
     throw new FiredrillAgentError("agent.INVALID_REPOSITORY", `repository does not exist: ${root}`);
@@ -186,10 +227,11 @@ export async function runFiredrillAgent(
   let sessionId: string | undefined;
   let model: string | undefined;
   let result: FiredrillAgentResult | undefined;
-  const server = createFiredrillAuthoringServer(validated.root);
+  const allowRepositoryExecution = options.allowRepositoryExecution !== false;
+  const server = createFiredrillAuthoringServer(validated.root, { allowRepositoryExecution });
   try {
     const stream = query({
-      prompt: options.prompt?.trim() || defaultPrompt(),
+      prompt: options.prompt?.trim() || defaultPrompt(allowRepositoryExecution),
       options: {
         abortController: controller,
         cwd: validated.root,
@@ -208,16 +250,30 @@ export async function runFiredrillAgent(
           "mcp__firedrill__validate",
           "mcp__firedrill__format",
           "mcp__firedrill__plan",
-          "mcp__firedrill__run",
+          ...(allowRepositoryExecution ? ["mcp__firedrill__run"] : []),
           "mcp__firedrill__tool_check",
         ],
-        disallowedTools: ["Bash", "Glob", "Grep", "WebFetch", "WebSearch", "NotebookEdit", "Agent", "Task"],
+        disallowedTools: [
+          "Bash",
+          "Glob",
+          "Grep",
+          "WebFetch",
+          "WebSearch",
+          "NotebookEdit",
+          "Agent",
+          "Task",
+          ...(allowRepositoryExecution ? [] : ["mcp__firedrill__run"]),
+        ],
         permissionMode: "acceptEdits",
         settingSources: [],
         strictMcpConfig: true,
         persistSession: false,
         mcpServers: { firedrill: server },
-        systemPrompt: { type: "preset", preset: "claude_code", append: canonicalInstructions() },
+        systemPrompt: {
+          type: "preset",
+          preset: "claude_code",
+          append: canonicalInstructions(allowRepositoryExecution),
+        },
         hooks: {
           PreToolUse: [{ hooks: [repositoryGuardHook(validated.root)] }],
         },

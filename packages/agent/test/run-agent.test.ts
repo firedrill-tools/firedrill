@@ -1,6 +1,6 @@
 import { existsSync } from "node:fs";
 import type { Query, SDKMessage } from "@anthropic-ai/claude-agent-sdk";
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocked = vi.hoisted(() => ({
   calls: [] as Array<Record<string, unknown>>,
@@ -21,7 +21,44 @@ function stream(messages: readonly SDKMessage[]): Query {
   return iterable as Query;
 }
 
+beforeEach(() => {
+  mocked.query.mockReset();
+  mocked.calls.length = 0;
+});
+
 describe("Firedrill Agent runtime", () => {
+  it("removes repository execution from SDK permissions and describes the authoring-only handoff", async () => {
+    mocked.query.mockImplementationOnce((call: Record<string, unknown>) => {
+      mocked.calls.push(call);
+      return stream([
+        {
+          type: "result",
+          subtype: "success",
+          session_id: "session_source_only",
+          is_error: false,
+          num_turns: 1,
+          duration_ms: 1,
+          total_cost_usd: 0,
+          result: "Source compiled; execution remains with the caller.",
+        } as unknown as SDKMessage,
+      ]);
+    });
+    const result = await runFiredrillAgent({
+      root: process.cwd(),
+      environment: { ANTHROPIC_API_KEY: "test-key" },
+      allowRepositoryExecution: false,
+    });
+    expect(result.status).toBe("completed");
+    const call = mocked.calls.at(-1) as {
+      options: { allowedTools: string[]; disallowedTools: string[]; systemPrompt: { append: string } };
+    };
+    expect(call.options.allowedTools).not.toContain("mcp__firedrill__run");
+    expect(call.options.disallowedTools).toContain("mcp__firedrill__run");
+    expect(call.options.allowedTools).toContain("mcp__firedrill__validate");
+    expect(call.options.systemPrompt.append).toContain("Repository execution is disabled");
+    expect(call.options.systemPrompt.append).toContain("never claim a runtime result");
+  });
+
   it("requires an explicit Anthropic API key before starting the SDK", async () => {
     await expect(runFiredrillAgent({ root: process.cwd(), environment: {} })).rejects.toMatchObject({
       name: "FiredrillAgentError",
@@ -113,6 +150,7 @@ describe("Firedrill Agent runtime", () => {
       environment: {
         ANTHROPIC_API_KEY: "test-key",
         PATH: "/usr/bin",
+        HTTPS_PROXY: "http://proxy.example.test:3128",
         SHOULD_NOT_REACH_AGENT: "private",
       },
       onEvent: (event) => events.push(event),
@@ -152,6 +190,12 @@ describe("Firedrill Agent runtime", () => {
     expect(call.options.persistSession).toBe(false);
     expect(call.options.maxBudgetUsd).toBe(2);
     expect(call.options.env).toMatchObject({ ANTHROPIC_API_KEY: "test-key", PATH: "/usr/bin" });
+    expect(call.options.env).toMatchObject({
+      HTTPS_PROXY: "http://proxy.example.test:3128",
+      CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: "1",
+      DISABLE_TELEMETRY: "1",
+      DISABLE_ERROR_REPORTING: "1",
+    });
     expect(call.options.env.HOME).toContain("firedrill-agent-home-");
     expect(call.options.env.CLAUDE_CONFIG_DIR).toContain("firedrill-agent-home-");
     expect(existsSync(call.options.env.HOME ?? "")).toBe(false);

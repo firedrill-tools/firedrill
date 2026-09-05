@@ -14,3 +14,9 @@ firedrill agent
 ```
 
 Each invocation defaults to at most 40 turns, $2 of model spend, and a 15-minute wall-clock deadline. See `firedrill agent --help` for explicit overrides.
+
+## Source-only authoring
+
+Programmatic callers can use `runFiredrillAgent({ root, allowRepositoryExecution: false })` when they want a reviewable source proposal without letting the authoring session execute repository code. This removes the drill runner from the actual MCP registry and SDK permissions, and restricts Tool checks to source inspection. Reading/editing ordinary files, formatting, compiler validation, and build-plan inspection remain available. The session reports execution as a remaining step, not a completed drill.
+
+The same optional policy is accepted by `createFiredrillAuthoringTools` and `createFiredrillAuthoringServer`. The default stays `true` for the complete existing local loop. This option limits the assistant's tool surface; it does not replace operating-system isolation or review of source changes.
