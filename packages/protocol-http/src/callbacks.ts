@@ -77,7 +77,18 @@ export interface CallbackTransport {
 export interface CallbackDispatcherOptions {
   readonly store: WorldStore;
   readonly tools: readonly ToolDefinition[];
-  readonly receivers: Readonly<Record<string, CallbackReceiver>>;
+  /** Static mappings and resolveReceiver are mutually exclusive; neither provides fallback for the other. */
+  readonly receivers?: Readonly<Record<string, CallbackReceiver>>;
+  /**
+   * Resolve only the current due delivery, on every attempt. No lookup runs at construction.
+   * The frozen context is reused for transport.fetch. Honor the shared abort signal and
+   * await cleanup before settling; the callback timeout includes this lookup and preparation.
+   * Exceptions are replaced with safe resolution-failure evidence, never their diagnostics.
+   */
+  readonly resolveReceiver?: (
+    context: CallbackTransportContext,
+    signal: AbortSignal,
+  ) => Promise<CallbackReceiver | undefined>;
   /** Test seam. Ordinary callers use the platform fetch implementation. */
   readonly fetch?: typeof globalThis.fetch;
   /** Explicit caller-owned origin policy and network transport. No remote transport is built in. */
@@ -426,6 +437,7 @@ export class CallbackDispatcher {
   private readonly store: WorldStore;
   private readonly runtimes = new Map<string, CallbackRuntime>();
   private readonly receivers: Readonly<Record<string, CallbackReceiver>>;
+  private readonly resolveReceiver: CallbackDispatcherOptions["resolveReceiver"];
   private readonly fetchImplementation: typeof globalThis.fetch;
   private readonly transport: CallbackTransport | undefined;
   private readonly idempotencyScope: string | undefined;
@@ -434,9 +446,16 @@ export class CallbackDispatcher {
 
   constructor(options: CallbackDispatcherOptions) {
     this.store = options.store;
+    if ((options.receivers === undefined) === (options.resolveReceiver === undefined)) {
+      throw new TypeError("callbacks require exactly one static receiver map or receiver resolver");
+    }
+    if (options.resolveReceiver !== undefined && typeof options.resolveReceiver !== "function") {
+      throw new TypeError("callback receiver resolver must be a function");
+    }
+    this.resolveReceiver = options.resolveReceiver;
     this.receivers = Object.freeze(
       Object.fromEntries(
-        Object.entries(options.receivers).map(([id, receiver]) => [id, Object.freeze({ ...receiver })]),
+        Object.entries(options.receivers ?? {}).map(([id, receiver]) => [id, Object.freeze({ ...receiver })]),
       ),
     );
     if (options.transport !== undefined && options.fetch !== undefined) {
@@ -536,7 +555,8 @@ export class CallbackDispatcher {
   async dispatchDue(signal?: AbortSignal): Promise<CallbackDispatchResult> {
     signal?.throwIfAborted();
     if (this.activeDispatch !== undefined) return this.activeDispatch;
-    const active = this.performDispatchDue(signal);
+    // Publish ownership before a resolver can synchronously reenter dispatchDue.
+    const active = Promise.resolve().then(() => this.performDispatchDue(signal));
     this.activeDispatch = active;
     try {
       return await active;
@@ -568,13 +588,10 @@ export class CallbackDispatcher {
       const runtime = this.runtimes.get(
         runtimeKey(delivery.callback.packageId, delivery.callback.callbackId),
       );
-      const receiver = this.receivers[delivery.receiverId];
-      if (runtime === undefined || receiver === undefined) {
+      if (runtime === undefined) {
         const error = callbackError(
-          runtime === undefined ? "CALLBACK_RUNTIME_MISSING" : "CALLBACK_RECEIVER_MISSING",
-          runtime === undefined
-            ? `callback runtime ${delivery.callback.packageId}.${delivery.callback.callbackId} is unavailable`
-            : `callback receiver ${delivery.receiverId} was not configured for this drill`,
+          "CALLBACK_RUNTIME_MISSING",
+          `callback runtime ${delivery.callback.packageId}.${delivery.callback.callbackId} is unavailable`,
           false,
         );
         const failed = this.store.transact(delivery.correlationId, (transaction) =>
@@ -584,146 +601,212 @@ export class CallbackDispatcher {
         continue;
       }
 
-      let prepared: PreparedCallback;
-      try {
-        prepared = prepareCallback(
-          delivery,
-          runtime,
-          receiver,
-          this.transport,
-          this.idempotencyKey(delivery),
-        );
-      } catch (error) {
-        const failure =
-          error instanceof CallbackPreparationError
-            ? error.evidence
-            : callbackError(
-                "CALLBACK_REQUEST_INVALID",
-                error instanceof Error ? error.message : "callback request preparation failed",
-                false,
-              );
-        const failed = this.store.transact(delivery.correlationId, (transaction) =>
-          callbackResult(transaction.failCallbackDelivery(delivery.id, failure)),
-        ).value;
-        outcomes.push({ deliveryId: failed.id, attempt: failed.attemptCount, status: "failed" });
-        continue;
-      }
-
-      signal?.throwIfAborted();
-      const started = this.store.transact(delivery.correlationId, (transaction) =>
-        callbackResult(transaction.startCallbackAttempt(delivery.id, prepared.evidence)),
-      ).value;
+      const context = Object.freeze({ receiverId: delivery.receiverId });
       const startedAt = performance.now();
-      let response: CallbackResponseEvidence | undefined;
-      let error: CallbackErrorEvidence | undefined;
       const controller = new AbortController();
       const timeout = setTimeout(() => controller.abort(), runtime.contract.timeoutMs);
       const requestSignal =
         signal === undefined ? controller.signal : AbortSignal.any([signal, controller.signal]);
-      try {
-        const request: RequestInit = {
-          method: runtime.contract.method,
-          headers: prepared.headers,
-          body: prepared.body,
-          redirect: "manual",
-          signal: requestSignal,
-        };
-        const received =
-          this.transport === undefined
-            ? await this.fetchImplementation(prepared.url, request)
-            : await this.transport.fetch(
-                prepared.url,
-                request,
-                Object.freeze({ receiverId: delivery.receiverId }),
-              );
-        if (received.redirected) {
-          await received.body?.cancel();
-          throw new Error("callback transport followed a redirect");
-        }
-        response = await responseEvidence(received, requestSignal);
+      // A synchronous codec cannot be preempted, but it must not send HTTP after
+      // consuming the budget while the event loop could not run the timer.
+      const refreshBudget = () => {
+        if (performance.now() - startedAt >= runtime.contract.timeoutMs) controller.abort();
+      };
+      const checkBudget = () => {
+        refreshBudget();
         requestSignal.throwIfAborted();
-        if (response.status < 200 || response.status > 299) {
+      };
+      try {
+        let receiver: CallbackReceiver | undefined;
+        try {
+          const resolved =
+            this.resolveReceiver === undefined
+              ? Object.hasOwn(this.receivers, delivery.receiverId)
+                ? this.receivers[delivery.receiverId]
+                : undefined
+              : await this.resolveReceiver(context, requestSignal);
+          checkBudget();
+          if (resolved !== undefined) {
+            if (typeof resolved !== "object" || resolved === null) throw new TypeError("invalid receiver");
+            const { baseUrl, secret } = resolved;
+            if (typeof baseUrl !== "string" || (secret !== undefined && typeof secret !== "string"))
+              throw new TypeError("invalid receiver");
+            receiver = Object.freeze({ baseUrl, ...(secret === undefined ? {} : { secret }) });
+          }
+          checkBudget();
+        } catch {
+          refreshBudget();
+          signal?.throwIfAborted();
+          const failure = callbackError(
+            controller.signal.aborted ? "CALLBACK_RECEIVER_TIMEOUT" : "CALLBACK_RECEIVER_UNAVAILABLE",
+            controller.signal.aborted
+              ? "callback receiver resolution exceeded the callback timeout"
+              : "callback receiver could not be resolved",
+            false,
+          );
+          const failed = this.store.transact(delivery.correlationId, (transaction) =>
+            callbackResult(transaction.failCallbackDelivery(delivery.id, failure)),
+          ).value;
+          outcomes.push({ deliveryId: failed.id, attempt: failed.attemptCount, status: "failed" });
+          continue;
+        }
+        if (receiver === undefined) {
+          signal?.throwIfAborted();
+          const error = callbackError(
+            "CALLBACK_RECEIVER_MISSING",
+            `callback receiver ${delivery.receiverId} was not configured for this drill`,
+            false,
+          );
+          const failed = this.store.transact(delivery.correlationId, (transaction) =>
+            callbackResult(transaction.failCallbackDelivery(delivery.id, error)),
+          ).value;
+          outcomes.push({ deliveryId: failed.id, attempt: failed.attemptCount, status: "failed" });
+          continue;
+        }
+        let prepared: PreparedCallback;
+        try {
+          prepared = prepareCallback(
+            delivery,
+            runtime,
+            receiver,
+            this.transport,
+            this.idempotencyKey(delivery),
+          );
+          checkBudget();
+        } catch (error) {
+          refreshBudget();
+          signal?.throwIfAborted();
+          const failure = controller.signal.aborted
+            ? callbackError(
+                "CALLBACK_PREPARATION_TIMEOUT",
+                "callback preparation exceeded the callback timeout",
+                false,
+              )
+            : error instanceof CallbackPreparationError
+              ? error.evidence
+              : callbackError(
+                  "CALLBACK_REQUEST_INVALID",
+                  this.resolveReceiver === undefined && error instanceof Error
+                    ? error.message
+                    : "callback request preparation failed",
+                  false,
+                );
+          const failed = this.store.transact(delivery.correlationId, (transaction) =>
+            callbackResult(transaction.failCallbackDelivery(delivery.id, failure)),
+          ).value;
+          outcomes.push({ deliveryId: failed.id, attempt: failed.attemptCount, status: "failed" });
+          continue;
+        }
+
+        signal?.throwIfAborted();
+        const started = this.store.transact(delivery.correlationId, (transaction) =>
+          callbackResult(transaction.startCallbackAttempt(delivery.id, prepared.evidence)),
+        ).value;
+        let response: CallbackResponseEvidence | undefined;
+        let error: CallbackErrorEvidence | undefined;
+        try {
+          checkBudget();
+          const request: RequestInit = {
+            method: runtime.contract.method,
+            headers: prepared.headers,
+            body: prepared.body,
+            redirect: "manual",
+            signal: requestSignal,
+          };
+          const received =
+            this.transport === undefined
+              ? await this.fetchImplementation(prepared.url, request)
+              : await this.transport.fetch(prepared.url, request, context);
+          if (received.redirected) {
+            await received.body?.cancel();
+            throw new Error("callback transport followed a redirect");
+          }
+          response = await responseEvidence(received, requestSignal);
+          checkBudget();
+          if (response.status < 200 || response.status > 299) {
+            error = callbackError(
+              "CALLBACK_HTTP_REJECTED",
+              `callback receiver returned HTTP ${String(response.status)}`,
+              true,
+            );
+          }
+        } catch (caught) {
+          refreshBudget();
+          const aborted = signal?.aborted === true;
+          const timedOut = !aborted && controller.signal.aborted;
           error = callbackError(
-            "CALLBACK_HTTP_REJECTED",
-            `callback receiver returned HTTP ${String(response.status)}`,
+            aborted
+              ? "CALLBACK_ABORTED"
+              : timedOut
+                ? "CALLBACK_TIMEOUT"
+                : caught instanceof RangeError
+                  ? "CALLBACK_RESPONSE_TOO_LARGE"
+                  : "CALLBACK_NETWORK_ERROR",
+            aborted
+              ? "callback delivery was interrupted; the receiver outcome may be unknown"
+              : timedOut
+                ? `callback receiver did not respond within ${String(runtime.contract.timeoutMs)} ms`
+                : caught instanceof Error
+                  ? caught.message
+                  : "callback request failed",
             true,
           );
         }
-      } catch (caught) {
-        const aborted = signal?.aborted === true;
-        const timedOut = !aborted && controller.signal.aborted;
-        error = callbackError(
-          aborted
-            ? "CALLBACK_ABORTED"
-            : timedOut
-              ? "CALLBACK_TIMEOUT"
-              : caught instanceof RangeError
-                ? "CALLBACK_RESPONSE_TOO_LARGE"
-                : "CALLBACK_NETWORK_ERROR",
-          aborted
-            ? "callback delivery was interrupted; the receiver outcome may be unknown"
-            : timedOut
-              ? `callback receiver did not respond within ${String(runtime.contract.timeoutMs)} ms`
-              : caught instanceof Error
-                ? caught.message
-                : "callback request failed",
-          true,
-        );
+        const durationMs = Math.min(60_000, Math.max(0, performance.now() - startedAt));
+
+        if (error === undefined && response !== undefined) {
+          const delivered = this.store.transact(delivery.correlationId, (transaction) =>
+            callbackResult(
+              transaction.settleCallbackAttempt(delivery.id, {
+                status: "delivered",
+                attempt: started.attemptCount,
+                response,
+                durationMs,
+              }),
+            ),
+          ).value;
+          outcomes.push({ deliveryId: delivered.id, attempt: delivered.attemptCount, status: "delivered" });
+          continue;
+        }
+
+        if (error === undefined) {
+          throw new Error(`callback delivery ${delivery.id} completed without a response or error`);
+        }
+
+        const retryDelay = started.retryDelaysUs[started.attemptCount - 1];
+        if (retryDelay !== undefined) {
+          const nextAttemptUs = VirtualTimeSchema.parse(nowUs + retryDelay);
+          const retried = this.store.transact(delivery.correlationId, (transaction) =>
+            callbackResult(
+              transaction.settleCallbackAttempt(delivery.id, {
+                status: "retry_scheduled",
+                attempt: started.attemptCount,
+                nextAttemptUs,
+                ...(response === undefined ? {} : { response }),
+                error,
+                durationMs,
+              }),
+            ),
+          ).value;
+          outcomes.push({ deliveryId: retried.id, attempt: retried.attemptCount, status: "retry_scheduled" });
+        } else {
+          const failed = this.store.transact(delivery.correlationId, (transaction) =>
+            callbackResult(
+              transaction.settleCallbackAttempt(delivery.id, {
+                status: "failed",
+                attempt: started.attemptCount,
+                ...(response === undefined ? {} : { response }),
+                error,
+                durationMs,
+              }),
+            ),
+          ).value;
+          outcomes.push({ deliveryId: failed.id, attempt: failed.attemptCount, status: "failed" });
+        }
+        signal?.throwIfAborted();
       } finally {
         clearTimeout(timeout);
       }
-      const durationMs = Math.min(60_000, Math.max(0, performance.now() - startedAt));
-
-      if (error === undefined && response !== undefined) {
-        const delivered = this.store.transact(delivery.correlationId, (transaction) =>
-          callbackResult(
-            transaction.settleCallbackAttempt(delivery.id, {
-              status: "delivered",
-              attempt: started.attemptCount,
-              response,
-              durationMs,
-            }),
-          ),
-        ).value;
-        outcomes.push({ deliveryId: delivered.id, attempt: delivered.attemptCount, status: "delivered" });
-        continue;
-      }
-
-      if (error === undefined) {
-        throw new Error(`callback delivery ${delivery.id} completed without a response or error`);
-      }
-
-      const retryDelay = started.retryDelaysUs[started.attemptCount - 1];
-      if (retryDelay !== undefined) {
-        const nextAttemptUs = VirtualTimeSchema.parse(nowUs + retryDelay);
-        const retried = this.store.transact(delivery.correlationId, (transaction) =>
-          callbackResult(
-            transaction.settleCallbackAttempt(delivery.id, {
-              status: "retry_scheduled",
-              attempt: started.attemptCount,
-              nextAttemptUs,
-              ...(response === undefined ? {} : { response }),
-              error,
-              durationMs,
-            }),
-          ),
-        ).value;
-        outcomes.push({ deliveryId: retried.id, attempt: retried.attemptCount, status: "retry_scheduled" });
-      } else {
-        const failed = this.store.transact(delivery.correlationId, (transaction) =>
-          callbackResult(
-            transaction.settleCallbackAttempt(delivery.id, {
-              status: "failed",
-              attempt: started.attemptCount,
-              ...(response === undefined ? {} : { response }),
-              error,
-              durationMs,
-            }),
-          ),
-        ).value;
-        outcomes.push({ deliveryId: failed.id, attempt: failed.attemptCount, status: "failed" });
-      }
-      signal?.throwIfAborted();
     }
     return { outcomes: Object.freeze(outcomes) };
   }

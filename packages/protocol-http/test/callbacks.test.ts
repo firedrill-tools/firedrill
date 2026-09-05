@@ -8,7 +8,7 @@ import type { ToolCallbackCodec, ToolDefinition } from "@firedrill/tool-sdk";
 import { defineTool } from "@firedrill/tool-sdk";
 import { WorldKernel } from "@firedrill/world-kernel";
 import { SqliteWorldStore } from "@firedrill/world-store-sqlite";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import type { CallbackDispatcherOptions, CallbackTransport, CallbackTransportContext } from "../src/index.js";
 import {
   CallbackDispatcher,
@@ -204,6 +204,40 @@ function scopedKey(identity: readonly unknown[]): string {
   return `sha256:${createHash("sha256").update(JSON.stringify(identity), "utf8").digest("hex")}`;
 }
 
+function twoReceiverWorld(retryDelaysUs: readonly number[] = [1_000]) {
+  const fixture = world(retryDelaysUs, {
+    encode: (input) => {
+      Reflect.set(input, "receiverId", "forged-receiver");
+      return {
+        headers: { "x-receiver-id": "forged-receiver" },
+        body: { kind: "json", value: { deliveryId: input.deliveryId, receiverId: "forged-receiver" } },
+      };
+    },
+  });
+  const contract = fixture.installed.manifest.callbacks[0];
+  const codec = fixture.installed.callbacks["notify-application"];
+  if (contract === undefined || codec === undefined) throw new Error("fixture callback missing");
+  const installed = defineTool({
+    manifest: {
+      ...fixture.installed.manifest,
+      callbacks: [contract, { ...contract, id: "notify-audit", receiverId: "audit-sink" }],
+    },
+    operations: fixture.installed.operations,
+    callbacks: { ...fixture.installed.callbacks, "notify-audit": codec },
+  });
+  const kernel = new WorldKernel({ store: fixture.store, packageLockHash: HASH_B, tools: [installed] });
+  const invoke = () =>
+    kernel.invoke({
+      schemaVersion: 1,
+      callId: "call_receiver_lookup",
+      correlationId: "corr_receiver_lookup",
+      operation: { packageId: "work-items", operationId: "items.complete" },
+      actorBindingId: "actor_callback",
+      arguments: { itemId: "item_42" },
+    });
+  return { ...fixture, installed, kernel, invoke };
+}
+
 afterEach(async () => {
   await Promise.all(
     servers.splice(0).map(
@@ -222,6 +256,360 @@ afterEach(async () => {
 });
 
 describe("outbound callback delivery", () => {
+  it("resolves only each due receiver and keeps unavailable same-origin receivers independent on fresh dispatchers", async () => {
+    const fixture = twoReceiverWorld();
+    const received: ReceivedCallback[] = [];
+    const baseUrl = await receiver((request, response, body) => {
+      received.push({ path: request.url ?? "", headers: request.headers, body });
+      response.writeHead(received.length === 1 ? 503 : 204);
+      response.end();
+    });
+    let secret = "test-only-first-key";
+    const resolveReceiver = vi.fn<NonNullable<CallbackDispatcherOptions["resolveReceiver"]>>(
+      async (context, signal) => {
+        expect(Object.isFrozen(context)).toBe(true);
+        expect(Object.keys(context)).toEqual(["receiverId"]);
+        expect(Reflect.set(context, "receiverId", "forged-receiver")).toBe(false);
+        signal.throwIfAborted();
+        if (context.receiverId === "audit-sink") throw new Error(`unsafe lookup diagnostic: ${secret}`);
+        return { baseUrl, secret };
+      },
+    );
+    const wire = vi.fn<CallbackTransport["fetch"]>((input, init, context) => {
+      const lookup = resolveReceiver.mock.calls.at(-1);
+      expect(context).toBe(lookup?.[0]);
+      expect(init?.signal).toBe(lookup?.[1]);
+      return globalThis.fetch(input, init);
+    });
+    const options = {
+      store: fixture.store,
+      tools: [fixture.installed],
+      resolveReceiver,
+      idempotencyScope: "lazy-receiver-execution",
+      transport: { authorizeOrigin: ({ origin }: { origin: string }) => origin === baseUrl, fetch: wire },
+    };
+    const first = new CallbackDispatcher(options);
+    expect(resolveReceiver).not.toHaveBeenCalled();
+    expect(await first.dispatchDue()).toEqual({ outcomes: [] });
+    expect(resolveReceiver).not.toHaveBeenCalled();
+    expect(fixture.invoke().outcome.status).toBe("ok");
+    const queued = fixture.store.listCallbackDeliveries("pending");
+    expect((await first.dispatchDue()).outcomes.map((outcome) => outcome.status).sort()).toEqual([
+      "failed",
+      "retry_scheduled",
+    ]);
+    expect(resolveReceiver.mock.calls.map(([context]) => context.receiverId).sort()).toEqual([
+      "application",
+      "audit-sink",
+    ]);
+    expect(received).toHaveLength(1);
+    const failure = fixture.store
+      .readEvidence()
+      .find((entry) => entry.kind === "callback" && entry.phase === "failed");
+    expect(failure).toMatchObject({
+      receiverId: "audit-sink",
+      error: { code: "framework.CALLBACK_RECEIVER_UNAVAILABLE", retryable: false },
+    });
+    expect(failure).not.toHaveProperty("request");
+    expect(failure).not.toHaveProperty("response");
+    expect(
+      fixture.store
+        .readEvidence()
+        .filter((entry) => entry.kind === "callback" && entry.receiverId === "audit-sink")
+        .map((entry) => entry.phase),
+    ).toEqual(["queued", "failed"]);
+    const again = new CallbackDispatcher(options);
+    expect(resolveReceiver).toHaveBeenCalledTimes(2);
+    expect(await again.dispatchDue()).toEqual({ outcomes: [] });
+    expect(resolveReceiver).toHaveBeenCalledTimes(2);
+    secret = "test-only-fresh-key";
+    fixture.kernel.advanceTime(1_000, { correlationId: "corr_lookup_retry", maxEvents: 0 });
+    expect(await again.dispatchDue()).toMatchObject({ outcomes: [{ status: "delivered", attempt: 2 }] });
+    expect(resolveReceiver).toHaveBeenCalledTimes(3);
+    expect(wire).toHaveBeenCalledTimes(2);
+    expect(new Set(resolveReceiver.mock.calls.map(([context]) => context)).size).toBe(3);
+    const delivery = queued.find((entry) => entry.receiverId === "application");
+    expect(delivery).toBeDefined();
+    for (const [index, request] of received.entries()) {
+      expect(request.headers["x-receiver-id"]).toBe("forged-receiver");
+      expect(request.headers["idempotency-key"]).toBe(scopedKey(["lazy-receiver-execution", delivery?.id]));
+      expect(request.headers["x-firedrill-signature"]).toBe(
+        `sha256=${createHmac("sha256", index === 0 ? "test-only-first-key" : secret)
+          .update(request.body)
+          .digest("hex")}`,
+      );
+    }
+    const evidence = JSON.stringify(fixture.store.readEvidence());
+    expect(evidence).not.toContain("test-only-first-key");
+    expect(evidence).not.toContain(secret);
+    expect(evidence).not.toContain("unsafe lookup diagnostic");
+    fixture.store.close();
+  });
+
+  it("requires exactly one receiver source without invoking a resolver", () => {
+    const fixture = world();
+    const resolveReceiver = vi.fn(async () => undefined);
+    const base = { store: fixture.store, tools: [fixture.installed] };
+    for (const invalid of [base, { ...base, receivers: {}, resolveReceiver }]) {
+      expect(() => new CallbackDispatcher(invalid)).toThrow(/exactly one/);
+    }
+    expect(
+      () =>
+        new CallbackDispatcher({
+          ...base,
+          resolveReceiver: "invalid",
+        } as unknown as CallbackDispatcherOptions),
+    ).toThrow(/must be a function/);
+    expect(resolveReceiver).not.toHaveBeenCalled();
+    fixture.store.close();
+  });
+
+  it.each(["missing", "error", "range", "getter"] as const)(
+    "records a safe failed-only lookup result for %s",
+    async (kind) => {
+      const fixture = world([1_000]);
+      fixture.invoke();
+      const fetch = vi.fn(async () => new Response(null, { status: 204 }));
+      const resolver: NonNullable<CallbackDispatcherOptions["resolveReceiver"]> = async () => {
+        if (kind === "missing") return undefined;
+        if (kind === "error") throw new Error("test-secret-provider-diagnostic");
+        if (kind === "range") throw new RangeError("test-secret-provider-diagnostic");
+        return {
+          get baseUrl(): string {
+            throw new Error("test-secret-provider-diagnostic");
+          },
+        };
+      };
+      await new CallbackDispatcher({
+        store: fixture.store,
+        tools: [fixture.installed],
+        resolveReceiver: resolver,
+        fetch,
+      }).dispatchDue();
+      expect(fetch).not.toHaveBeenCalled();
+      expect(fixture.store.listCallbackDeliveries("failed")).toMatchObject([{ attemptCount: 1 }]);
+      const evidence = fixture.store.readEvidence().filter((entry) => entry.kind === "callback");
+      expect(evidence.map((entry) => entry.phase)).toEqual(["queued", "failed"]);
+      expect(evidence.at(-1)).toMatchObject({
+        error: {
+          code: `framework.${kind === "missing" ? "CALLBACK_RECEIVER_MISSING" : "CALLBACK_RECEIVER_UNAVAILABLE"}`,
+          retryable: false,
+        },
+      });
+      expect(evidence.at(-1)).not.toHaveProperty("request");
+      expect(evidence.at(-1)).not.toHaveProperty("response");
+      expect(JSON.stringify(evidence)).not.toContain("test-secret-provider-diagnostic");
+      fixture.store.close();
+    },
+  );
+
+  it.each(["cancel", "timeout"] as const)(
+    "drains %s during lookup before settling, without claiming a wire attempt",
+    async (mode) => {
+      const fixture = world([], { timeoutMs: 100 });
+      fixture.invoke();
+      const before = fixture.store.readEvidence();
+      let entered!: () => void;
+      let aborted!: () => void;
+      let release!: () => void;
+      const started = new Promise<void>((resolve) => {
+        entered = resolve;
+      });
+      const interrupted = new Promise<void>((resolve) => {
+        aborted = resolve;
+      });
+      const cleanup = new Promise<void>((resolve) => {
+        release = resolve;
+      });
+      let active = true;
+      const fetch = vi.fn(async () => new Response(null, { status: 204 }));
+      const dispatcher = new CallbackDispatcher({
+        store: fixture.store,
+        tools: [fixture.installed],
+        fetch,
+        resolveReceiver: async (_context, signal) => {
+          entered();
+          await new Promise<void>((resolve) =>
+            signal.addEventListener(
+              "abort",
+              () => {
+                aborted();
+                resolve();
+              },
+              { once: true },
+            ),
+          );
+          await cleanup;
+          active = false;
+          throw new Error("test-secret-late-lookup-error");
+        },
+      });
+      const controller = new AbortController();
+      let settled = false;
+      const pending = dispatcher.dispatchDue(controller.signal);
+      void pending.then(
+        () => {
+          settled = true;
+        },
+        () => {
+          settled = true;
+        },
+      );
+      const assertion =
+        mode === "cancel"
+          ? expect(pending).rejects.toThrow("caller stops lookup")
+          : expect(pending).resolves.toMatchObject({ outcomes: [{ status: "failed" }] });
+      await started;
+      if (mode === "cancel") controller.abort(new Error("caller stops lookup"));
+      await interrupted;
+      expect(settled).toBe(false);
+      expect(active).toBe(true);
+      expect(fixture.store.readEvidence()).toEqual(before);
+      expect(fixture.store.nextCallbackDelivery(0)).toMatchObject({ status: "pending", attemptCount: 0 });
+      expect(() => dispatcher.recoverInFlight()).toThrow(/active dispatch/);
+      release();
+      await assertion;
+      expect(active).toBe(false);
+      expect(fetch).not.toHaveBeenCalled();
+      if (mode === "cancel") {
+        expect(fixture.store.readEvidence()).toEqual(before);
+        expect(fixture.store.nextCallbackDelivery(0)).toMatchObject({ status: "pending", attemptCount: 0 });
+      } else {
+        const evidence = fixture.store.readEvidence().filter((entry) => entry.kind === "callback");
+        expect(evidence.map((entry) => entry.phase)).toEqual(["queued", "failed"]);
+        expect(evidence.at(-1)).toMatchObject({
+          error: { code: "framework.CALLBACK_RECEIVER_TIMEOUT", retryable: false },
+        });
+      }
+      expect(JSON.stringify(fixture.store.readEvidence())).not.toContain("test-secret-late-lookup-error");
+      fixture.store.close();
+    },
+  );
+
+  it("uses one deadline and signal across lookup and real HTTP cleanup", async () => {
+    const fixture = world([], { timeoutMs: 100 });
+    fixture.invoke();
+    let seenSignal: AbortSignal | undefined;
+    let seenContext: CallbackTransportContext | undefined;
+    let lookupFinishedAt = 0;
+    let transportAbortedAt = 0;
+    let active = false;
+    const baseUrl = await receiver((_request, response) => {
+      response.writeHead(200);
+      response.write("incomplete");
+    });
+    const dispatcher = new CallbackDispatcher({
+      store: fixture.store,
+      tools: [fixture.installed],
+      idempotencyScope: "shared-lookup-budget",
+      resolveReceiver: async (context, signal) => {
+        seenSignal = signal;
+        seenContext = context;
+        await new Promise((resolve) => setTimeout(resolve, 65));
+        lookupFinishedAt = performance.now();
+        return { baseUrl, secret: "test-only-key" };
+      },
+      transport: {
+        ...approvedTransport(baseUrl),
+        fetch: async (input, init, context) => {
+          expect(context).toBe(seenContext);
+          expect(init?.signal).toBe(seenSignal);
+          active = true;
+          try {
+            const response = await globalThis.fetch(input, init);
+            await response.text();
+            return new Response(null, { status: 204 });
+          } catch (error) {
+            transportAbortedAt = performance.now();
+            throw error;
+          } finally {
+            active = false;
+          }
+        },
+      },
+    });
+    await dispatcher.dispatchDue();
+    expect(active).toBe(false);
+    expect(transportAbortedAt).toBeGreaterThan(lookupFinishedAt);
+    expect(transportAbortedAt - lookupFinishedAt).toBeLessThan(80);
+    expect(fixture.store.readEvidence().at(-1)).toMatchObject({
+      error: { code: "framework.CALLBACK_TIMEOUT" },
+    });
+    fixture.store.close();
+  });
+
+  it.each(["cancel", "timeout"] as const)(
+    "does not send HTTP after synchronous preparation %s",
+    async (mode) => {
+      const controller = new AbortController();
+      const fixture = world([], {
+        timeoutMs: 100,
+        encode: () => {
+          if (mode === "cancel") controller.abort(new Error("cancel during codec"));
+          else {
+            const end = performance.now() + 120;
+            while (performance.now() < end) {
+              /* synchronous codec */
+            }
+          }
+          return { body: { kind: "empty" } };
+        },
+      });
+      fixture.invoke();
+      const before = fixture.store.readEvidence();
+      const fetch = vi.fn(async () => new Response(null, { status: 204 }));
+      const dispatcher = new CallbackDispatcher({
+        store: fixture.store,
+        tools: [fixture.installed],
+        fetch,
+        resolveReceiver: async () => ({ baseUrl: "http://127.0.0.1:4319", secret: "test-only-key" }),
+      });
+      if (mode === "cancel") {
+        await expect(dispatcher.dispatchDue(controller.signal)).rejects.toThrow("cancel during codec");
+        expect(fixture.store.readEvidence()).toEqual(before);
+      } else {
+        await dispatcher.dispatchDue();
+        expect(fixture.store.readEvidence().at(-1)).toMatchObject({
+          error: { code: "framework.CALLBACK_PREPARATION_TIMEOUT" },
+        });
+        expect(
+          fixture.store
+            .readEvidence()
+            .filter((entry) => entry.kind === "callback")
+            .map((entry) => entry.phase),
+        ).toEqual(["queued", "failed"]);
+      }
+      expect(fetch).not.toHaveBeenCalled();
+      fixture.store.close();
+    },
+  );
+
+  it("publishes drain ownership before a receiver resolver synchronously reenters dispatch", async () => {
+    const fixture = world();
+    fixture.invoke();
+    let joined: ReturnType<CallbackDispatcher["dispatchDue"]> | undefined;
+    let lookups = 0;
+    const dispatcher = new CallbackDispatcher({
+      store: fixture.store,
+      tools: [fixture.installed],
+      resolveReceiver: async () => {
+        lookups += 1;
+        if (lookups > 1) throw new Error("receiver lookup reentered before ownership");
+        joined = dispatcher.dispatchDue();
+        return undefined;
+      },
+    });
+    const result = await dispatcher.dispatchDue();
+    expect(await joined).toEqual(result);
+    expect(lookups).toBe(1);
+    expect(
+      fixture.store
+        .readEvidence()
+        .filter((entry) => entry.kind === "callback")
+        .map((entry) => entry.phase),
+    ).toEqual(["queued", "failed"]);
+    fixture.store.close();
+  });
   it("delivers a Tool-encoded event with stable idempotency, HMAC, and causal evidence", async () => {
     const fixture = world();
     const received: ReceivedCallback[] = [];
