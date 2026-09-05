@@ -1,22 +1,22 @@
 import { createHash, createHmac } from "node:crypto";
 import { mkdtempSync, rmSync } from "node:fs";
-import { createServer } from "node:http";
 import type { IncomingMessage, Server, ServerResponse } from "node:http";
+import { createServer } from "node:http";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { defineTool } from "@firedrill/tool-sdk";
 import type { ToolCallbackCodec, ToolDefinition } from "@firedrill/tool-sdk";
+import { defineTool } from "@firedrill/tool-sdk";
 import { WorldKernel } from "@firedrill/world-kernel";
 import { SqliteWorldStore } from "@firedrill/world-store-sqlite";
 import { afterEach, describe, expect, it } from "vitest";
+import type { CallbackDispatcherOptions, CallbackTransport } from "../src/index.js";
 import {
   CallbackDispatcher,
-  MAX_CALLBACK_HEADERS,
   MAX_CALLBACK_HEADER_BYTES,
+  MAX_CALLBACK_HEADERS,
   MAX_CALLBACK_REQUEST_BYTES,
   MAX_CALLBACK_RESPONSE_BYTES,
 } from "../src/index.js";
-import type { CallbackTransport } from "../src/index.js";
 
 const HASH_A = `sha256:${"a".repeat(64)}` as const;
 const HASH_B = `sha256:${"b".repeat(64)}` as const;
@@ -30,6 +30,7 @@ interface ReceivedCallback {
 }
 
 interface CallbackFixtureOptions {
+  readonly packageId?: string;
   readonly encode?: ToolCallbackCodec["encode"];
   readonly timeoutMs?: number;
   readonly idempotencyHeader?: string;
@@ -39,7 +40,7 @@ function tool(retryDelaysUs: readonly number[] = [], options: CallbackFixtureOpt
   return defineTool({
     manifest: {
       schemaVersion: 1,
-      id: "work-items",
+      id: options.packageId ?? "work-items",
       version: "1.0.0",
       engine: ">=0.1.0 <0.2.0",
       capabilities: ["event.emit"],
@@ -170,6 +171,37 @@ function approvedTransport(origin: string): CallbackTransport {
     authorizeOrigin: (input) => input.receiverId === "application" && input.origin === origin,
     fetch: (input, init) => globalThis.fetch(input, init),
   };
+}
+
+function packageWorld() {
+  const fixture = world([1_000]);
+  const source = tool([1_000], { packageId: "source-events" });
+  const tools = [
+    fixture.installed,
+    defineTool({ manifest: { ...source.manifest, callbacks: [] }, operations: source.operations }),
+    tool([1_000], { packageId: "unrelated-items" }),
+  ];
+  const enqueue = (callbackPackageId: string, eventPackageId = callbackPackageId) =>
+    fixture.store.transact("corr_package_callback", (transaction) => {
+      const event = { packageId: eventPackageId, eventId: "item.completed" };
+      const payload = { itemId: callbackPackageId };
+      const deliveryId = transaction.enqueueCallback({
+        callback: { packageId: callbackPackageId, callbackId: "notify-application" },
+        receiverId: "application",
+        event,
+        payload,
+        eventSequence: transaction.primarySequence,
+        dueUs: transaction.virtualTimeUs,
+        actorBindingId: "actor_callback",
+        retryDelaysUs: [1_000],
+      });
+      return { value: deliveryId, primary: { kind: "event", event, phase: "emitted", payload } };
+    }).value;
+  return { ...fixture, tools, enqueue };
+}
+
+function scopedKey(identity: readonly unknown[]): string {
+  return `sha256:${createHash("sha256").update(JSON.stringify(identity), "utf8").digest("hex")}`;
 }
 
 afterEach(async () => {
@@ -447,56 +479,207 @@ describe("outbound callback delivery", () => {
     fixture.store.close();
   });
 
-  it("recovers an uncertain delivered request from reopened SQLite with the same scoped key", async () => {
-    const fixture = world([1_000]);
-    const keys: (string | string[] | undefined)[] = [];
-    const baseUrl = await receiver((request, response) => {
-      keys.push(request.headers["idempotency-key"]);
+  it.each(["work-items", "source-events"])(
+    "changes keys for a SQLite reset of %s while retaining unrelated retry keys",
+    async (resetPackage) => {
+      const fixture = packageWorld();
+      const affectedId = fixture.enqueue("work-items", "source-events");
+      const unrelatedId = fixture.enqueue("unrelated-items");
+      const snapshot = join(fixture.directory, "package-baseline.sqlite");
+      fixture.store.createSnapshot(snapshot, "corr_package_snapshot");
+      const received = new Map<string, unknown[]>();
+      const baseUrl = await receiver((request, response, body) => {
+        const itemId = (JSON.parse(body.toString("utf8")) as { itemId: string }).itemId;
+        const keys = received.get(itemId) ?? [];
+        keys.push(request.headers["idempotency-key"]);
+        received.set(itemId, keys);
+        response.writeHead(
+          (itemId === "work-items" && keys.length === 2) ||
+            (itemId === "unrelated-items" && keys.length === 1)
+            ? 503
+            : 204,
+        );
+        response.end();
+      });
+      const options = {
+        store: fixture.store,
+        tools: fixture.tools,
+        receivers: { application: { baseUrl, secret: "callback-secret" } },
+        transport: approvedTransport(baseUrl),
+        idempotencyScope: "unchanged-world-execution",
+      };
+      await new CallbackDispatcher(options).dispatchDue();
+      expect(fixture.store.listCallbackDeliveries("delivered")).toMatchObject([{ id: affectedId }]);
+      expect(fixture.store.listCallbackDeliveries("pending")).toMatchObject([{ id: unrelatedId }]);
+      fixture.store.resetPackagesFromSnapshot(snapshot, [resetPackage], "corr_package_reset");
+      expect(fixture.store.nextCallbackDelivery(0)?.id).toBe(affectedId);
+      const dispatcher = new CallbackDispatcher({
+        ...options,
+        idempotencyScopeByPackage: { [resetPackage]: "reset-package-execution" },
+      });
+      expect(await dispatcher.dispatchDue()).toMatchObject({
+        outcomes: [{ deliveryId: affectedId, status: "retry_scheduled", attempt: 1 }],
+      });
+      fixture.kernel.advanceTime(1_000, { correlationId: "corr_package_retry", maxEvents: 0 });
+      expect(await dispatcher.dispatchDue()).toMatchObject({
+        outcomes: expect.arrayContaining([
+          { deliveryId: affectedId, status: "delivered", attempt: 2 },
+          { deliveryId: unrelatedId, status: "delivered", attempt: 2 },
+        ]),
+      });
+      const originalAffectedKey = scopedKey([options.idempotencyScope, affectedId]);
+      const resetAffectedKey = scopedKey([
+        options.idempotencyScope,
+        affectedId,
+        [[resetPackage, "reset-package-execution"]],
+      ]);
+      expect(resetAffectedKey).not.toBe(originalAffectedKey);
+      expect(received.get("work-items")).toEqual([originalAffectedKey, resetAffectedKey, resetAffectedKey]);
+      const unrelatedKey = scopedKey([options.idempotencyScope, unrelatedId]);
+      expect(received.get("unrelated-items")).toEqual([unrelatedKey, unrelatedKey]);
+      fixture.store.close();
+    },
+  );
+
+  it("copies package scopes and hashes sorted unique owner/event pairs independently of input order", async () => {
+    const fixture = packageWorld();
+    const crossPackageId = fixture.enqueue("work-items", "source-events");
+    const samePackageId = fixture.enqueue("work-items");
+    const snapshot = join(fixture.directory, "scope-map-baseline.sqlite");
+    fixture.store.createSnapshot(snapshot, "corr_map_snapshot");
+    const received: { deliveryId: string; key: unknown }[] = [];
+    const baseUrl = await receiver((request, response, body) => {
+      const { deliveryId } = JSON.parse(body.toString("utf8")) as { deliveryId: string };
+      received.push({ deliveryId, key: request.headers["idempotency-key"] });
       response.writeHead(204);
       response.end();
     });
-    fixture.invoke();
-    const dispatcher = new CallbackDispatcher({
-      store: fixture.store,
-      tools: [fixture.installed],
-      receivers: { application: { baseUrl, secret: "callback-secret" } },
-      idempotencyScope: "recoverable-execution",
-      transport: {
-        ...approvedTransport(baseUrl),
-        fetch: async (input, init) => {
-          const response = await globalThis.fetch(input, init);
-          fixture.store.close(); // Crash boundary: receiver accepted, but delivery settlement cannot commit.
-          return response;
-        },
+    for (const reversed of [false, true]) {
+      const entries = [
+        ["work-items", "callback-owner-scope"],
+        ["source-events", "source-event-scope"],
+        ["unrelated-items", "unrelated-scope"],
+      ];
+      const scopes: Record<string, string> = Object.fromEntries(reversed ? entries.reverse() : entries);
+      const dispatcher = new CallbackDispatcher({
+        store: fixture.store,
+        tools: fixture.tools,
+        receivers: { application: { baseUrl, secret: "callback-secret" } },
+        transport: approvedTransport(baseUrl),
+        idempotencyScope: "base-execution",
+        idempotencyScopeByPackage: scopes,
+      });
+      scopes["work-items"] = "changed-after-construction";
+      delete scopes["source-events"];
+      scopes["unknown-package"] = "added-after-construction";
+      await dispatcher.dispatchDue();
+      fixture.store.resetFromSnapshot(snapshot, "corr_map_restore");
+    }
+    const expected = [
+      {
+        deliveryId: crossPackageId,
+        key: scopedKey([
+          "base-execution",
+          crossPackageId,
+          [
+            ["source-events", "source-event-scope"],
+            ["work-items", "callback-owner-scope"],
+          ],
+        ]),
       },
-    });
-    await expect(dispatcher.dispatchDue()).rejects.toThrow();
-    const reopened = SqliteWorldStore.open(fixture.filePath);
-    expect(reopened.listCallbackDeliveries("in_flight")).toHaveLength(1);
-    const recovered = new CallbackDispatcher({
-      store: reopened,
-      tools: [fixture.installed],
-      receivers: { application: { baseUrl, secret: "callback-secret" } },
-      transport: approvedTransport(baseUrl),
-      idempotencyScope: "recoverable-execution",
-    });
-    expect(recovered.recoverInFlight()).toBe(1);
-    new WorldKernel({ store: reopened, packageLockHash: HASH_B, tools: [fixture.installed] }).advanceTime(
-      1_000,
-      { correlationId: "corr_scope_recover", maxEvents: 0 },
-    );
-    expect(await recovered.dispatchDue()).toMatchObject({ outcomes: [{ status: "delivered", attempt: 2 }] });
-    expect(keys).toHaveLength(2);
-    expect(keys[1]).toBe(keys[0]);
-    expect(reopened.listCallbackDeliveries("in_flight")).toEqual([]);
-    expect(
-      reopened
-        .readEvidence()
-        .filter((entry) => entry.kind === "callback")
-        .map((entry) => entry.phase),
-    ).toEqual(["queued", "attempt_started", "recovered", "attempt_started", "delivered"]);
-    reopened.close();
+      {
+        deliveryId: samePackageId,
+        key: scopedKey(["base-execution", samePackageId, [["work-items", "callback-owner-scope"]]]),
+      },
+    ];
+    expect(received.slice(0, 2)).toEqual(expect.arrayContaining(expected));
+    expect(received.slice(2)).toEqual(received.slice(0, 2));
+    fixture.store.close();
   });
+
+  it.each([{}, { "source-events": "unrelated-scope" }])(
+    "preserves the existing scoped key when no package override applies: %j",
+    async (idempotencyScopeByPackage) => {
+      const fixture = packageWorld();
+      const deliveryId = fixture.enqueue("work-items");
+      const keys: unknown[] = [];
+      const baseUrl = await receiver((request, response) => {
+        keys.push(request.headers["idempotency-key"]);
+        response.writeHead(204);
+        response.end();
+      });
+      await new CallbackDispatcher({
+        store: fixture.store,
+        tools: fixture.tools,
+        receivers: { application: { baseUrl, secret: "callback-secret" } },
+        idempotencyScope: "existing-scope",
+        idempotencyScopeByPackage,
+      }).dispatchDue();
+      expect(keys).toEqual([scopedKey(["existing-scope", deliveryId])]);
+      fixture.store.close();
+    },
+  );
+
+  it.each([false, true])(
+    "recovers an uncertain SQLite delivery (package-scoped: %s)",
+    async (packageScoped) => {
+      const fixture = world([1_000]);
+      const scopeOptions = packageScoped
+        ? { idempotencyScopeByPackage: { "work-items": "recoverable-package-execution" } }
+        : {};
+      const keys: (string | string[] | undefined)[] = [];
+      const baseUrl = await receiver((request, response) => {
+        keys.push(request.headers["idempotency-key"]);
+        response.writeHead(204);
+        response.end();
+      });
+      fixture.invoke();
+      const dispatcher = new CallbackDispatcher({
+        store: fixture.store,
+        tools: [fixture.installed],
+        receivers: { application: { baseUrl, secret: "callback-secret" } },
+        idempotencyScope: "recoverable-execution",
+        ...scopeOptions,
+        transport: {
+          ...approvedTransport(baseUrl),
+          fetch: async (input, init) => {
+            const response = await globalThis.fetch(input, init);
+            fixture.store.close(); // Crash boundary: receiver accepted, but delivery settlement cannot commit.
+            return response;
+          },
+        },
+      });
+      await expect(dispatcher.dispatchDue()).rejects.toThrow();
+      const reopened = SqliteWorldStore.open(fixture.filePath);
+      expect(reopened.listCallbackDeliveries("in_flight")).toHaveLength(1);
+      const recovered = new CallbackDispatcher({
+        store: reopened,
+        tools: [fixture.installed],
+        receivers: { application: { baseUrl, secret: "callback-secret" } },
+        transport: approvedTransport(baseUrl),
+        idempotencyScope: "recoverable-execution",
+        ...scopeOptions,
+      });
+      expect(recovered.recoverInFlight()).toBe(1);
+      new WorldKernel({ store: reopened, packageLockHash: HASH_B, tools: [fixture.installed] }).advanceTime(
+        1_000,
+        { correlationId: "corr_scope_recover", maxEvents: 0 },
+      );
+      expect(await recovered.dispatchDue()).toMatchObject({
+        outcomes: [{ status: "delivered", attempt: 2 }],
+      });
+      expect(keys).toHaveLength(2);
+      expect(keys[1]).toBe(keys[0]);
+      expect(reopened.listCallbackDeliveries("in_flight")).toEqual([]);
+      expect(
+        reopened
+          .readEvidence()
+          .filter((entry) => entry.kind === "callback")
+          .map((entry) => entry.phase),
+      ).toEqual(["queued", "attempt_started", "recovered", "attempt_started", "delivered"]);
+      reopened.close();
+    },
+  );
 
   it("rejects missing or oversized execution scopes and ambiguous transport configuration", () => {
     const fixture = world();
@@ -513,6 +696,52 @@ describe("outbound callback delivery", () => {
     expect(
       () => new CallbackDispatcher({ ...options, idempotencyScope: "valid", fetch: globalThis.fetch }),
     ).toThrow(/cannot be supplied together/);
+    fixture.store.close();
+  });
+
+  it("rejects invalid package scope maps before dispatch and requires a base even for an empty map", () => {
+    const fixture = world();
+    const options = { store: fixture.store, tools: [fixture.installed], receivers: {} };
+    for (const idempotencyScopeByPackage of [{}, { "work-items": "package-scope" }]) {
+      expect(() => new CallbackDispatcher({ ...options, idempotencyScopeByPackage })).toThrow(
+        /require a base idempotency scope/,
+      );
+    }
+    const invalidMaps: readonly unknown[] = [
+      null,
+      [],
+      new Map([["work-items", "scope"]]),
+      "scope",
+      { "unknown-package": "scope" },
+      { "invalid package": "scope" },
+      { "": "scope" },
+      { [Symbol("work-items")]: "scope" },
+      { "work-items": "" },
+      { "work-items": " \n " },
+      { "work-items": "x".repeat(1025) },
+      { "work-items": "é".repeat(513) },
+      { "work-items": 42 },
+      { "work-items": null },
+      { "work-items": undefined },
+    ];
+    for (const idempotencyScopeByPackage of invalidMaps) {
+      expect(
+        () =>
+          new CallbackDispatcher({
+            ...options,
+            idempotencyScope: "valid-base",
+            idempotencyScopeByPackage,
+          } as CallbackDispatcherOptions),
+      ).toThrow(/callback package idempotency scope/);
+    }
+    expect(
+      () =>
+        new CallbackDispatcher({
+          ...options,
+          idempotencyScope: "valid-base",
+          idempotencyScopeByPackage: { "work-items": "é".repeat(512) },
+        }),
+    ).not.toThrow();
     fixture.store.close();
   });
 

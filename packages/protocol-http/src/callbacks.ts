@@ -1,17 +1,19 @@
 import { createHash, createHmac } from "node:crypto";
 import { validateHeaderValue } from "node:http";
-import {
-  CallbackErrorEvidenceSchema,
-  JsonValueSchema,
-  VirtualTimeSchema,
-  compareStableStrings,
-} from "@firedrill/contracts";
 import type {
   CallbackContract,
   CallbackErrorEvidence,
   CallbackRequestEvidence,
   CallbackResponseEvidence,
+  PackageId,
   VirtualTime,
+} from "@firedrill/contracts";
+import {
+  CallbackErrorEvidenceSchema,
+  compareStableStrings,
+  JsonValueSchema,
+  PackageIdSchema,
+  VirtualTimeSchema,
 } from "@firedrill/contracts";
 import type {
   ToolCallbackCodec,
@@ -71,10 +73,16 @@ export interface CallbackDispatcherOptions {
   readonly transport?: CallbackTransport;
   /**
    * Stable execution identity, required with an explicit transport. Preserve across retries
-   * and recovery; change for every reset/fork execution generation. Never include secrets.
+   * and recovery; change for every full-world reset/fork execution generation. Never include secrets.
    * When omitted, local delivery IDs remain the wire idempotency keys.
    */
   readonly idempotencyScope?: string;
+  /**
+   * Per-package execution identities for partial resets. Requires idempotencyScope.
+   * Keys must name installed Tools; values follow the same scope bounds. Copied at construction.
+   * An override applies to deliveries owned by the package or emitted by its events.
+   */
+  readonly idempotencyScopeByPackage?: Readonly<Record<PackageId, string>>;
 }
 
 export interface CallbackDispatchOutcome {
@@ -410,6 +418,7 @@ export class CallbackDispatcher {
   private readonly fetchImplementation: typeof globalThis.fetch;
   private readonly transport: CallbackTransport | undefined;
   private readonly idempotencyScope: string | undefined;
+  private readonly idempotencyScopeByPackage: Readonly<Record<PackageId, string>>;
   private activeDispatch: Promise<CallbackDispatchResult> | undefined;
 
   constructor(options: CallbackDispatcherOptions) {
@@ -434,6 +443,40 @@ export class CallbackDispatcher {
       throw new TypeError("callback idempotency scope must be a nonempty string of at most 1024 bytes");
     }
     this.idempotencyScope = options.idempotencyScope;
+    const packageScopes = options.idempotencyScopeByPackage;
+    if (packageScopes !== undefined && this.idempotencyScope === undefined) {
+      throw new TypeError("callback package idempotency scopes require a base idempotency scope");
+    }
+    if (
+      packageScopes !== undefined &&
+      (typeof packageScopes !== "object" ||
+        packageScopes === null ||
+        (Object.getPrototypeOf(packageScopes) !== Object.prototype &&
+          Object.getPrototypeOf(packageScopes) !== null))
+    ) {
+      throw new TypeError("callback package idempotency scopes must be a record");
+    }
+    const installedPackages = new Set(options.tools.map((tool) => tool.manifest.id));
+    this.idempotencyScopeByPackage = Object.freeze(
+      Object.fromEntries(
+        Reflect.ownKeys(packageScopes ?? {}).map((packageId) => {
+          if (
+            typeof packageId !== "string" ||
+            !PackageIdSchema.safeParse(packageId).success ||
+            !installedPackages.has(packageId)
+          ) {
+            throw new TypeError("callback package idempotency scope keys must name installed Tools");
+          }
+          const scope = packageScopes?.[packageId];
+          if (typeof scope !== "string" || scope.trim().length === 0 || Buffer.byteLength(scope) > 1024) {
+            throw new TypeError(
+              "callback package idempotency scope must be a nonempty string of at most 1024 bytes",
+            );
+          }
+          return [packageId, scope];
+        }),
+      ),
+    );
     this.transport =
       options.transport === undefined
         ? undefined
@@ -492,9 +535,16 @@ export class CallbackDispatcher {
   }
 
   private idempotencyKey(delivery: CallbackDelivery): string {
-    return this.idempotencyScope === undefined
-      ? delivery.id
-      : sha256(Buffer.from(JSON.stringify([this.idempotencyScope, delivery.id]), "utf8"));
+    if (this.idempotencyScope === undefined) return delivery.id;
+    const applicableOverrides = [...new Set([delivery.callback.packageId, delivery.event.packageId])]
+      .filter((packageId) => Object.hasOwn(this.idempotencyScopeByPackage, packageId))
+      .sort(compareStableStrings)
+      .map((packageId) => [packageId, this.idempotencyScopeByPackage[packageId]]);
+    const identity =
+      applicableOverrides.length === 0
+        ? [this.idempotencyScope, delivery.id]
+        : [this.idempotencyScope, delivery.id, applicableOverrides];
+    return sha256(Buffer.from(JSON.stringify(identity), "utf8"));
   }
 
   private async performDispatchDue(signal: AbortSignal | undefined): Promise<CallbackDispatchResult> {
