@@ -1,6 +1,6 @@
 import { mkdtempSync, rmSync } from "node:fs";
-import { createServer } from "node:http";
 import type { Server } from "node:http";
+import { createServer } from "node:http";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { CallbackDispatcher } from "@firedrill/protocol-http";
@@ -8,8 +8,8 @@ import { defineTool } from "@firedrill/tool-sdk";
 import { WorldKernel } from "@firedrill/world-kernel";
 import { SqliteWorldStore } from "@firedrill/world-store-sqlite";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { settleVirtualTime } from "../src/index.js";
 import type { DrillCallbackSettlement, VirtualTimeSettlementOptions } from "../src/index.js";
+import { settleVirtualTime } from "../src/index.js";
 
 const HASH = `sha256:${"a".repeat(64)}` as const;
 const directories: string[] = [];
@@ -187,6 +187,52 @@ function options(
 }
 
 describe("callback-aware virtual-time settlement", () => {
+  it("yields long event batches so external cancellation can retain a committed prefix", async () => {
+    const fixture = world(Array.from({ length: 100 }, () => 0));
+    const controller = new AbortController();
+    const cancellation = setImmediate(() => controller.abort("external stop"));
+    try {
+      const result = await settleVirtualTime({
+        ...options(fixture, { flush: async () => undefined, nextDueUs: () => null }),
+        targetUs: 0,
+        maxEvents: 100,
+        signal: controller.signal,
+      });
+      expect(result).toMatchObject({ status: "aborted", reason: "external stop", reachedUs: 0 });
+      expect(result.scheduledEventsProcessed).toBeGreaterThan(0);
+      expect(result.scheduledEventsProcessed).toBeLessThan(100);
+      expect(fixture.store.listScheduledEvents("pending")).toHaveLength(
+        100 - result.scheduledEventsProcessed,
+      );
+    } finally {
+      clearImmediate(cancellation);
+    }
+  });
+
+  it("keeps one budget and deterministic evidence across event-loop yields", async () => {
+    const run = async (maximum: number) => {
+      const fixture = world(Array.from({ length: 100 }, () => 20));
+      const result = await settleVirtualTime({
+        ...options(fixture, { flush: async () => undefined, nextDueUs: () => null }),
+        maxEvents: maximum,
+      });
+      return {
+        result,
+        pending: fixture.store.listScheduledEvents("pending").length,
+        hash: fixture.store.evidenceHash(),
+      };
+    };
+    expect(await run(100)).toEqual(await run(100));
+    expect((await run(100)).result).toMatchObject({
+      status: "completed",
+      reachedUs: 30,
+      scheduledEventsProcessed: 100,
+    });
+    expect(await run(65)).toMatchObject({
+      result: { status: "failed", reachedUs: 20, scheduledEventsProcessed: 65, eventBudgetExhausted: true },
+      pending: 35,
+    });
+  });
   it("rejects malformed limits before flushing and honors a zero remaining budget at the current time", async () => {
     const fixture = world([0]);
     const flush = vi.fn(async () => undefined);

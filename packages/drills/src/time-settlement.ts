@@ -1,5 +1,5 @@
-import { VirtualTimeSchema } from "@firedrill/contracts";
 import type { CorrelationId } from "@firedrill/contracts";
+import { VirtualTimeSchema } from "@firedrill/contracts";
 import type {
   AdvanceTimeOptions,
   ClockAdvanceResult,
@@ -126,6 +126,7 @@ export async function settleVirtualTime(
     const stepUs = callbackDueUs !== null && callbackDueUs < requestedUs ? callbackDueUs : requestedUs;
     const before = processedEvents;
     let stoppedForCallback = false;
+    let stoppedForYield = false;
     let observerFailure: { readonly reason: "observer" | "callback"; readonly error: unknown } | undefined;
     let advanced: ClockAdvanceResult;
     try {
@@ -159,7 +160,11 @@ export async function settleVirtualTime(
             observerFailure = { reason: "callback", error };
             return false;
           }
-          return !stoppedForCallback && !options.signal?.aborted;
+          // A kernel batch is synchronous. Bound its size so a large timer
+          // queue cannot starve cancellation, I/O or the caller's heartbeat.
+          // Event-count boundaries (not wall time) preserve deterministic order.
+          stoppedForYield = checkpoint.processed >= 32;
+          return !stoppedForCallback && !stoppedForYield && !options.signal?.aborted;
         },
       });
     } catch (error) {
@@ -182,12 +187,15 @@ export async function settleVirtualTime(
     if (
       !stopped &&
       ((advanced.reachedUs <= currentUs && processedEvents === before) ||
-        (advanced.reachedUs < stepUs && !stoppedForCallback))
+        (advanced.reachedUs < stepUs && !stoppedForCallback && !stoppedForYield))
     ) {
       return failed(
         "no_progress",
         new Error("world clock did not reach its requested time or expose pending callback work"),
       );
+    }
+    if (stoppedForYield && !stopped) {
+      await new Promise<void>((resolve) => setImmediate(resolve));
     }
   }
 }
