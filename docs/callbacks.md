@@ -75,3 +75,15 @@ assertions:
 ```
 
 `firedrill tool test` applies the same receiver options and requires every declared callback to be delivered successfully by the selected conformance suite. This prevents a reusable Tool from advertising an unexercised callback surface.
+
+## Explicit transport composition
+
+The ordinary CLI and SDK path remains credential-free loopback HTTP. An advanced caller composing `CallbackDispatcher` from `@firedrill/protocol-http` may provide a caller-owned `transport` with `authorizeOrigin({ receiverId, origin })` and `fetch`. This is an explicit network edge, not a remote-access flag or a Tool capability. No remote transport or allow-all policy is built in.
+
+Origin authorization must return `true` for the exact receiver and canonical origin on every attempt. The transport must independently enforce its destination/network policy on every connection, including DNS resolution, honor the supplied abort signal, and refuse redirects. Fetch rejection and response-body completion/cancellation must await cleanup of active I/O. Origin selection alone does not prevent DNS rebinding or provide network isolation. The dispatcher still rejects credentials, base paths, queries, fragments, escaping callback paths, codec-selected destinations, and overrides of delivery/signature headers. The same request/header/response bounds, timeout, HMAC signing, durable outbox, and virtual-time retry policy apply.
+
+An explicit transport requires an immutable `idempotencyScope`: a nonempty execution identity of at most 1024 UTF-8 bytes, containing no secrets. Persist and reuse that scope across retries and process recovery; create a new scope for every reset or fork execution generation. World-local callback IDs may repeat after reset. The transmitted key is `sha256:` followed by the hexadecimal SHA-256 of the UTF-8 JSON array `[idempotencyScope, deliveryId]`. A caller may also supply the scope with the default local transport. Without one, the existing local delivery ID remains the transmitted key.
+
+Callback evidence keeps its top-level `idempotencyKey` as the world-local logical delivery identity for every phase. An `attempt_started` record's `request.idempotencyKey` records the actual transmitted key; older evidence may omit that optional request field. Origins and signing secrets remain outside the durable evidence.
+
+`dispatchDue(signal?)` supports caller cancellation. An already-aborted signal starts no attempt. An in-flight interruption records a retryable `framework.CALLBACK_ABORTED` error and the receiver's outcome may be unknown; retry scheduling and exhaustion still use the declared delivery policy. No later delivery starts in that drain. Await rejection before resetting or closing the world, so network cleanup and durable settlement finish first. Concurrent calls join the active drain and do not replace its owner's signal.

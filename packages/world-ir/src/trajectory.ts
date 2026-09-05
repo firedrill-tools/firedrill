@@ -115,8 +115,12 @@ function stableEvidenceEntry(
       ...callback
     } = stable;
     const deliveryId = mappedIdentity(entry.deliveryId, callbackDeliveries);
+    // The wire key scopes external deduplication, not the world's behavior.
+    // Exact evidence integrity still covers this per-execution identity.
+    const { idempotencyKey: _requestIdempotencyKey, ...request } = entry.request ?? {};
     return {
       ...callback,
+      ...(entry.request === undefined ? {} : { request }),
       ...(deliveryId === undefined ? {} : { deliveryId }),
       idempotencyKey: entry.idempotencyKey === entry.deliveryId ? deliveryId : entry.idempotencyKey,
     };

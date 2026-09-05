@@ -1,14 +1,22 @@
-import { createHmac } from "node:crypto";
+import { createHash, createHmac } from "node:crypto";
 import { mkdtempSync, rmSync } from "node:fs";
 import { createServer } from "node:http";
 import type { IncomingMessage, Server, ServerResponse } from "node:http";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { defineTool } from "@firedrill/tool-sdk";
+import type { ToolCallbackCodec, ToolDefinition } from "@firedrill/tool-sdk";
 import { WorldKernel } from "@firedrill/world-kernel";
 import { SqliteWorldStore } from "@firedrill/world-store-sqlite";
 import { afterEach, describe, expect, it } from "vitest";
-import { CallbackDispatcher } from "../src/index.js";
+import {
+  CallbackDispatcher,
+  MAX_CALLBACK_HEADERS,
+  MAX_CALLBACK_HEADER_BYTES,
+  MAX_CALLBACK_REQUEST_BYTES,
+  MAX_CALLBACK_RESPONSE_BYTES,
+} from "../src/index.js";
+import type { CallbackTransport } from "../src/index.js";
 
 const HASH_A = `sha256:${"a".repeat(64)}` as const;
 const HASH_B = `sha256:${"b".repeat(64)}` as const;
@@ -21,7 +29,13 @@ interface ReceivedCallback {
   readonly body: Buffer;
 }
 
-function tool(retryDelaysUs: readonly number[] = []) {
+interface CallbackFixtureOptions {
+  readonly encode?: ToolCallbackCodec["encode"];
+  readonly timeoutMs?: number;
+  readonly idempotencyHeader?: string;
+}
+
+function tool(retryDelaysUs: readonly number[] = [], options: CallbackFixtureOptions = {}) {
   return defineTool({
     manifest: {
       schemaVersion: 1,
@@ -66,10 +80,10 @@ function tool(retryDelaysUs: readonly number[] = []) {
           receiverId: "application",
           method: "POST",
           path: "/hooks/items",
-          idempotencyHeader: "Idempotency-Key",
+          idempotencyHeader: options.idempotencyHeader ?? "Idempotency-Key",
           signature: { kind: "hmac-sha256", header: "X-Firedrill-Signature" },
           retry: { delaysUs: retryDelaysUs },
-          timeoutMs: 1_000,
+          timeoutMs: options.timeoutMs ?? 1_000,
         },
       ],
     },
@@ -81,21 +95,24 @@ function tool(retryDelaysUs: readonly number[] = []) {
     },
     callbacks: {
       "notify-application": {
-        encode: ({ deliveryId, event, payload, attempt }) => ({
-          headers: { "x-event-type": event.eventId },
-          body: { kind: "json", value: { deliveryId, attempt, ...payload } },
-        }),
+        encode:
+          options.encode ??
+          (({ deliveryId, event, payload, attempt }) => ({
+            headers: { "x-event-type": event.eventId },
+            body: { kind: "json", value: { deliveryId, attempt, ...payload } },
+          })),
       },
     },
   });
 }
 
-function world(retryDelaysUs: readonly number[] = []) {
+function world(retryDelaysUs: readonly number[] = [], options: CallbackFixtureOptions = {}) {
   const directory = mkdtempSync(join(tmpdir(), "firedrill-callback-test-"));
   directories.push(directory);
-  const installed = tool(retryDelaysUs);
+  const installed = tool(retryDelaysUs, options);
+  const filePath = join(directory, "world.sqlite");
   const store = SqliteWorldStore.create({
-    filePath: join(directory, "world.sqlite"),
+    filePath,
     worldInstanceId: "world_callback01",
     buildHash: HASH_A,
     packageLockHash: HASH_B,
@@ -111,16 +128,17 @@ function world(retryDelaysUs: readonly number[] = []) {
     ],
   });
   const kernel = new WorldKernel({ store, packageLockHash: HASH_B, tools: [installed] });
+  let callCount = 0;
   const invoke = () =>
     kernel.invoke({
       schemaVersion: 1,
-      callId: "call_callback01",
+      callId: `call_callback${String(++callCount)}`,
       correlationId: "corr_callback01",
       operation: { packageId: "work-items", operationId: "items.complete" },
       actorBindingId: "actor_callback",
       arguments: { itemId: "item_42" },
     });
-  return { installed, store, kernel, invoke };
+  return { installed, store, kernel, invoke, directory, filePath };
 }
 
 async function readBody(request: IncomingMessage): Promise<Buffer> {
@@ -145,6 +163,13 @@ async function receiver(
   const address = server.address();
   if (address === null || typeof address === "string") throw new Error("receiver has no TCP address");
   return `http://127.0.0.1:${String(address.port)}`;
+}
+
+function approvedTransport(origin: string): CallbackTransport {
+  return {
+    authorizeOrigin: (input) => input.receiverId === "application" && input.origin === origin,
+    fetch: (input, init) => globalThis.fetch(input, init),
+  };
 }
 
 afterEach(async () => {
@@ -293,6 +318,529 @@ describe("outbound callback delivery", () => {
       response: { status: 302 },
       error: { code: "framework.CALLBACK_HTTP_REJECTED" },
     });
+    fixture.store.close();
+  });
+
+  it("requires explicit approval for an origin outside the local default and preserves bounded signed HTTP", async () => {
+    const received: ReceivedCallback[] = [];
+    const localUrl = await receiver((request, response, body) => {
+      received.push({ path: request.url ?? "", headers: request.headers, body });
+      response.writeHead(204);
+      response.end();
+    });
+    // An IPv4-mapped address reaches this real TCP listener but is outside the default hostname list.
+    const baseUrl = new URL(localUrl.replace("127.0.0.1", "[::ffff:127.0.0.1]")).origin;
+    const blocked = world();
+    blocked.invoke();
+    await new CallbackDispatcher({
+      store: blocked.store,
+      tools: [blocked.installed],
+      receivers: { application: { baseUrl, secret: "callback-secret" } },
+    }).dispatchDue();
+    expect(received).toHaveLength(0);
+    expect(blocked.store.readEvidence().at(-1)).toMatchObject({
+      error: { code: "framework.CALLBACK_RECEIVER_BLOCKED", retryable: false },
+    });
+    blocked.store.close();
+
+    const fixture = world();
+    fixture.invoke();
+    const deliveryId = fixture.store.nextCallbackDelivery(0)?.id;
+    const dispatcher = new CallbackDispatcher({
+      store: fixture.store,
+      tools: [fixture.installed],
+      receivers: { application: { baseUrl, secret: "callback-secret" } },
+      transport: approvedTransport(baseUrl),
+      idempotencyScope: "execution-1",
+    });
+    expect(await dispatcher.dispatchDue()).toMatchObject({ outcomes: [{ status: "delivered" }] });
+    const expectedKey = `sha256:${createHash("sha256")
+      .update(JSON.stringify(["execution-1", deliveryId]))
+      .digest("hex")}`;
+    expect(received).toHaveLength(1);
+    expect(received[0]?.headers["idempotency-key"]).toBe(expectedKey);
+    expect(received[0]?.headers["x-firedrill-signature"]).toBe(
+      `sha256=${createHmac("sha256", "callback-secret")
+        .update(received[0]?.body ?? Buffer.alloc(0))
+        .digest("hex")}`,
+    );
+    expect(
+      fixture.store
+        .readEvidence()
+        .find((entry) => entry.kind === "callback" && entry.phase === "attempt_started"),
+    ).toMatchObject({ idempotencyKey: deliveryId, request: { idempotencyKey: expectedKey } });
+    expect(JSON.stringify(fixture.store.readEvidence())).not.toContain(baseUrl);
+    expect(JSON.stringify(fixture.store.readEvidence())).not.toContain("callback-secret");
+    expect(JSON.stringify(fixture.store.readEvidence())).not.toContain("execution-1");
+    fixture.store.close();
+  });
+
+  it("reauthorizes each retry without reaching an unapproved receiver", async () => {
+    const fixture = world([1_000]);
+    let requests = 0;
+    let approved = true;
+    const decisions: unknown[] = [];
+    const baseUrl = await receiver((_request, response) => {
+      requests += 1;
+      response.writeHead(503);
+      response.end();
+    });
+    fixture.invoke();
+    const dispatcher = new CallbackDispatcher({
+      store: fixture.store,
+      tools: [fixture.installed],
+      receivers: { application: { baseUrl, secret: "callback-secret" } },
+      idempotencyScope: "execution-revocation",
+      transport: {
+        authorizeOrigin: (input) => {
+          decisions.push(input);
+          return approved && input.receiverId === "application" && input.origin === baseUrl;
+        },
+        fetch: globalThis.fetch,
+      },
+    });
+    await dispatcher.dispatchDue();
+    approved = false;
+    fixture.kernel.advanceTime(1_000, { correlationId: "corr_revoke", maxEvents: 0 });
+    expect(await dispatcher.dispatchDue()).toMatchObject({ outcomes: [{ status: "failed", attempt: 2 }] });
+    expect(requests).toBe(1);
+    expect(decisions).toEqual([
+      { receiverId: "application", origin: baseUrl },
+      { receiverId: "application", origin: baseUrl },
+    ]);
+    expect(fixture.store.readEvidence().at(-1)).toMatchObject({
+      error: { code: "framework.CALLBACK_RECEIVER_BLOCKED", retryable: false },
+    });
+    fixture.store.close();
+  });
+
+  it("keeps scoped keys stable across actual retries and distinct when reset repeats a delivery ID", async () => {
+    const fixture = world([1_000]);
+    const snapshot = join(fixture.directory, "baseline.sqlite");
+    fixture.store.createSnapshot(snapshot, "corr_scope_snapshot");
+    const keys: (string | string[] | undefined)[] = [];
+    const baseUrl = await receiver((request, response) => {
+      keys.push(request.headers["idempotency-key"]);
+      response.writeHead(keys.length === 1 ? 503 : 204);
+      response.end();
+    });
+    const dispatcher = (idempotencyScope: string) =>
+      new CallbackDispatcher({
+        store: fixture.store,
+        tools: [fixture.installed],
+        receivers: { application: { baseUrl, secret: "callback-secret" } },
+        transport: approvedTransport(baseUrl),
+        idempotencyScope,
+      });
+    fixture.invoke();
+    const originalId = fixture.store.nextCallbackDelivery(0)?.id;
+    await dispatcher("execution-before-reset").dispatchDue();
+    fixture.kernel.advanceTime(1_000, { correlationId: "corr_scope_retry", maxEvents: 0 });
+    await dispatcher("execution-before-reset").dispatchDue();
+    expect(keys[1]).toBe(keys[0]);
+    fixture.store.resetFromSnapshot(snapshot, "corr_scope_reset");
+    fixture.invoke();
+    expect(fixture.store.nextCallbackDelivery(0)?.id).toBe(originalId);
+    await dispatcher("execution-after-reset").dispatchDue();
+    expect(keys).toHaveLength(3);
+    expect(keys[2]).not.toBe(keys[0]);
+    fixture.store.close();
+  });
+
+  it("recovers an uncertain delivered request from reopened SQLite with the same scoped key", async () => {
+    const fixture = world([1_000]);
+    const keys: (string | string[] | undefined)[] = [];
+    const baseUrl = await receiver((request, response) => {
+      keys.push(request.headers["idempotency-key"]);
+      response.writeHead(204);
+      response.end();
+    });
+    fixture.invoke();
+    const dispatcher = new CallbackDispatcher({
+      store: fixture.store,
+      tools: [fixture.installed],
+      receivers: { application: { baseUrl, secret: "callback-secret" } },
+      idempotencyScope: "recoverable-execution",
+      transport: {
+        ...approvedTransport(baseUrl),
+        fetch: async (input, init) => {
+          const response = await globalThis.fetch(input, init);
+          fixture.store.close(); // Crash boundary: receiver accepted, but delivery settlement cannot commit.
+          return response;
+        },
+      },
+    });
+    await expect(dispatcher.dispatchDue()).rejects.toThrow();
+    const reopened = SqliteWorldStore.open(fixture.filePath);
+    expect(reopened.listCallbackDeliveries("in_flight")).toHaveLength(1);
+    const recovered = new CallbackDispatcher({
+      store: reopened,
+      tools: [fixture.installed],
+      receivers: { application: { baseUrl, secret: "callback-secret" } },
+      transport: approvedTransport(baseUrl),
+      idempotencyScope: "recoverable-execution",
+    });
+    expect(recovered.recoverInFlight()).toBe(1);
+    new WorldKernel({ store: reopened, packageLockHash: HASH_B, tools: [fixture.installed] }).advanceTime(
+      1_000,
+      { correlationId: "corr_scope_recover", maxEvents: 0 },
+    );
+    expect(await recovered.dispatchDue()).toMatchObject({ outcomes: [{ status: "delivered", attempt: 2 }] });
+    expect(keys).toHaveLength(2);
+    expect(keys[1]).toBe(keys[0]);
+    expect(reopened.listCallbackDeliveries("in_flight")).toEqual([]);
+    expect(
+      reopened
+        .readEvidence()
+        .filter((entry) => entry.kind === "callback")
+        .map((entry) => entry.phase),
+    ).toEqual(["queued", "attempt_started", "recovered", "attempt_started", "delivered"]);
+    reopened.close();
+  });
+
+  it("rejects missing or oversized execution scopes and ambiguous transport configuration", () => {
+    const fixture = world();
+    const options = {
+      store: fixture.store,
+      tools: [fixture.installed],
+      receivers: {},
+      transport: approvedTransport("http://127.0.0.1"),
+    };
+    expect(() => new CallbackDispatcher(options)).toThrow(/requires an idempotency scope/);
+    for (const idempotencyScope of ["", " \n ", "x".repeat(1025), "é".repeat(513)]) {
+      expect(() => new CallbackDispatcher({ ...options, idempotencyScope })).toThrow(/idempotency scope/);
+    }
+    expect(
+      () => new CallbackDispatcher({ ...options, idempotencyScope: "valid", fetch: globalThis.fetch }),
+    ).toThrow(/cannot be supplied together/);
+    fixture.store.close();
+  });
+
+  it.each([
+    "http://name:password@127.0.0.1",
+    "http://127.0.0.1/path",
+    "http://127.0.0.1?token=value",
+    "http://127.0.0.1#fragment",
+    "file:///tmp/receiver",
+  ])("does not let explicit approval bypass origin structure: %s", async (baseUrl) => {
+    const fixture = world();
+    fixture.invoke();
+    let authorized = 0;
+    let fetched = 0;
+    const dispatcher = new CallbackDispatcher({
+      store: fixture.store,
+      tools: [fixture.installed],
+      receivers: { application: { baseUrl, secret: "callback-secret" } },
+      idempotencyScope: "structural-negative",
+      transport: {
+        authorizeOrigin: () => {
+          authorized += 1;
+          return true;
+        },
+        fetch: async () => {
+          fetched += 1;
+          return new Response(null, { status: 204 });
+        },
+      },
+    });
+    expect(await dispatcher.dispatchDue()).toMatchObject({ outcomes: [{ status: "failed" }] });
+    expect(authorized).toBe(0);
+    expect(fetched).toBe(0);
+    fixture.store.close();
+  });
+
+  it.each([
+    "//example.invalid/hook",
+    "/\\example.invalid/hook",
+    "/x/../hook",
+    "/%2e%2e/hook",
+    "/hook?query=1",
+    "/hook#fragment",
+  ])("blocks malformed source paths before origin authorization: %s", async (path) => {
+    const fixture = world();
+    fixture.invoke();
+    let requests = 0;
+    const baseUrl = await receiver((_request, response) => {
+      requests += 1;
+      response.end();
+    });
+    const malformed: ToolDefinition = {
+      ...fixture.installed,
+      manifest: {
+        ...fixture.installed.manifest,
+        callbacks: fixture.installed.manifest.callbacks.map((contract) => ({ ...contract, path })),
+      },
+    };
+    expect(
+      await new CallbackDispatcher({
+        store: fixture.store,
+        tools: [malformed],
+        receivers: { application: { baseUrl, secret: "callback-secret" } },
+        transport: approvedTransport(baseUrl),
+        idempotencyScope: "path-negative",
+      }).dispatchDue(),
+    ).toMatchObject({ outcomes: [{ status: "failed" }] });
+    expect(requests).toBe(0);
+    expect(fixture.store.readEvidence().at(-1)).toMatchObject({
+      error: { code: "framework.CALLBACK_REQUEST_INVALID", retryable: false },
+    });
+    fixture.store.close();
+  });
+
+  it.each([
+    { headers: { "IDEMPOTENCY-KEY": "spoofed" }, body: { kind: "empty" as const } },
+    { headers: { "x-firedrill-signature": "spoofed" }, body: { kind: "empty" as const } },
+    { headers: { host: "example.invalid" }, body: { kind: "empty" as const } },
+    { url: "https://example.invalid", body: { kind: "empty" as const } },
+  ])("does not let a codec override destination or delivery headers: %j", async (encoded) => {
+    const fixture = world([], { encode: () => encoded });
+    let requests = 0;
+    const baseUrl = await receiver((_request, response) => {
+      requests += 1;
+      response.end();
+    });
+    fixture.invoke();
+    expect(
+      await new CallbackDispatcher({
+        store: fixture.store,
+        tools: [fixture.installed],
+        receivers: { application: { baseUrl, secret: "callback-secret" } },
+        transport: approvedTransport(baseUrl),
+        idempotencyScope: "codec-negative",
+      }).dispatchDue(),
+    ).toMatchObject({ outcomes: [{ status: "failed" }] });
+    expect(requests).toBe(0);
+    expect(fixture.store.readEvidence().at(-1)).toMatchObject({
+      error: { code: "framework.CALLBACK_REQUEST_INVALID", retryable: false },
+    });
+    fixture.store.close();
+  });
+
+  it.each(["host", "content-length", "transfer-encoding"])(
+    "rejects forbidden contract delivery header %s",
+    async (idempotencyHeader) => {
+      const fixture = world([], { idempotencyHeader });
+      fixture.invoke();
+      let requests = 0;
+      const baseUrl = await receiver((_request, response) => {
+        requests += 1;
+        response.end();
+      });
+      await new CallbackDispatcher({
+        store: fixture.store,
+        tools: [fixture.installed],
+        receivers: { application: { baseUrl, secret: "callback-secret" } },
+        transport: approvedTransport(baseUrl),
+        idempotencyScope: "header-negative",
+      }).dispatchDue();
+      expect(requests).toBe(0);
+      expect(fixture.store.readEvidence().at(-1)).toMatchObject({
+        error: { code: "framework.CALLBACK_REQUEST_INVALID" },
+      });
+      fixture.store.close();
+    },
+  );
+
+  it("retains redirect rejection through an explicitly approved actual HTTP transport", async () => {
+    const fixture = world();
+    let redirected = 0;
+    const destination = await receiver((_request, response) => {
+      redirected += 1;
+      response.end();
+    });
+    const baseUrl = await receiver((_request, response) => {
+      response.writeHead(307, { location: `${destination}/should-not-arrive` });
+      response.end();
+    });
+    fixture.invoke();
+    await new CallbackDispatcher({
+      store: fixture.store,
+      tools: [fixture.installed],
+      receivers: { application: { baseUrl, secret: "callback-secret" } },
+      transport: approvedTransport(baseUrl),
+      idempotencyScope: "redirect-negative",
+    }).dispatchDue();
+    expect(redirected).toBe(0);
+    expect(fixture.store.readEvidence().at(-1)).toMatchObject({
+      response: { status: 307 },
+      error: { code: "framework.CALLBACK_HTTP_REJECTED" },
+    });
+    fixture.store.close();
+  });
+
+  it.each([
+    {
+      encode: () => ({ body: { kind: "text" as const, value: "x".repeat(MAX_CALLBACK_REQUEST_BYTES + 1) } }),
+      code: "CALLBACK_REQUEST_TOO_LARGE",
+    },
+    {
+      encode: () => ({
+        headers: { "x-long": "x".repeat(MAX_CALLBACK_HEADER_BYTES) },
+        body: { kind: "empty" as const },
+      }),
+      code: "CALLBACK_REQUEST_INVALID",
+    },
+    {
+      encode: () => ({
+        headers: Object.fromEntries(
+          Array.from({ length: MAX_CALLBACK_HEADERS + 1 }, (_, index) => [`x-${String(index)}`, "v"]),
+        ),
+        body: { kind: "empty" as const },
+      }),
+      code: "CALLBACK_REQUEST_INVALID",
+    },
+  ])("retains request byte/header bounds with explicit transport: $code", async ({ encode, code }) => {
+    const fixture = world([], { encode });
+    let requests = 0;
+    const baseUrl = await receiver((_request, response) => {
+      requests += 1;
+      response.end();
+    });
+    fixture.invoke();
+    await new CallbackDispatcher({
+      store: fixture.store,
+      tools: [fixture.installed],
+      receivers: { application: { baseUrl, secret: "callback-secret" } },
+      transport: approvedTransport(baseUrl),
+      idempotencyScope: "bounds-negative",
+    }).dispatchDue();
+    expect(requests).toBe(0);
+    expect(fixture.store.readEvidence().at(-1)).toMatchObject({ error: { code: `framework.${code}` } });
+    fixture.store.close();
+  });
+
+  it.each([true, false])(
+    "bounds actual HTTP response bytes (declared content length: %s)",
+    async (declared) => {
+      const fixture = world();
+      const baseUrl = await receiver((_request, response) => {
+        response.writeHead(200, declared ? { "content-length": MAX_CALLBACK_RESPONSE_BYTES + 1 } : {});
+        response.write(Buffer.alloc(MAX_CALLBACK_RESPONSE_BYTES));
+        response.end("x");
+      });
+      fixture.invoke();
+      await new CallbackDispatcher({
+        store: fixture.store,
+        tools: [fixture.installed],
+        receivers: { application: { baseUrl, secret: "callback-secret" } },
+        transport: approvedTransport(baseUrl),
+        idempotencyScope: "response-negative",
+      }).dispatchDue();
+      expect(fixture.store.listCallbackDeliveries("in_flight")).toEqual([]);
+      expect(fixture.store.readEvidence().at(-1)).toMatchObject({
+        error: { code: "framework.CALLBACK_RESPONSE_TOO_LARGE", retryable: true },
+      });
+      fixture.store.close();
+    },
+  );
+
+  it("times out an actual incomplete HTTP response and settles the delivery", async () => {
+    const fixture = world([], { timeoutMs: 100 });
+    const baseUrl = await receiver((_request, response) => {
+      response.writeHead(200);
+      response.write("unfinished");
+    });
+    fixture.invoke();
+    await new CallbackDispatcher({
+      store: fixture.store,
+      tools: [fixture.installed],
+      receivers: { application: { baseUrl, secret: "callback-secret" } },
+      transport: approvedTransport(baseUrl),
+      idempotencyScope: "timeout-negative",
+    }).dispatchDue();
+    expect(fixture.store.listCallbackDeliveries("in_flight")).toEqual([]);
+    expect(fixture.store.readEvidence().at(-1)).toMatchObject({
+      error: { code: "framework.CALLBACK_TIMEOUT", retryable: true },
+    });
+    fixture.store.close();
+  });
+
+  it("does not claim work for a pre-aborted dispatch", async () => {
+    const fixture = world();
+    fixture.invoke();
+    const evidenceBefore = fixture.store.readEvidence();
+    let requests = 0;
+    const baseUrl = await receiver((_request, response) => {
+      requests += 1;
+      response.end();
+    });
+    const dispatcher = new CallbackDispatcher({
+      store: fixture.store,
+      tools: [fixture.installed],
+      receivers: { application: { baseUrl, secret: "callback-secret" } },
+      transport: approvedTransport(baseUrl),
+      idempotencyScope: "pre-aborted",
+    });
+    const controller = new AbortController();
+    controller.abort(new Error("stop before delivery"));
+    await expect(dispatcher.dispatchDue(controller.signal)).rejects.toThrow("stop before delivery");
+    expect(requests).toBe(0);
+    expect(fixture.store.readEvidence()).toEqual(evidenceBefore);
+    expect(fixture.store.nextCallbackDelivery(0)).toMatchObject({ attemptCount: 0, status: "pending" });
+    fixture.store.close();
+  });
+
+  it("drains actual HTTP abort before rejecting and leaves later work unclaimed for a safe reset", async () => {
+    const fixture = world([1_000]);
+    const snapshot = join(fixture.directory, "before-abort.sqlite");
+    fixture.store.createSnapshot(snapshot, "corr_abort_snapshot");
+    fixture.invoke();
+    fixture.invoke();
+    let observe: () => void = () => undefined;
+    const observed = new Promise<void>((resolve) => {
+      observe = resolve;
+    });
+    let requests = 0;
+    let requestSignal: AbortSignal | undefined;
+    let activeBody: ReadableStream<Uint8Array> | null | undefined;
+    const baseUrl = await receiver((_request, response) => {
+      requests += 1;
+      response.writeHead(200);
+      response.write("incomplete");
+    });
+    const dispatcher = new CallbackDispatcher({
+      store: fixture.store,
+      tools: [fixture.installed],
+      receivers: { application: { baseUrl, secret: "callback-secret" } },
+      idempotencyScope: "abort-drain",
+      transport: {
+        ...approvedTransport(baseUrl),
+        fetch: async (input, init) => {
+          requestSignal = init?.signal ?? undefined;
+          const response = await globalThis.fetch(input, init);
+          activeBody = response.body;
+          observe();
+          return response;
+        },
+      },
+    });
+    const controller = new AbortController();
+    const dispatch = dispatcher.dispatchDue(controller.signal);
+    const joined = dispatcher.dispatchDue();
+    const rejected = expect(dispatch).rejects.toThrow("stop and drain");
+    const joinedRejected = expect(joined).rejects.toThrow("stop and drain");
+    await observed;
+    expect(fixture.store.listCallbackDeliveries("in_flight")).toHaveLength(1);
+    expect(() => dispatcher.recoverInFlight()).toThrow(/active dispatch/);
+    expect(() => fixture.store.resetFromSnapshot(snapshot, "corr_reset_busy")).toThrow(/in flight/);
+    controller.abort(new Error("stop and drain"));
+    await Promise.all([rejected, joinedRejected]);
+    expect(requestSignal?.aborted).toBe(true);
+    expect(activeBody?.locked).toBe(false);
+    expect(requests).toBe(1);
+    expect(fixture.store.listCallbackDeliveries("in_flight")).toEqual([]);
+    expect(
+      fixture.store
+        .listCallbackDeliveries("pending")
+        .map((entry) => entry.attemptCount)
+        .sort(),
+    ).toEqual([0, 1]);
+    expect(fixture.store.readEvidence().at(-1)).toMatchObject({
+      phase: "retry_scheduled",
+      error: { code: "framework.CALLBACK_ABORTED", retryable: true },
+    });
+    fixture.store.resetFromSnapshot(snapshot, "corr_reset_drained");
+    expect(await dispatcher.dispatchDue()).toEqual({ outcomes: [] });
     fixture.store.close();
   });
 });

@@ -72,6 +72,8 @@ export const CallbackRequestEvidenceSchema = z
     path: z.string().min(1).max(512),
     bodyHash: Sha256Schema,
     bodyBytes: z.number().int().nonnegative().safe(),
+    /** Actual transmitted key; the enclosing callback retains its world-local delivery identity. */
+    idempotencyKey: z.string().min(1).max(128).optional(),
     signature: z.discriminatedUnion("kind", [
       z.object({ kind: z.literal("none") }).strict(),
       z
@@ -109,6 +111,7 @@ export const CallbackEvidenceSchema = EvidenceBaseSchema.extend({
   event: EventRefSchema,
   phase: z.enum(["queued", "attempt_started", "delivered", "retry_scheduled", "failed", "recovered"]),
   attempt: z.number().int().positive().max(10).optional(),
+  /** World-local logical delivery key, independent of an optional transport execution scope. */
   idempotencyKey: z.string().min(1).max(128),
   scheduledForUs: VirtualTimeSchema.optional(),
   request: CallbackRequestEvidenceSchema.optional(),

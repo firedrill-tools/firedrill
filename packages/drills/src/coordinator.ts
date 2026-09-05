@@ -38,13 +38,10 @@ import type { WorldStore } from "@firedrill/world-store";
 import { z } from "zod";
 import { boundedDiagnosticMessage } from "./diagnostics.js";
 import { DrillSetupError } from "./scenario.js";
+import { settleVirtualTime } from "./time-settlement.js";
+import type { DrillCallbackSettlement } from "./time-settlement.js";
 
-export interface DrillCallbackSettlement {
-  /** Delivers all callback work due at the world's current virtual time. */
-  flush(): Promise<void>;
-  /** Returns the next callback retry/delivery time, or null when none is pending. */
-  nextDueUs(): number | null;
-}
+export type { DrillCallbackSettlement } from "./time-settlement.js";
 
 export const DrillCoordinatorIdentitySchema = z
   .object({
@@ -614,63 +611,42 @@ export class DrillTrialCoordinator {
   }
 
   private async advanceTo(toUs: number): Promise<boolean> {
-    for (;;) {
-      await this.options.callbacks.flush();
-      if (this.state.stoppedByInvariant) return false;
-      const currentUs = this.options.store.metadata().virtualTimeUs;
-      if (currentUs >= toUs) return true;
-      const callbackDueUs = this.options.callbacks.nextDueUs();
-      const stepUs =
-        callbackDueUs !== null && callbackDueUs > currentUs && callbackDueUs < toUs ? callbackDueUs : toUs;
-      const before = this.state.processedEvents;
-      let stoppedForCallback = false;
-      let checkpointSequence = this.state.checkpointSequence;
-      const checkpoints = [...this.state.checkpoints];
-      let stoppedByInvariant: boolean = this.state.stoppedByInvariant;
-      const advanced = this.options.kernel.advanceTime(stepUs, {
-        correlationId: CorrelationIdSchema.parse(
-          `corr_clock_${this.state.identity.runId.slice(4, 20)}_${String(before + 1).padStart(6, "0")}`,
+    if (this.state.stoppedByInvariant) return false;
+    const before = this.state.processedEvents;
+    const settled = await settleVirtualTime({
+      store: this.options.store,
+      kernel: this.options.kernel,
+      callbacks: this.options.callbacks,
+      // Earlier interactions may have already advanced beyond a zero-length horizon.
+      targetUs: Math.max(toUs, this.options.store.metadata().virtualTimeUs),
+      maxEvents: this.drill.timeline.maxEvents - before,
+      correlationId: ({ processedEvents }) =>
+        CorrelationIdSchema.parse(
+          `corr_clock_${this.state.identity.runId.slice(4, 20)}_${String(before + processedEvents + 1).padStart(6, "0")}`,
         ),
-        maxEvents: this.drill.timeline.maxEvents - before,
-        afterScheduledEvent: (checkpoint: { readonly processed: number }) => {
+      afterScheduledEvent: (checkpoint) => {
+        this.state = { ...this.state, processedEvents: before + checkpoint.processed };
+        if (this.drill.timeline.invariants.length > 0) {
+          const verified = this.verify("after_event");
           this.state = {
             ...this.state,
-            processedEvents: before + checkpoint.processed,
-            checkpointSequence,
+            checkpointSequence: this.state.checkpointSequence + 1,
+            checkpoints: [...this.state.checkpoints, verified],
+            stoppedByInvariant: this.drill.timeline.stopOnInvariantFailure && verified.verdict === "failed",
           };
-          if (this.drill.timeline.invariants.length > 0) {
-            const verified = this.verify("after_event");
-            checkpoints.push(verified);
-            checkpointSequence += 1;
-            this.state = { ...this.state, checkpointSequence };
-            if (this.drill.timeline.stopOnInvariantFailure && verified.verdict === "failed") {
-              stoppedByInvariant = true;
-              return false;
-            }
-          }
-          const dueUs = this.options.callbacks.nextDueUs();
-          stoppedForCallback = dueUs !== null && dueUs <= this.options.store.metadata().virtualTimeUs;
-          return !stoppedForCallback;
-        },
-      });
-      const processedEvents = before + advanced.scheduledEventsProcessed;
-      const failure = advanced.failures[0];
-      this.state = {
-        ...this.state,
-        processedEvents,
-        checkpointSequence,
-        checkpoints,
-        stoppedByInvariant,
-        eventBudgetExhausted:
-          this.state.eventBudgetExhausted || failure?.error.code === "world.EVENT_BUDGET_EXCEEDED",
-      };
-      if (failure !== undefined) throw new RunEnvelopeError(failure.error);
-      await this.options.callbacks.flush();
-      if (this.state.stoppedByInvariant) return false;
-      if (advanced.reachedUs >= toUs) return true;
-      if (!advanced.stoppedEarly && !stoppedForCallback) {
-        throw new Error("world clock did not reach its requested time or expose pending callback work");
-      }
+        }
+        return !this.state.stoppedByInvariant;
+      },
+    });
+    this.state = {
+      ...this.state,
+      processedEvents: before + settled.scheduledEventsProcessed,
+      eventBudgetExhausted: this.state.eventBudgetExhausted || settled.eventBudgetExhausted,
+    };
+    if (settled.status === "failed") {
+      if (settled.failure !== undefined) throw new RunEnvelopeError(settled.failure.error);
+      throw settled.error;
     }
+    return settled.status === "completed";
   }
 }

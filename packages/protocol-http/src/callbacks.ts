@@ -42,10 +42,23 @@ const FORBIDDEN_REQUEST_HEADERS = new Set([
 ]);
 
 export interface CallbackReceiver {
-  /** Local receiver origin. Paths come from the Tool callback contract. */
+  /** Receiver origin. Defaults to local loopback HTTP; paths come only from the Tool contract. */
   readonly baseUrl: string;
   /** BYOK secret used only when the callback contract declares HMAC signing. */
   readonly secret?: string;
+}
+
+/** An explicitly owned network edge, never supplied by a Tool callback codec. */
+export interface CallbackTransport {
+  /** Selects an approved origin for this receiver. Anything other than true fails closed. */
+  authorizeOrigin(input: { readonly receiverId: string; readonly origin: string }): boolean;
+  /**
+   * Enforces destination/network policy on every connection, including DNS resolution.
+   * Must honor the abort signal and reject redirects. Its fetch rejection and response
+   * body completion/cancellation must await cleanup of active I/O. Origin selection
+   * alone is not a network-isolation boundary.
+   */
+  readonly fetch: typeof globalThis.fetch;
 }
 
 export interface CallbackDispatcherOptions {
@@ -54,6 +67,14 @@ export interface CallbackDispatcherOptions {
   readonly receivers: Readonly<Record<string, CallbackReceiver>>;
   /** Test seam. Ordinary callers use the platform fetch implementation. */
   readonly fetch?: typeof globalThis.fetch;
+  /** Explicit caller-owned origin policy and network transport. No remote transport is built in. */
+  readonly transport?: CallbackTransport;
+  /**
+   * Stable execution identity, required with an explicit transport. Preserve across retries
+   * and recovery; change for every reset/fork execution generation. Never include secrets.
+   * When omitted, local delivery IDs remain the wire idempotency keys.
+   */
+  readonly idempotencyScope?: string;
 }
 
 export interface CallbackDispatchOutcome {
@@ -104,7 +125,12 @@ function loopbackHostname(hostname: string): boolean {
   return hostname === "127.0.0.1" || hostname === "localhost" || hostname === "[::1]" || hostname === "::1";
 }
 
-function callbackUrl(receiver: CallbackReceiver, path: string): URL {
+function callbackUrl(
+  receiver: CallbackReceiver,
+  path: string,
+  receiverId: string,
+  transport: CallbackTransport | undefined,
+): URL {
   let base: URL;
   try {
     base = new URL(receiver.baseUrl);
@@ -112,8 +138,7 @@ function callbackUrl(receiver: CallbackReceiver, path: string): URL {
     throw new CallbackPreparationError("CALLBACK_RECEIVER_INVALID", "callback receiver URL is invalid");
   }
   if (
-    base.protocol !== "http:" ||
-    !loopbackHostname(base.hostname) ||
+    (base.protocol !== "http:" && base.protocol !== "https:") ||
     base.username.length > 0 ||
     base.password.length > 0 ||
     base.search.length > 0 ||
@@ -122,10 +147,39 @@ function callbackUrl(receiver: CallbackReceiver, path: string): URL {
   ) {
     throw new CallbackPreparationError(
       "CALLBACK_RECEIVER_BLOCKED",
-      "local callbacks require a credential-free loopback HTTP origin",
+      "callbacks require a credential-free HTTP origin without a path, query, or fragment",
     );
   }
-  return new URL(path, base);
+  if (!path.startsWith("/") || path.startsWith("//") || /[\\\s?#]/.test(path) || path.length > 512) {
+    throw new CallbackPreparationError(
+      "CALLBACK_REQUEST_INVALID",
+      "callback path must be a static absolute path",
+    );
+  }
+  const url = new URL(path, base);
+  if (url.origin !== base.origin || url.pathname !== path) {
+    throw new CallbackPreparationError(
+      "CALLBACK_REQUEST_INVALID",
+      "callback path must not escape or normalize its declared path",
+    );
+  }
+  let allowed = base.protocol === "http:" && loopbackHostname(base.hostname);
+  if (transport !== undefined) {
+    try {
+      allowed = transport.authorizeOrigin(Object.freeze({ receiverId, origin: base.origin })) === true;
+    } catch {
+      allowed = false;
+    }
+  }
+  if (!allowed) {
+    throw new CallbackPreparationError(
+      "CALLBACK_RECEIVER_BLOCKED",
+      transport === undefined
+        ? "local callbacks require a credential-free loopback HTTP origin"
+        : "callback receiver origin is not authorized by the configured transport",
+    );
+  }
+  return url;
 }
 
 function callbackBody(body: ToolHttpResponseBody): { readonly bytes: Buffer; readonly contentType?: string } {
@@ -152,6 +206,7 @@ function callbackHeaders(
   contract: CallbackContract,
   delivery: CallbackDelivery,
   receiver: CallbackReceiver,
+  idempotencyKey: string,
   bytes: Buffer,
   contentType?: string,
 ): Readonly<Record<string, string>> {
@@ -166,6 +221,12 @@ function callbackHeaders(
   let headerBytes = 0;
   const reserved = new Set([contract.idempotencyHeader.toLowerCase()]);
   if (contract.signature.kind === "hmac-sha256") reserved.add(contract.signature.header.toLowerCase());
+  if ([...reserved].some((name) => !HEADER_NAME.test(name) || FORBIDDEN_REQUEST_HEADERS.has(name))) {
+    throw new CallbackPreparationError(
+      "CALLBACK_REQUEST_INVALID",
+      "callback contract declares a forbidden delivery header",
+    );
+  }
   for (const [name, value] of entries) {
     const lower = name.toLowerCase();
     if (
@@ -199,7 +260,7 @@ function callbackHeaders(
   if (contentType !== undefined && headers["content-type"] === undefined) {
     headers["content-type"] = contentType;
   }
-  headers[contract.idempotencyHeader.toLowerCase()] = delivery.id;
+  headers[contract.idempotencyHeader.toLowerCase()] = idempotencyKey;
   if (contract.signature.kind === "hmac-sha256") {
     if (receiver.secret === undefined || receiver.secret.length === 0) {
       throw new CallbackPreparationError(
@@ -227,7 +288,10 @@ function prepareCallback(
   delivery: CallbackDelivery,
   runtime: CallbackRuntime,
   receiver: CallbackReceiver,
+  transport: CallbackTransport | undefined,
+  idempotencyKey: string,
 ): PreparedCallback {
+  const url = callbackUrl(receiver, runtime.contract.path, delivery.receiverId, transport);
   let encoded: ToolCallbackRequest;
   try {
     encoded = runtime.codec.encode({
@@ -253,6 +317,12 @@ function prepareCallback(
       "callback codec must return a request object",
     );
   }
+  if (Object.keys(encoded).some((key) => key !== "headers" && key !== "body")) {
+    throw new CallbackPreparationError(
+      "CALLBACK_REQUEST_INVALID",
+      "callback codec may supply only headers and body",
+    );
+  }
   const body = callbackBody(encoded.body);
   if (body.bytes.length > MAX_CALLBACK_REQUEST_BYTES) {
     throw new CallbackPreparationError("CALLBACK_REQUEST_TOO_LARGE", "callback request body exceeds 1 MiB");
@@ -262,11 +332,12 @@ function prepareCallback(
     runtime.contract,
     delivery,
     receiver,
+    idempotencyKey,
     body.bytes,
     body.contentType,
   );
   return {
-    url: callbackUrl(receiver, runtime.contract.path),
+    url,
     headers,
     body: body.bytes,
     evidence: {
@@ -274,6 +345,7 @@ function prepareCallback(
       path: runtime.contract.path,
       bodyHash: sha256(body.bytes),
       bodyBytes: body.bytes.length,
+      idempotencyKey,
       signature:
         runtime.contract.signature.kind === "none"
           ? { kind: "none" }
@@ -282,7 +354,7 @@ function prepareCallback(
   };
 }
 
-async function responseEvidence(response: Response): Promise<CallbackResponseEvidence> {
+async function responseEvidence(response: Response, signal: AbortSignal): Promise<CallbackResponseEvidence> {
   const declared = Number(response.headers.get("content-length") ?? 0);
   if (Number.isFinite(declared) && declared > MAX_CALLBACK_RESPONSE_BYTES) {
     await response.body?.cancel();
@@ -292,15 +364,23 @@ async function responseEvidence(response: Response): Promise<CallbackResponseEvi
   let byteCount = 0;
   if (response.body !== null) {
     const reader = response.body.getReader();
-    while (true) {
-      const next = await reader.read();
-      if (next.done) break;
-      byteCount += next.value.byteLength;
-      if (byteCount > MAX_CALLBACK_RESPONSE_BYTES) {
-        await reader.cancel();
-        throw new RangeError("callback response body exceeds 64 KiB");
+    try {
+      while (true) {
+        signal.throwIfAborted();
+        const next = await reader.read();
+        signal.throwIfAborted();
+        if (next.done) break;
+        byteCount += next.value.byteLength;
+        if (byteCount > MAX_CALLBACK_RESPONSE_BYTES) {
+          throw new RangeError("callback response body exceeds 64 KiB");
+        }
+        chunks.push(next.value);
       }
-      chunks.push(next.value);
+    } catch (error) {
+      await reader.cancel().catch(() => undefined);
+      throw error;
+    } finally {
+      reader.releaseLock();
     }
   }
   const body = Buffer.concat(
@@ -328,12 +408,40 @@ export class CallbackDispatcher {
   private readonly runtimes = new Map<string, CallbackRuntime>();
   private readonly receivers: Readonly<Record<string, CallbackReceiver>>;
   private readonly fetchImplementation: typeof globalThis.fetch;
+  private readonly transport: CallbackTransport | undefined;
+  private readonly idempotencyScope: string | undefined;
   private activeDispatch: Promise<CallbackDispatchResult> | undefined;
 
   constructor(options: CallbackDispatcherOptions) {
     this.store = options.store;
-    this.receivers = Object.freeze({ ...options.receivers });
-    this.fetchImplementation = options.fetch ?? globalThis.fetch;
+    this.receivers = Object.freeze(
+      Object.fromEntries(
+        Object.entries(options.receivers).map(([id, receiver]) => [id, Object.freeze({ ...receiver })]),
+      ),
+    );
+    if (options.transport !== undefined && options.fetch !== undefined) {
+      throw new TypeError("callback transport and test fetch cannot be supplied together");
+    }
+    if (options.transport !== undefined && options.idempotencyScope === undefined) {
+      throw new TypeError("an explicit callback transport requires an idempotency scope");
+    }
+    if (
+      options.idempotencyScope !== undefined &&
+      (typeof options.idempotencyScope !== "string" ||
+        options.idempotencyScope.trim().length === 0 ||
+        Buffer.byteLength(options.idempotencyScope) > 1024)
+    ) {
+      throw new TypeError("callback idempotency scope must be a nonempty string of at most 1024 bytes");
+    }
+    this.idempotencyScope = options.idempotencyScope;
+    this.transport =
+      options.transport === undefined
+        ? undefined
+        : Object.freeze({
+            authorizeOrigin: options.transport.authorizeOrigin.bind(options.transport),
+            fetch: options.transport.fetch.bind(options.transport),
+          });
+    this.fetchImplementation = this.transport?.fetch ?? options.fetch ?? globalThis.fetch;
     for (const tool of options.tools) {
       for (const contract of tool.manifest.callbacks) {
         const key = runtimeKey(tool.manifest.id, contract.id);
@@ -353,6 +461,8 @@ export class CallbackDispatcher {
   }
 
   recoverInFlight(): number {
+    if (this.activeDispatch !== undefined)
+      throw new Error("cannot recover callbacks during an active dispatch");
     const interrupted = [...this.store.listCallbackDeliveries("in_flight")].sort((left, right) =>
       compareStableStrings(left.id, right.id),
     );
@@ -364,9 +474,15 @@ export class CallbackDispatcher {
     return interrupted.length;
   }
 
-  async dispatchDue(): Promise<CallbackDispatchResult> {
+  /**
+   * Drain due deliveries. Joining an active drain does not replace its owner's signal.
+   * Cancellation waits for transport cleanup and durable settlement before rejecting;
+   * callers must await this boundary before resetting or closing the world.
+   */
+  async dispatchDue(signal?: AbortSignal): Promise<CallbackDispatchResult> {
+    signal?.throwIfAborted();
     if (this.activeDispatch !== undefined) return this.activeDispatch;
-    const active = this.performDispatchDue();
+    const active = this.performDispatchDue(signal);
     this.activeDispatch = active;
     try {
       return await active;
@@ -375,10 +491,17 @@ export class CallbackDispatcher {
     }
   }
 
-  private async performDispatchDue(): Promise<CallbackDispatchResult> {
+  private idempotencyKey(delivery: CallbackDelivery): string {
+    return this.idempotencyScope === undefined
+      ? delivery.id
+      : sha256(Buffer.from(JSON.stringify([this.idempotencyScope, delivery.id]), "utf8"));
+  }
+
+  private async performDispatchDue(signal: AbortSignal | undefined): Promise<CallbackDispatchResult> {
     const nowUs = this.store.metadata().virtualTimeUs;
     const outcomes: CallbackDispatchOutcome[] = [];
     while (true) {
+      signal?.throwIfAborted();
       const delivery = this.store.nextCallbackDelivery(nowUs);
       if (delivery === null) break;
       const runtime = this.runtimes.get(
@@ -402,7 +525,13 @@ export class CallbackDispatcher {
 
       let prepared: PreparedCallback;
       try {
-        prepared = prepareCallback(delivery, runtime, receiver);
+        prepared = prepareCallback(
+          delivery,
+          runtime,
+          receiver,
+          this.transport,
+          this.idempotencyKey(delivery),
+        );
       } catch (error) {
         const failure =
           error instanceof CallbackPreparationError
@@ -419,6 +548,7 @@ export class CallbackDispatcher {
         continue;
       }
 
+      signal?.throwIfAborted();
       const started = this.store.transact(delivery.correlationId, (transaction) =>
         callbackResult(transaction.startCallbackAttempt(delivery.id, prepared.evidence)),
       ).value;
@@ -427,15 +557,22 @@ export class CallbackDispatcher {
       let error: CallbackErrorEvidence | undefined;
       const controller = new AbortController();
       const timeout = setTimeout(() => controller.abort(), runtime.contract.timeoutMs);
+      const requestSignal =
+        signal === undefined ? controller.signal : AbortSignal.any([signal, controller.signal]);
       try {
         const received = await this.fetchImplementation(prepared.url, {
           method: runtime.contract.method,
           headers: prepared.headers,
           body: prepared.body,
           redirect: "manual",
-          signal: controller.signal,
+          signal: requestSignal,
         });
-        response = await responseEvidence(received);
+        if (received.redirected) {
+          await received.body?.cancel();
+          throw new Error("callback transport followed a redirect");
+        }
+        response = await responseEvidence(received, requestSignal);
+        requestSignal.throwIfAborted();
         if (response.status < 200 || response.status > 299) {
           error = callbackError(
             "CALLBACK_HTTP_REJECTED",
@@ -444,18 +581,23 @@ export class CallbackDispatcher {
           );
         }
       } catch (caught) {
-        const timedOut = controller.signal.aborted;
+        const aborted = signal?.aborted === true;
+        const timedOut = !aborted && controller.signal.aborted;
         error = callbackError(
-          timedOut
-            ? "CALLBACK_TIMEOUT"
-            : caught instanceof RangeError
-              ? "CALLBACK_RESPONSE_TOO_LARGE"
-              : "CALLBACK_NETWORK_ERROR",
-          timedOut
-            ? `callback receiver did not respond within ${String(runtime.contract.timeoutMs)} ms`
-            : caught instanceof Error
-              ? caught.message
-              : "callback request failed",
+          aborted
+            ? "CALLBACK_ABORTED"
+            : timedOut
+              ? "CALLBACK_TIMEOUT"
+              : caught instanceof RangeError
+                ? "CALLBACK_RESPONSE_TOO_LARGE"
+                : "CALLBACK_NETWORK_ERROR",
+          aborted
+            ? "callback delivery was interrupted; the receiver outcome may be unknown"
+            : timedOut
+              ? `callback receiver did not respond within ${String(runtime.contract.timeoutMs)} ms`
+              : caught instanceof Error
+                ? caught.message
+                : "callback request failed",
           true,
         );
       } finally {
@@ -512,6 +654,7 @@ export class CallbackDispatcher {
         ).value;
         outcomes.push({ deliveryId: failed.id, attempt: failed.attemptCount, status: "failed" });
       }
+      signal?.throwIfAborted();
     }
     return { outcomes: Object.freeze(outcomes) };
   }

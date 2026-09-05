@@ -1,4 +1,5 @@
 import { existsSync, mkdtempSync, rmSync } from "node:fs";
+import { createServer } from "node:http";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { FIREDRILL_ENGINE_VERSION } from "@firedrill/contracts";
@@ -42,7 +43,7 @@ afterEach(() => {
   }
 });
 
-function loadedBuild(): LoadedWorldBuild {
+function loadedBuild(withCallbacks = false): LoadedWorldBuild {
   const tool = defineTool({
     manifest: {
       schemaVersion: 1,
@@ -119,6 +120,19 @@ function loadedBuild(): LoadedWorldBuild {
           event: { packageId: "parcel-service", eventId: "parcel.ready" },
         },
       ],
+      callbacks: withCallbacks
+        ? [
+            {
+              id: "notify-dispatcher",
+              eventId: "parcel.ready",
+              receiverId: "dispatch-application",
+              method: "POST",
+              path: "/ready",
+              idempotencyHeader: "Idempotency-Key",
+              retry: { delaysUs: [5] },
+            },
+          ]
+        : [],
     },
     operations: {
       "parcels.release": (input, context) => {
@@ -132,6 +146,17 @@ function loadedBuild(): LoadedWorldBuild {
         context.state.put("notifications", String(payload.parcelId), { observed: true });
       },
     },
+    ...(withCallbacks
+      ? {
+          callbacks: {
+            "notify-dispatcher": {
+              encode: ({ virtualTimeUs, attempt }: { virtualTimeUs: number; attempt: number }) => ({
+                body: { kind: "json" as const, value: { virtualTimeUs, attempt } },
+              }),
+            },
+          },
+        }
+      : {}),
   });
 
   const worldIr = CanonicalWorldIrSchema.parse({
@@ -408,6 +433,216 @@ describe("drill scenario materialization", () => {
 });
 
 describe("complete local drill trial", () => {
+  it("checks an already-due event invariant before starting an equal-time target interaction", async () => {
+    const directory = temporaryDirectory();
+    const build = withWorldIr(loadedBuild(), (worldIr) => ({
+      ...worldIr,
+      scenarios: worldIr.scenarios.map((scenario) => ({
+        ...scenario,
+        initialEvents: scenario.initialEvents.map((event) => ({ ...event, atUs: 100 })),
+      })),
+      drills: worldIr.drills.map((drill) => ({
+        ...drill,
+        timeline: {
+          ...drill.timeline,
+          invariants: [
+            {
+              id: "no-notification-before-target",
+              kind: "state.count",
+              packageId: "parcel-service",
+              namespace: "notifications",
+              comparison: { operator: "equals", value: 0 },
+            },
+          ],
+        },
+      })),
+    }));
+    let invoked = false;
+    const execution = await runDrillTrial({
+      build,
+      drillId: "release-ready-parcel",
+      repositoryRoot: directory,
+      runDirectory: join(directory, "already-due-event"),
+      externalHandler: () => {
+        invoked = true;
+        return {};
+      },
+    });
+    expect(invoked).toBe(false);
+    expect(execution.result).toMatchObject({
+      status: "sealed",
+      verdict: "failed",
+      finishedAtVirtualUs: 100,
+      interactions: [],
+      checkpoints: [{ kind: "after_event", verdict: "failed" }, { kind: "final" }],
+      budgetUsage: { scheduledEvents: { processed: 1, exhausted: false } },
+    });
+  });
+
+  it("retains every event checkpoint when callback deadline inspection fails mid-advance", async () => {
+    const directory = temporaryDirectory();
+    const build = withWorldIr(loadedBuild(), (worldIr) => ({
+      ...worldIr,
+      scenarios: worldIr.scenarios.map((scenario) => ({
+        ...scenario,
+        initialEvents: [scenario.initialEvents[0], { ...scenario.initialEvents[0], atUs: 121 }],
+      })),
+      drills: worldIr.drills.map((drill) => ({
+        ...drill,
+        timeline: {
+          ...drill.timeline,
+          horizonUs: 50,
+          interactions: drill.timeline.interactions.map((interaction) => ({
+            ...interaction,
+            afterStartUs: 50,
+          })),
+          invariants: [
+            {
+              id: "single-notification",
+              kind: "state.count",
+              packageId: "parcel-service",
+              namespace: "notifications",
+              comparison: { operator: "equals", value: 1 },
+            },
+          ],
+        },
+      })),
+    }));
+    const created = createDrillWorld({
+      build,
+      drillId: "release-ready-parcel",
+      filePath: join(directory, "checkpoint-failure.sqlite"),
+      worldInstanceId: "world_checkpointfailure",
+      correlationId: "corr_checkpointfailure",
+      seed: "12",
+    });
+    try {
+      const failure = new Error("callback deadline inspection failed");
+      const coordinator = new DrillTrialCoordinator({
+        build,
+        drillId: "release-ready-parcel",
+        store: created.store,
+        kernel: created.kernel,
+        identity: {
+          runId: "run_checkpointfailure",
+          worldInstanceId: "world_checkpointfailure",
+          trial: 1,
+          trialCount: 1,
+          attempt: 1,
+          attemptLimit: 1,
+          seed: "12",
+        },
+        callbacks: {
+          flush: async () => undefined,
+          nextDueUs: () => {
+            if (created.store.metadata().virtualTimeUs >= 121) throw failure;
+            return null;
+          },
+        },
+      });
+      await expect(coordinator.next()).rejects.toBe(failure);
+      expect(coordinator.snapshot()).toMatchObject({
+        processedEvents: 2,
+        checkpointSequence: 2,
+        checkpoints: [
+          { kind: "after_event", virtualTimeUs: 120, verdict: "passed" },
+          { kind: "after_event", virtualTimeUs: 121, verdict: "passed" },
+        ],
+      });
+      expect(coordinator.fail(failure)).toMatchObject({
+        status: "runner_failed",
+        finishedAtVirtualUs: 121,
+        budgetUsage: { scheduledEvents: { processed: 2, exhausted: false } },
+      });
+    } finally {
+      created.store.close();
+    }
+  });
+
+  it("runs real callback delivery and retry through the public trial coordinator path", async () => {
+    const directory = temporaryDirectory();
+    const received: unknown[] = [];
+    const server = createServer((request, response) => {
+      const chunks: Buffer[] = [];
+      request.on("data", (chunk: Buffer) => chunks.push(chunk));
+      request.on("end", () => {
+        received.push(JSON.parse(Buffer.concat(chunks).toString("utf8")));
+        response.writeHead(received.length === 1 ? 503 : 204);
+        response.end();
+      });
+    });
+    await new Promise<void>((resolve, reject) => {
+      server.once("error", reject);
+      server.listen(0, "127.0.0.1", resolve);
+    });
+    try {
+      const address = server.address();
+      if (address === null || typeof address === "string") throw new Error("receiver did not bind");
+      const build = withWorldIr(loadedBuild(true), (worldIr) => ({
+        ...worldIr,
+        drills: worldIr.drills.map((drill) => ({
+          ...drill,
+          timeline: {
+            ...drill.timeline,
+            horizonUs: 50,
+            invariants: [
+              {
+                id: "notification-not-duplicated",
+                kind: "state.count",
+                packageId: "parcel-service",
+                namespace: "notifications",
+                comparison: { operator: "less_than_or_equal", value: 1 },
+              },
+            ],
+          },
+          assertions: [
+            {
+              id: "dispatcher-notified",
+              kind: "callback.count",
+              callback: { packageId: "parcel-service", callbackId: "notify-dispatcher" },
+              phase: "delivered",
+              comparison: { operator: "equals", value: 1 },
+            },
+          ],
+        })),
+      }));
+      const execution = await runDrillTrial({
+        build,
+        drillId: "release-ready-parcel",
+        repositoryRoot: directory,
+        runDirectory: join(directory, "callback-trial"),
+        externalHandler: () => ({ waitingForNotification: true }),
+        callbackReceivers: {
+          "dispatch-application": { baseUrl: `http://127.0.0.1:${String(address.port)}` },
+        },
+      });
+      expect(execution.result).toMatchObject({
+        status: "sealed",
+        verdict: "passed",
+        finishedAtVirtualUs: 150,
+        budgetUsage: { scheduledEvents: { processed: 1, exhausted: false } },
+        checkpoints: [
+          { kind: "after_interaction", virtualTimeUs: 100 },
+          { kind: "after_event", virtualTimeUs: 120 },
+          { kind: "horizon", virtualTimeUs: 150 },
+          { kind: "final", virtualTimeUs: 150 },
+        ],
+      });
+      expect(received).toEqual([
+        { virtualTimeUs: 120, attempt: 1 },
+        { virtualTimeUs: 125, attempt: 2 },
+      ]);
+      expect(
+        execution.evidence.filter((entry) => entry.kind === "callback").map((entry) => entry.phase),
+      ).toEqual(["queued", "attempt_started", "retry_scheduled", "attempt_started", "delivered"]);
+    } finally {
+      await new Promise<void>((resolve) => {
+        server.close(() => resolve());
+        server.closeAllConnections();
+      });
+    }
+  });
+
   it("resumes a settled interaction after a process-like restart without invoking it twice", async () => {
     const directory = temporaryDirectory();
     const filePath = join(directory, "resumable-world.sqlite");

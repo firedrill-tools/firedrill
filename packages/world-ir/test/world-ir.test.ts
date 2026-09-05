@@ -541,4 +541,44 @@ describe("behavioral trajectory identity", () => {
       trajectoryHash({ interactions: [], checkpoints: [], evidence: shifted }),
     );
   });
+
+  it("excludes only the scoped wire key from callback behavior while retaining exact evidence integrity", () => {
+    const request = {
+      method: "POST",
+      path: "/callbacks/releases",
+      bodyHash: HASH_A,
+      bodyBytes: 10,
+      signature: { kind: "none" },
+    };
+    const callback = (wireRequest: object) =>
+      EvidenceEntrySchema.parse({
+        schemaVersion: 1,
+        kind: "callback",
+        sequence: 1,
+        transactionId: "txn_callback01",
+        transactionIndex: 0,
+        transactionSize: 1,
+        virtualTimeUs: 10,
+        correlationId: "corr_callback01",
+        callback: { packageId: "reservations", callbackId: "notify-release" },
+        deliveryId: "delivery_00000001_0001",
+        receiverId: "application",
+        event: { packageId: "reservations", eventId: "slot.released" },
+        phase: "attempt_started",
+        attempt: 1,
+        idempotencyKey: "delivery_00000001_0001",
+        request: wireRequest,
+      });
+    const first = callback({ ...request, idempotencyKey: HASH_A });
+    const second = callback({ ...request, idempotencyKey: HASH_B });
+    const historical = callback(request);
+    const hash = (entry: typeof first) =>
+      trajectoryHash({ interactions: [], checkpoints: [], evidence: [entry] });
+    expect(semanticHash(first)).not.toBe(semanticHash(second));
+    expect(hash(first)).toBe(hash(second));
+    expect(hash(first)).toBe(hash(historical));
+    for (const difference of [{ bodyHash: HASH_B }, { method: "PUT" }, { path: "/callbacks/changed" }]) {
+      expect(hash(callback({ ...request, idempotencyKey: HASH_A, ...difference }))).not.toBe(hash(first));
+    }
+  });
 });
