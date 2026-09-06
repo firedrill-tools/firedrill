@@ -407,6 +407,32 @@ describe("local evidence reporters", () => {
     expect(verified.evidence.at(-1)).toMatchObject({ kind: "fault_control", active: true });
     expect(readFileSync(written.files.html, "utf8")).toContain("generic-tool.unavailable · enabled");
     expect(verified.evidence.filter((entry) => entry.kind === "fault")).toHaveLength(0);
+    for (const file of [written.files.html, written.files.terminal]) {
+      const text = readFileSync(file, "utf8");
+      expect(text).toContain("Rerun initial world inputs");
+      expect(text).toContain("Runtime fault controls require the original harness");
+      expect(text).not.toContain("Reproduce");
+    }
+    const initialEntries = evidence();
+    const baseline = writeLocalReport(
+      { result: run(initialEntries), evidence: initialEntries },
+      join(temporaryDirectory(), "uncontrolled"),
+    );
+    expect(compareLocalReports(baseline.directory, written.directory).compatibility).toMatchObject({
+      status: "descriptive_only",
+      canAttributeBehaviorChange: false,
+      differences: ["runtime_controls"],
+    });
+    expect(compareLocalReports(written.directory, baseline.directory).compatibility).toMatchObject({
+      status: "descriptive_only",
+      canAttributeBehaviorChange: false,
+      differences: ["runtime_controls"],
+    });
+    expect(compareLocalReports(written.directory, written.directory).compatibility).toMatchObject({
+      status: "descriptive_only",
+      canAttributeBehaviorChange: false,
+      differences: [],
+    });
   });
 
   it("copies, renders, and verifies bounded file attachments as report artifacts", () => {

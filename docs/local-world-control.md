@@ -46,6 +46,12 @@ fault never erases an earlier idempotency receipt or reverses a committed effect
 Reset and snapshots preserve the same fault-state semantics described below.
 The agent's binding and Tool context cannot call this control method.
 
+Runtime controls are inputs from your harness, not changes to the immutable
+build. Reports retain them separately and comparisons involving these controls
+are descriptive only, even if the build and seed match. The report's command
+reruns initial world inputs; use the original harness to repeat mid-run controls.
+The framework does not capture arbitrary harness scheduling or model randomness.
+
 ## Reset semantics
 
 `world.reset()` restores the complete initial world from a coherent SQLite snapshot. It restores Tool state, faults, scheduled events, callback deliveries, idempotency receipts, virtual time, and deterministic random state together. Activity after the baseline is removed from that world file; a durable `world_reset` lifecycle entry identifies the reset.

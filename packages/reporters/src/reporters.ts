@@ -472,6 +472,13 @@ function reproductionCommand(result: RunResult): string {
   return `firedrill run ${result.identity.drillId} --build-hash ${result.identity.buildHash} --seed ${result.identity.seed} --trials 1`;
 }
 
+function hasRuntimeFaultControls(evidence: readonly EvidenceEntry[]): boolean {
+  return evidence.some((entry) => entry.kind === "fault_control");
+}
+
+const RUNTIME_CONTROL_REPRODUCTION_NOTE =
+  "This command restores initial world inputs only. Runtime fault controls require the original harness; the seed does not replay them or guarantee identical agent behavior.";
+
 function terminalReport({ result, evidence, tools }: CheckedLocalReport): string {
   const outcome =
     result.status === "sealed" ? result.verdict.toUpperCase() : result.status.replace("_", " ").toUpperCase();
@@ -541,7 +548,10 @@ function terminalReport({ result, evidence, tools }: CheckedLocalReport): string
       `${result.budgetUsage.scheduledEvents.processed}/${result.budgetUsage.scheduledEvents.limit} scheduled events` +
       `${result.budgetUsage.scheduledEvents.exhausted ? " (exhausted)" : ""}`,
   );
-  lines.push(`Reproduce: ${reproductionCommand(result)}`);
+  lines.push(
+    `${hasRuntimeFaultControls(evidence) ? "Rerun initial world inputs" : "Reproduce"}: ${reproductionCommand(result)}`,
+  );
+  if (hasRuntimeFaultControls(evidence)) lines.push(RUNTIME_CONTROL_REPRODUCTION_NOTE);
   return `${lines.join("\n")}\n`;
 }
 
@@ -849,7 +859,7 @@ ${result.status === "runner_failed" ? `<section><h2>Runner failure</h2><div clas
 <section><h2>State changes</h2>${stateChangeRows(evidence)}</section>
 ${result.setup === undefined ? "" : `<section><h2>Test-local setup</h2><div class="panel"><p class="meta">${html(result.setup.setupHash)}</p><details><summary>View resolved setup</summary><pre>${html(JSON.stringify(result.setup.setup, null, 2))}</pre></details></div></section>`}
 <section><h2>Evidence timeline</h2><table><thead><tr><th scope="col">Seq</th><th scope="col">Kind</th><th scope="col">Subject</th><th scope="col">Virtual time</th><th scope="col">Details</th></tr></thead><tbody>${evidenceRows(evidence)}</tbody></table></section>
-<section><h2>Reproduce</h2><code>${html(reproduction)}</code><p class="meta">Build ${html(result.identity.buildHash)} · Seed ${html(result.identity.seed)}${result.status === "sealed" ? ` · Trajectory ${html(result.trajectoryHash)}` : ""}</p></section>
+<section><h2>${hasRuntimeFaultControls(evidence) ? "Rerun initial world inputs" : "Reproduce"}</h2><code>${html(reproduction)}</code>${hasRuntimeFaultControls(evidence) ? `<p class="meta">${html(RUNTIME_CONTROL_REPRODUCTION_NOTE)}</p>` : ""}<p class="meta">Build ${html(result.identity.buildHash)} · Seed ${html(result.identity.seed)}${result.status === "sealed" ? ` · Trajectory ${html(result.trajectoryHash)}` : ""}</p></section>
 </main></body></html>\n`;
 }
 

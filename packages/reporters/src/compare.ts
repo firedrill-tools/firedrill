@@ -1,5 +1,5 @@
-import { canonicalJson } from "@firedrill/contracts";
 import type { AssertionResult, EvidenceEntry, JsonValue, RunResult } from "@firedrill/contracts";
+import { canonicalJson } from "@firedrill/contracts";
 import { verifyLocalReport } from "./reporters.js";
 
 export type LocalRunCompatibilityStatus = "exact_inputs" | "descriptive_only" | "incompatible";
@@ -8,7 +8,15 @@ export interface LocalRunCompatibility {
   readonly status: LocalRunCompatibilityStatus;
   /** True only when world inputs match closely enough to attribute a behavioral delta to the agent/target. */
   readonly canAttributeBehaviorChange: boolean;
-  readonly differences: readonly ("drill" | "scenario" | "target" | "seed" | "build" | "package_lock")[];
+  readonly differences: readonly (
+    | "drill"
+    | "scenario"
+    | "target"
+    | "seed"
+    | "build"
+    | "package_lock"
+    | "runtime_controls"
+  )[];
   readonly explanation: string;
 }
 
@@ -89,7 +97,12 @@ function side(directory: string, result: RunResult): ComparedRun {
   };
 }
 
-function compatibility(baseline: RunResult, candidate: RunResult): LocalRunCompatibility {
+function compatibility(
+  baseline: RunResult,
+  candidate: RunResult,
+  baselineEvidence: readonly EvidenceEntry[],
+  candidateEvidence: readonly EvidenceEntry[],
+): LocalRunCompatibility {
   const differences: LocalRunCompatibility["differences"][number][] = [];
   if (baseline.identity.drillId !== candidate.identity.drillId) differences.push("drill");
   if (baseline.identity.scenarioId !== candidate.identity.scenarioId) differences.push("scenario");
@@ -98,6 +111,21 @@ function compatibility(baseline: RunResult, candidate: RunResult): LocalRunCompa
   if (baseline.identity.buildHash !== candidate.identity.buildHash) differences.push("build");
   if (baseline.identity.packageLockHash !== candidate.identity.packageLockHash)
     differences.push("package_lock");
+  const controls = (entries: readonly EvidenceEntry[]) =>
+    entries
+      .filter((entry) => entry.kind === "fault_control")
+      .map((entry) => ({
+        sequence: entry.sequence,
+        virtualTimeUs: entry.virtualTimeUs,
+        packageId: entry.packageId,
+        faultId: entry.faultId,
+        previouslyActive: entry.previouslyActive,
+        active: entry.active,
+      }));
+  const baselineControls = controls(baselineEvidence);
+  const candidateControls = controls(candidateEvidence);
+  if (canonicalJson(baselineControls) !== canonicalJson(candidateControls))
+    differences.push("runtime_controls");
 
   if (
     differences.some(
@@ -110,6 +138,15 @@ function compatibility(baseline: RunResult, candidate: RunResult): LocalRunCompa
       differences,
       explanation:
         "The drill, scenario, target, or seed differs. The runs are not a controlled behavioral comparison.",
+    };
+  }
+  if (baselineControls.length > 0 || candidateControls.length > 0) {
+    return {
+      status: "descriptive_only",
+      canAttributeBehaviorChange: false,
+      differences,
+      explanation:
+        "Runtime fault controls were supplied by a harness, not the immutable world inputs. Even matching recorded controls do not prove the harness schedule matches. Deltas cannot be attributed solely to the agent.",
     };
   }
   if (differences.length > 0) {
@@ -258,7 +295,7 @@ export function compareLocalReports(
 ): LocalRunComparison {
   const baseline = verifyLocalReport(baselineDirectory);
   const candidate = verifyLocalReport(candidateDirectory);
-  const grade = compatibility(baseline.result, candidate.result);
+  const grade = compatibility(baseline.result, candidate.result, baseline.evidence, candidate.evidence);
   const operations = operationDeltas(baseline.evidence, candidate.evidence);
   const stateChanges = countDeltas(
     countBy(
