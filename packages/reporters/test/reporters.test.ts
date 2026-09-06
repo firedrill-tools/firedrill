@@ -383,6 +383,32 @@ describe("local evidence reporters", () => {
     expect(() => writeLocalReport(input, destination)).toThrow(/refusing to overwrite/);
   });
 
+  it("retains controller fault changes separately from triggered failures in portable reports", () => {
+    const entries: readonly EvidenceEntry[] = [
+      ...evidence(),
+      {
+        schemaVersion: 1,
+        sequence: 3,
+        transactionId: "txn_report003",
+        transactionIndex: 0,
+        transactionSize: 1,
+        virtualTimeUs: 500,
+        correlationId: "corr_report003",
+        kind: "fault_control",
+        packageId: "generic-tool",
+        faultId: "unavailable",
+        previouslyActive: false,
+        active: true,
+      },
+    ];
+    const input = { result: run(entries), evidence: entries };
+    const written = writeLocalReport(input, join(temporaryDirectory(), "controlled"));
+    const verified = verifyLocalReport(written.directory);
+    expect(verified.evidence.at(-1)).toMatchObject({ kind: "fault_control", active: true });
+    expect(readFileSync(written.files.html, "utf8")).toContain("generic-tool.unavailable · enabled");
+    expect(verified.evidence.filter((entry) => entry.kind === "fault")).toHaveLength(0);
+  });
+
   it("copies, renders, and verifies bounded file attachments as report artifacts", () => {
     const root = temporaryDirectory();
     const entries = evidence();

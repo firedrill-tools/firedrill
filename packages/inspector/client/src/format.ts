@@ -58,6 +58,8 @@ export function evidenceLabel(entry: { readonly kind: string } & Record<string, 
     }
     case "fault":
       return `${String(entry.packageId)}.${String(entry.faultId)}`;
+    case "fault_control":
+      return `${String(entry.packageId)}.${String(entry.faultId)} · ${entry.active ? "enabled" : "disabled"}`;
     case "clock":
       return "Virtual clock advanced";
     case "lifecycle":

@@ -11,8 +11,8 @@ import {
   PackageIdSchema,
   ScheduledEventIdSchema,
   Sha256Schema,
-  StableIdSchema,
   SnapshotIdSchema,
+  StableIdSchema,
   TransactionIdSchema,
   VirtualTimeSchema,
   WorldInstanceIdSchema,
@@ -129,6 +129,15 @@ export const FaultEvidenceSchema = EvidenceBaseSchema.extend({
   errorCode: z.string().regex(/^[A-Z][A-Z0-9_]*$/),
 }).passthrough();
 
+/** A controller changed a declared fault; this is not an agent operation or a triggered failure. */
+export const FaultControlEvidenceSchema = EvidenceBaseSchema.extend({
+  kind: z.literal("fault_control"),
+  packageId: PackageIdSchema,
+  faultId: StableIdSchema,
+  previouslyActive: z.boolean(),
+  active: z.boolean(),
+}).passthrough();
+
 export const RandomEvidenceSchema = EvidenceBaseSchema.extend({
   kind: z.literal("random"),
   packageId: PackageIdSchema,
@@ -172,6 +181,7 @@ export const EvidenceEntrySchema = z
     EventEvidenceSchema,
     CallbackEvidenceSchema,
     FaultEvidenceSchema,
+    FaultControlEvidenceSchema,
     RandomEvidenceSchema,
     ClockEvidenceSchema,
     LifecycleEvidenceSchema,
@@ -329,6 +339,7 @@ export type CallbackRequestEvidence = z.infer<typeof CallbackRequestEvidenceSche
 export type CallbackResponseEvidence = z.infer<typeof CallbackResponseEvidenceSchema>;
 export type CallbackErrorEvidence = z.infer<typeof CallbackErrorEvidenceSchema>;
 export type FaultEvidence = z.infer<typeof FaultEvidenceSchema>;
+export type FaultControlEvidence = z.infer<typeof FaultControlEvidenceSchema>;
 export type RandomEvidence = z.infer<typeof RandomEvidenceSchema>;
 export type ClockEvidence = z.infer<typeof ClockEvidenceSchema>;
 export type LifecycleEvidence = z.infer<typeof LifecycleEvidenceSchema>;

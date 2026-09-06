@@ -30,6 +30,11 @@ Generated builds are immutable, content-addressed artifacts rather than source. 
 
 Local report bundles carry their own schema versions and exact hashes. `firedrill report verify` is the compatibility and integrity gate before a report is inspected or compared. Unsigned local verification proves internal consistency, not producer identity.
 
+This unpublished candidate also records controller-driven fault changes as
+`fault_control` evidence, separately from a triggered `fault`. An older candidate
+that does not recognize that evidence kind must reject the bundle; do not remove
+entries to make it pass. Use the same release train for execution and inspection.
+
 ## Release-candidate promise
 
 Release candidates may still change public APIs and source shapes before `0.1.0`. Each candidate must nevertheless reject unknown versions clearly, keep coding-agent diagnostics stable within that candidate, and install all framework packages from the same release train. Breaking changes after a stable release require a new major version or an explicit compatible upgrade path.

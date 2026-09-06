@@ -176,6 +176,14 @@ export type EvidenceDraft =
       readonly causeSequence?: number;
     }
   | {
+      readonly kind: "fault_control";
+      readonly packageId: PackageId;
+      readonly faultId: StableId;
+      readonly previouslyActive: boolean;
+      readonly active: boolean;
+      readonly causeSequence?: number;
+    }
+  | {
       readonly kind: "clock";
       readonly fromUs: VirtualTime;
       readonly toUs: VirtualTime;
@@ -219,6 +227,8 @@ export interface WorldTransaction {
   deleteState(packageId: PackageId, namespace: StableId, rowId: string): boolean;
   nextRandomU64(packageId: PackageId): bigint;
   activeFaultIds(packageId: PackageId): readonly StableId[];
+  /** Controller-only mutation. The kernel validates declaration ownership first. Returns prior state. */
+  setFaultActive(packageId: PackageId, faultId: StableId, active: boolean): boolean;
   getIdempotencyReceipt(invocation: OperationInvocation): IdempotencyReceipt | null;
   putIdempotencyReceipt(
     invocation: OperationInvocation,

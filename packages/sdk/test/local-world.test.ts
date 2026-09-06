@@ -63,6 +63,7 @@ function repository(): string {
       operations: [
         {
           id: "items.update",
+          declaredErrors: ["UNAVAILABLE"],
           inputSchema: {
             type: "object",
             required: ["quantity"],
@@ -77,6 +78,14 @@ function repository(): string {
           },
           idempotency: "required",
           fidelity: "stateful",
+        },
+      ],
+      faults: [
+        {
+          id: "unavailable",
+          appliesTo: ["items.update"],
+          timing: "before",
+          error: { code: "UNAVAILABLE", message: "Inventory unavailable", retryable: true },
         },
       ],
     },
@@ -193,6 +202,45 @@ afterEach(() => {
 });
 
 describe("createLocalWorld", () => {
+  it("controls declared faults through the public SDK and restores selected or all packages", async () => {
+    const world = await createLocalWorld({ root: repository(), drill: "state-reset" });
+    const fault = { packageId: "inventory", faultId: "unavailable" };
+    try {
+      const initialSequence = world.evidence().at(-1)?.sequence;
+      expect(() => world.setFault({ ...fault, faultId: "missing", active: true })).toThrow(
+        "does not declare",
+      );
+      expect(world.evidence().at(-1)?.sequence).toBe(initialSequence);
+      expect(world.setFault({ ...fault, active: true }).changed).toBe(true);
+      expect(world.faults()).toEqual([fault]);
+      const input = {
+        actorId: "operator",
+        packageId: "inventory",
+        operationId: "items.update",
+        arguments: { quantity: 5 },
+        idempotencyKey: "faulted-update",
+      };
+      expect(world.call(input).outcome).toMatchObject({
+        status: "tool_error",
+        error: { code: "tool.UNAVAILABLE" },
+      });
+      world.reset({ packages: ["notifications"] });
+      expect(world.faults()).toEqual([fault]);
+      world.reset({ packages: ["inventory"] });
+      expect(world.faults()).toEqual([]);
+      expect(world.call(input).outcome.status).toBe("ok");
+      expect(world.evidence().some((entry) => entry.kind === "fault_control")).toBe(true);
+      world.setFault({ ...fault, active: true });
+      world.reset();
+      expect(world.faults()).toEqual([]);
+      expect(world.state({ packageId: "inventory", namespace: "items" })[0]?.value.quantity).toBe(0);
+      expect(world.evidence().some((entry) => entry.kind === "fault_control")).toBe(false);
+    } finally {
+      world.close();
+    }
+    expect(() => world.setFault({ ...fault, active: false })).toThrow();
+  });
+
   it("controls, inspects, scopes, and fully resets a repository world through the public SDK", async () => {
     const root = repository();
     const world = await createLocalWorld({ root, drill: "state-reset", seed: "41" });

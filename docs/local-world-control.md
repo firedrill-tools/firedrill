@@ -29,6 +29,23 @@ try {
 
 The selected drill supplies the scenario: initial Tool state, actors and grants, faults, scheduled events, virtual time, and seed. `describe()` lists the selected build, actors, Tools, operations, state namespaces, events, and faults. `state()`, `evidence()`, `scheduledEvents()`, and `callbacks()` provide bounded inspection without exposing the storage handle. The customer's agent and application database remain outside this control plane.
 
+## Runtime fault controls
+
+`world.describe().tools` lists the faults declared by the selected Tool packages;
+`world.faults()` lists those currently enabled. Use
+`world.setFault({ packageId, faultId, active: true })` to enable one and the same
+call with `active: false` to disable it between agent actions. Unknown packages,
+unknown faults, and non-boolean values are rejected without mutating the world.
+
+The result includes `previouslyActive`, `active`, `changed`, and the committed
+evidence. State and a distinct `fault_control` entry commit in the same SQLite
+transaction, including a repeated request that leaves the state unchanged. This
+is controller activity, not proof that an agent triggered a fault. Subsequent
+operations still record any actual injected failure separately. Disabling a
+fault never erases an earlier idempotency receipt or reverses a committed effect.
+Reset and snapshots preserve the same fault-state semantics described below.
+The agent's binding and Tool context cannot call this control method.
+
 ## Reset semantics
 
 `world.reset()` restores the complete initial world from a coherent SQLite snapshot. It restores Tool state, faults, scheduled events, callback deliveries, idempotency receipts, virtual time, and deterministic random state together. Activity after the baseline is removed from that world file; a durable `world_reset` lifecycle entry identifies the reset.

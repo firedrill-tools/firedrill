@@ -2,8 +2,8 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { JsonObject, OperationInvocation, OperationRef } from "@firedrill/contracts";
-import { defineTool } from "@firedrill/tool-sdk";
 import type { ToolDefinition, ToolOperationHandler } from "@firedrill/tool-sdk";
+import { defineTool } from "@firedrill/tool-sdk";
 import { SqliteWorldStore } from "@firedrill/world-store-sqlite";
 import { afterEach, describe, expect, it } from "vitest";
 import { BoundWorldClient, WorldKernel } from "../src/index.js";
@@ -695,6 +695,59 @@ describe("package-driven world execution", () => {
 });
 
 describe("failure and boundary evidence", () => {
+  it("rejects undeclared faults and rolls back control state with its evidence", () => {
+    const { kernel, store } = createKernel({});
+    const before = store.evidenceHash();
+    try {
+      expect(() =>
+        kernel.setFault({ packageId: "absent", faultId: "a-unavailable", active: true }, "corr_unknownfault"),
+      ).toThrow("unknown Tool");
+      expect(() =>
+        kernel.setFault({ packageId: "inventory", faultId: "absent", active: true }, "corr_unknownfault"),
+      ).toThrow("does not declare");
+      expect(store.evidenceHash()).toBe(before);
+      expect(() =>
+        store.transact("corr_rollbackfault", (transaction) => {
+          transaction.setFaultActive("inventory", "a-unavailable", true);
+          throw new Error("abort fault control");
+        }),
+      ).toThrow("abort fault control");
+      expect(store.listActiveFaults()).toEqual([]);
+      expect(store.evidenceHash()).toBe(before);
+      const client = new BoundWorldClient({
+        kernel,
+        actorBindingId: "actor_primary",
+        namespace: "fault-control-boundary",
+      });
+      expect("setFault" in client).toBe(false);
+    } finally {
+      store.close();
+    }
+  });
+
+  it("does not erase a committed idempotency receipt when disabling an after-commit fault", () => {
+    const { kernel, store } = createKernel({});
+    try {
+      kernel.setFault(
+        { packageId: "inventory", faultId: "z-response-timeout", active: true },
+        "corr_enabletimeout",
+      );
+      const first = kernel.invoke(invocation());
+      kernel.setFault(
+        { packageId: "inventory", faultId: "z-response-timeout", active: false },
+        "corr_disabletimeout",
+      );
+      const retry = kernel.invoke(
+        invocation({ callId: "call_afterdisable", correlationId: "corr_afterdisable" }),
+      );
+      expect(first.outcome).toMatchObject({ status: "tool_error", error: { code: "tool.TIMEOUT" } });
+      expect(retry.outcome).toEqual(first.outcome);
+      expect(store.readState("inventory", "items", "sku-1")?.value.available).toBe(3);
+    } finally {
+      store.close();
+    }
+  });
+
   it("records structured provider errors without changing state", () => {
     const { kernel, store } = createKernel({
       state: [

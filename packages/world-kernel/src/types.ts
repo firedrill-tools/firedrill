@@ -4,8 +4,10 @@ import type {
   EvidenceEntry,
   OperationInvocation,
   OperationOutcome,
+  PackageId,
   ScheduledEventId,
   Sha256,
+  StableId,
   VirtualTime,
 } from "@firedrill/contracts";
 import type { ToolDefinition } from "@firedrill/tool-sdk";
@@ -36,6 +38,18 @@ export interface WorldKernelOptions {
 export interface KernelInvocationResult {
   readonly invocation: OperationInvocation;
   readonly outcome: OperationOutcome;
+  readonly evidence: readonly EvidenceEntry[];
+}
+
+export interface FaultControlInput {
+  readonly packageId: PackageId;
+  readonly faultId: StableId;
+  readonly active: boolean;
+}
+
+export interface FaultControlResult extends FaultControlInput {
+  readonly previouslyActive: boolean;
+  readonly changed: boolean;
   readonly evidence: readonly EvidenceEntry[];
 }
 

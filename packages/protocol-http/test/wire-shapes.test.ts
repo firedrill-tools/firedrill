@@ -342,6 +342,68 @@ describe("transport-neutral HTTP codec dispatch", () => {
     };
   }
 
+  it("awaits an aborted invocation and skips encoding without pretending the commit rolled back", async () => {
+    const fixture = artifactWorld();
+    const codec = fixture.tool.http["put-artifact"];
+    if (codec === undefined) throw new Error("missing fixture codec");
+    const encode = vi.fn(codec.encode);
+    const tool = defineTool({
+      ...fixture.tool,
+      http: { ...fixture.tool.http, "put-artifact": { ...codec, encode } },
+    });
+    const request = putRequest();
+    const match = matchWireRoute(registerWireRoutes([tool]), request.method, request.url.pathname);
+    if (match === undefined) throw new Error("missing fixture match");
+    const controller = new AbortController();
+    let entered!: () => void;
+    let release!: () => void;
+    const entry = new Promise<void>((resolve) => {
+      entered = resolve;
+    });
+    const drained = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const reason = new Error("caller cancelled");
+    const pending = invokeHttpWireRoute({
+      match,
+      request,
+      signal: controller.signal,
+      authorize: () => true,
+      invoke: async (...args) => {
+        const result = fixture.client.invoke(...args);
+        entered();
+        await drained;
+        return result;
+      },
+    });
+    let settled = false;
+    const observed = pending.then(
+      () => {
+        settled = true;
+      },
+      () => {
+        settled = true;
+      },
+    );
+    try {
+      await entry;
+      controller.abort(reason);
+      await Promise.resolve();
+      expect(settled).toBe(false);
+      release();
+      await expect(pending).rejects.toBe(reason);
+      await observed;
+      expect(encode).not.toHaveBeenCalled();
+      expect(fixture.store.readState("artifact-store", "artifacts", "readme")?.value).toEqual({
+        content: "adapter-ready",
+      });
+    } finally {
+      release();
+      await observed;
+      fixture.store.close();
+    }
+  });
+
   it("uses host-owned invocation for real state, idempotency, declared errors and byte responses", async () => {
     const fixture = artifactWorld();
     const routes = registerWireRoutes([fixture.tool]);

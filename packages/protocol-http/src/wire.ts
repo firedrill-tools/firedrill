@@ -525,7 +525,10 @@ export async function invokeHttpWireRoute(input: {
   readonly request: HttpWireRequest;
   readonly authorize: (authority: HttpWireAuthority) => boolean | Promise<boolean>;
   readonly invoke: HttpWireInvoke;
+  readonly signal?: AbortSignal;
 }): Promise<HttpWireResponse> {
+  const signal = input.signal;
+  signal?.throwIfAborted();
   const route = input.match.route;
   const authorize = input.authorize;
   const invoke = input.invoke;
@@ -545,7 +548,9 @@ export async function invokeHttpWireRoute(input: {
   const receivedHeaders = requestHeaderValues(pairs, { kind: "none" });
   const operation = Object.freeze({ packageId: route.packageId, operationId: route.contract.operationId });
   const authority = Object.freeze({ operation, contract: route.contract });
-  if ((await authorize(authority)) !== true) {
+  const authorized = await authorize(authority);
+  signal?.throwIfAborted();
+  if (authorized !== true) {
     throw new WireRequestError("framework.HTTP_UNAUTHORIZED", 401, "HTTP route is not authorized");
   }
   const request: ToolHttpRequest = {
@@ -570,11 +575,13 @@ export async function invokeHttpWireRoute(input: {
         : "HTTP route could not decode the request",
     );
   }
+  signal?.throwIfAborted();
   const result = await invoke(
     operation,
     operationInput.arguments,
     operationInput.idempotencyKey === undefined ? {} : { idempotencyKey: operationInput.idempotencyKey },
   );
+  signal?.throwIfAborted();
   if (
     result.invocation.operation.packageId !== operation.packageId ||
     result.invocation.operation.operationId !== operation.operationId
@@ -582,6 +589,7 @@ export async function invokeHttpWireRoute(input: {
     throw new TypeError("HTTP route invocation returned a different operation");
   }
   const encoded = route.codec.encode({ invocation: result.invocation, outcome: result.outcome });
+  signal?.throwIfAborted();
   const status = outcomeStatus(route.contract, result.outcome);
   const encodedBody = responseBytes(encoded);
   if ((status === 204 || status === 205) && encodedBody.bytes.length > 0) {

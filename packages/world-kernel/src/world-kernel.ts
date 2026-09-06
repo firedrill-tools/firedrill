@@ -1,19 +1,7 @@
 import { createHash } from "node:crypto";
-import {
-  CorrelationIdSchema,
-  FIREDRILL_ENGINE_VERSION,
-  JsonObjectSchema,
-  JsonValueSchema,
-  OperationInvocationSchema,
-  OperationOutcomeSchema,
-  Sha256Schema,
-  VirtualTimeSchema,
-  canonicalJson,
-  compareStableStrings,
-} from "@firedrill/contracts";
 import type {
-  CorrelationId,
   CallbackContract,
+  CorrelationId,
   ErrorEnvelope,
   EventRef,
   EvidenceEntry,
@@ -25,7 +13,20 @@ import type {
   ToolEventContract,
   ToolPackageManifest,
 } from "@firedrill/contracts";
-import { ToolFailure, isToolFailure } from "@firedrill/tool-sdk";
+import {
+  CorrelationIdSchema,
+  canonicalJson,
+  compareStableStrings,
+  FIREDRILL_ENGINE_VERSION,
+  JsonObjectSchema,
+  JsonValueSchema,
+  OperationInvocationSchema,
+  OperationOutcomeSchema,
+  PackageIdSchema,
+  Sha256Schema,
+  StableIdSchema,
+  VirtualTimeSchema,
+} from "@firedrill/contracts";
 import type {
   ToolActor,
   ToolContext,
@@ -34,6 +35,7 @@ import type {
   ToolOperationHandler,
   ToolSubscriptionHandler,
 } from "@firedrill/tool-sdk";
+import { isToolFailure, ToolFailure } from "@firedrill/tool-sdk";
 import type {
   EvidenceDraft,
   StoredActor,
@@ -47,14 +49,16 @@ import { ExecutionAbort, frameworkError, toolError, worldError } from "./errors.
 import type {
   AdvanceTimeOptions,
   ClockAdvanceResult,
+  FaultControlInput,
+  FaultControlResult,
   KernelInvocationResult,
   ScheduledEventFailure,
   WorldKernelBudgets,
   WorldKernelOptions,
   WorldKernelUsage,
 } from "./types.js";
-import { ajvIssues, createSchemaCompiler } from "./validation.js";
 import type { CompiledOperationSchemas } from "./validation.js";
+import { ajvIssues, createSchemaCompiler } from "./validation.js";
 
 export const WORLD_ENGINE_VERSION = FIREDRILL_ENGINE_VERSION;
 
@@ -185,6 +189,28 @@ export class WorldKernel {
   private readonly onToolCallBudgetExceeded: WorldKernelOptions["onToolCallBudgetExceeded"];
   private toolCalls = 0;
   private toolCallBudgetExceeded = false;
+
+  /** Test-controller surface, never included in a Tool context or actor binding. */
+  setFault(input: FaultControlInput, correlationId: CorrelationId): FaultControlResult {
+    const packageId = PackageIdSchema.parse(input.packageId);
+    const faultId = StableIdSchema.parse(input.faultId);
+    const correlation = CorrelationIdSchema.parse(correlationId);
+    if (typeof input.active !== "boolean") throw new TypeError("fault active must be a boolean");
+    const active = input.active;
+    const tool = this.tools.get(packageId);
+    if (tool === undefined) throw new RangeError(`unknown Tool package ${packageId}`);
+    if (!tool.manifest.faults.some((fault) => fault.id === faultId)) {
+      throw new RangeError(`Tool ${packageId} does not declare fault ${faultId}`);
+    }
+    const committed = this.store.transact(correlation, (transaction) => {
+      const previouslyActive = transaction.setFaultActive(packageId, faultId, active);
+      return {
+        value: { packageId, faultId, active, previouslyActive, changed: previouslyActive !== active },
+        primary: { kind: "fault_control", packageId, faultId, previouslyActive, active },
+      };
+    });
+    return { ...committed.value, evidence: committed.evidence };
+  }
 
   constructor(options: WorldKernelOptions) {
     this.store = options.store;

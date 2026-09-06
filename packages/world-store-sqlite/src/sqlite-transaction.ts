@@ -1,23 +1,3 @@
-import {
-  ActorIdSchema,
-  ActorBindingIdSchema,
-  CallbackDeliveryIdSchema,
-  CallbackErrorEvidenceSchema,
-  CallbackRefSchema,
-  CallbackRequestEvidenceSchema,
-  CallbackResponseEvidenceSchema,
-  CorrelationIdSchema,
-  EventRefSchema,
-  EvidenceEntrySchema,
-  JsonObjectSchema,
-  OperationRefSchema,
-  OperationOutcomeSchema,
-  PackageIdSchema,
-  ScheduledEventIdSchema,
-  StableIdSchema,
-  VirtualTimeSchema,
-  canonicalJson,
-} from "@firedrill/contracts";
 import type {
   ActorBindingId,
   CallbackDeliveryId,
@@ -33,6 +13,26 @@ import type {
   ScheduledEventId,
   StableId,
   VirtualTime,
+} from "@firedrill/contracts";
+import {
+  ActorBindingIdSchema,
+  ActorIdSchema,
+  CallbackDeliveryIdSchema,
+  CallbackErrorEvidenceSchema,
+  CallbackRefSchema,
+  CallbackRequestEvidenceSchema,
+  CallbackResponseEvidenceSchema,
+  CorrelationIdSchema,
+  canonicalJson,
+  EventRefSchema,
+  EvidenceEntrySchema,
+  JsonObjectSchema,
+  OperationOutcomeSchema,
+  OperationRefSchema,
+  PackageIdSchema,
+  ScheduledEventIdSchema,
+  StableIdSchema,
+  VirtualTimeSchema,
 } from "@firedrill/contracts";
 import type {
   CallbackAttemptSettlement,
@@ -351,6 +351,25 @@ export class SqliteWorldTransaction implements WorldTransaction {
       .prepare("SELECT fault_id FROM active_faults WHERE package_id = ? ORDER BY fault_id")
       .all(owner) as Array<{ fault_id: string }>;
     return rows.map((row) => StableIdSchema.parse(row.fault_id));
+  }
+
+  setFaultActive(packageId: PackageId, faultId: StableId, active: boolean): boolean {
+    this.assertActive();
+    const owner = PackageIdSchema.parse(packageId);
+    const id = StableIdSchema.parse(faultId);
+    if (typeof active !== "boolean") throw new TypeError("fault active must be a boolean");
+    const previous =
+      this.database
+        .prepare("SELECT 1 FROM active_faults WHERE package_id = ? AND fault_id = ?")
+        .get(owner, id) !== undefined;
+    if (active) {
+      this.database
+        .prepare("INSERT OR IGNORE INTO active_faults (package_id, fault_id) VALUES (?, ?)")
+        .run(owner, id);
+    } else {
+      this.database.prepare("DELETE FROM active_faults WHERE package_id = ? AND fault_id = ?").run(owner, id);
+    }
+    return previous;
   }
 
   getIdempotencyReceipt(invocation: OperationInvocation): IdempotencyReceipt | null {

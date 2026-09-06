@@ -46,4 +46,9 @@ The required `authorize` callback receives the immutable declared operation and 
 
 The host owns request/header limits, bounded buffering, cancellation, transport cleanup and error-envelope privacy. This seam retains the 1 MiB codec body limits and existing response-header limits; it does not provide streaming or perform I/O. A failure to authorize runs no codec or operation. An encoder failure can occur after the operation committed, so retries must retain the operation's declared idempotency key rather than assume that no side effect occurred.
 
+An optional `signal` checks cancellation between authorization, decoding,
+invocation and encoding. An admitted asynchronous invocation is awaited before
+the adapter returns; cancellation skips subsequent encoding but does not roll
+back an already committed operation. The host still owns cancellation of its I/O.
+
 This package also delivers Tool-declared callbacks into a developer-supplied loopback receiver. A callback is the opposite direction from an agent-facing API: a committed world event becomes an HTTP request to the application under test. Tool code supplies only a pure event-to-request codec. The framework owns the durable outbox, stable idempotency key, optional HMAC-SHA256 signature, bounded request and response handling, virtual-time retry policy, crash recovery, and evidence. Receiver origins and secrets are runtime inputs and are never persisted in the world or report.

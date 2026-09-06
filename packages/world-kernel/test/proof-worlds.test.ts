@@ -2,10 +2,10 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { JsonObject, OperationInvocation, OperationRef } from "@firedrill/contracts";
-import { ToolFailure, defineTool } from "@firedrill/tool-sdk";
 import type { ToolDefinition } from "@firedrill/tool-sdk";
-import { SqliteWorldStore } from "@firedrill/world-store-sqlite";
+import { defineTool, ToolFailure } from "@firedrill/tool-sdk";
 import type { SqliteWorldStore as SqliteStore } from "@firedrill/world-store-sqlite";
+import { SqliteWorldStore } from "@firedrill/world-store-sqlite";
 import { afterEach, describe, expect, it } from "vitest";
 import { WorldKernel } from "../src/index.js";
 
@@ -688,6 +688,42 @@ const proofWorlds: readonly ProofWorld[] = [
 ];
 
 describe("generic execution proof", () => {
+  it.each(proofWorlds)("$id supports durable runtime fault controls without changing Tool code", (proof) => {
+    const { kernel, store } = createWorld(proof);
+    const baseline = join(store.filePath, "..", "baseline.sqlite");
+    try {
+      store.createSnapshot(baseline, "corr_faultbaseline");
+      const enabled = kernel.setFault({ ...proof.activeFault, active: true }, "corr_faultenable");
+      expect(enabled).toMatchObject({ active: true, previouslyActive: false, changed: true });
+      expect(enabled.evidence).toMatchObject([{ kind: "fault_control", ...proof.activeFault, active: true }]);
+      expect(kernel.invoke(proof.mutation).outcome).toMatchObject({
+        status: "tool_error",
+        error: { code: proof.faultErrorCode },
+      });
+      expect(kernel.setFault({ ...proof.activeFault, active: true }, "corr_faultrepeat").changed).toBe(false);
+      const disabled = kernel.setFault({ ...proof.activeFault, active: false }, "corr_faultdisable");
+      expect(disabled).toMatchObject({ active: false, previouslyActive: true, changed: true });
+      expect(
+        kernel.invoke({ ...proof.mutation, callId: "call_afterdisable", correlationId: "corr_afterdisable" })
+          .outcome.status,
+      ).toBe("ok");
+      const observed = store.readEvidence();
+      const reopened = SqliteWorldStore.open(store.filePath);
+      try {
+        expect(reopened.readEvidence()).toEqual(observed);
+        expect(reopened.listActiveFaults()).toEqual([]);
+      } finally {
+        reopened.close();
+      }
+      kernel.setFault({ ...proof.activeFault, active: true }, "corr_faultagain");
+      store.resetFromSnapshot(baseline, "corr_faultreset");
+      expect(store.listActiveFaults()).toEqual([]);
+      expect(store.readEvidence().some((entry) => entry.kind === "fault_control")).toBe(false);
+    } finally {
+      store.close();
+    }
+  });
+
   it.each(proofWorlds)(
     "$id world supplies its own reads, mutations, domain failures, faults, events, and cross-Tool consequences",
     (proof) => {

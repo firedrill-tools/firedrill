@@ -25,13 +25,13 @@ import type {
 } from "@firedrill/contracts";
 import {
   canonicalJson,
+  compareStableStrings,
   EvidenceBundleManifestSchema,
   EvidenceEntrySchema,
   JsonValueSchema,
   RunResultSchema,
   TargetFileAttachmentSchema,
   ToolPackageManifestSchema,
-  compareStableStrings,
 } from "@firedrill/contracts";
 import { trajectoryHash } from "@firedrill/world-ir";
 
@@ -715,6 +715,8 @@ function evidenceRows(evidence: readonly EvidenceEntry[]): string {
       else if (entry.kind === "callback")
         subject = `${entry.callback.packageId}.${entry.callback.callbackId} · ${entry.phase}`;
       else if (entry.kind === "fault") subject = `${entry.packageId}.${entry.faultId}`;
+      else if (entry.kind === "fault_control")
+        subject = `${entry.packageId}.${entry.faultId} · ${entry.active ? "enabled" : "disabled"}${entry.previouslyActive === entry.active ? " (unchanged)" : ""}`;
       else if (entry.kind === "clock") subject = `${entry.fromUs} → ${entry.toUs} μs`;
       else if (entry.kind === "random") subject = `${entry.packageId} draw ${entry.draw}`;
       else if (entry.kind === "verification") {

@@ -5,8 +5,8 @@ import type {
   ActorId,
   CorrelationId,
   Diagnostic,
-  EvidenceEntry,
   EventId,
+  EvidenceEntry,
   JsonObject,
   OperationId,
   PackageId,
@@ -17,6 +17,7 @@ import type {
 } from "@firedrill/contracts";
 import {
   CorrelationIdSchema,
+  compareStableStrings,
   JsonObjectSchema,
   OperationIdSchema,
   PackageIdSchema,
@@ -24,13 +25,12 @@ import {
   StableIdSchema,
   VirtualTimeSchema,
   WorldInstanceIdSchema,
-  compareStableStrings,
 } from "@firedrill/contracts";
-import { createDrillWorld, DrillSetupError } from "@firedrill/drills";
 import type { MaterializedDrillScenario } from "@firedrill/drills";
+import { createDrillWorld, DrillSetupError } from "@firedrill/drills";
 import type { LoadedWorldBuild } from "@firedrill/world-build";
+import type { ClockAdvanceResult, FaultControlResult, KernelInvocationResult } from "@firedrill/world-kernel";
 import { BoundWorldClient, WorldKernel } from "@firedrill/world-kernel";
-import type { ClockAdvanceResult, KernelInvocationResult } from "@firedrill/world-kernel";
 import type {
   ActiveFault,
   CallbackDelivery,
@@ -104,6 +104,12 @@ export interface LocalWorldAdvanceOptions {
   readonly maxEvents?: number;
 }
 
+export interface LocalWorldFaultControl {
+  readonly packageId: string;
+  readonly faultId: string;
+  readonly active: boolean;
+}
+
 export type LocalWorldResetOptions =
   | { readonly packages?: undefined }
   | { readonly packages: readonly string[] };
@@ -132,6 +138,7 @@ export interface LocalWorld {
   scheduledEvents(status?: ScheduledEvent["status"]): readonly ScheduledEvent[];
   callbacks(status?: CallbackDelivery["status"]): readonly CallbackDelivery[];
   faults(packageId?: string): readonly ActiveFault[];
+  setFault(input: LocalWorldFaultControl): FaultControlResult;
   advanceTime(toUs: number, options?: LocalWorldAdvanceOptions): ClockAdvanceResult;
   reset(options?: LocalWorldResetOptions): LocalWorldResetResult;
   close(): void;
@@ -326,6 +333,35 @@ class LocalWorldController implements LocalWorld {
       correlationId: this.nextCorrelation("clock"),
       ...(maxEvents === undefined ? {} : { maxEvents }),
     });
+  }
+
+  setFault(input: LocalWorldFaultControl): FaultControlResult {
+    this.assertOpen();
+    const packageId = PackageIdSchema.safeParse(input.packageId);
+    const faultId = StableIdSchema.safeParse(input.faultId);
+    if (!packageId.success || !faultId.success || typeof input.active !== "boolean") {
+      throw new FiredrillProjectError(
+        "framework.INVALID_ARGUMENT",
+        "setFault requires valid packageId, faultId, and boolean active",
+      );
+    }
+    const tool = this.build.tools.find((candidate) => candidate.manifest.id === packageId.data);
+    if (tool === undefined) {
+      throw new FiredrillProjectError(
+        "framework.TOOL_NOT_FOUND",
+        `no Tool named ${packageId.data} exists in this world`,
+      );
+    }
+    if (!tool.manifest.faults.some((fault) => fault.id === faultId.data)) {
+      throw new FiredrillProjectError(
+        "framework.FAULT_NOT_FOUND",
+        `Tool ${packageId.data} does not declare fault ${faultId.data}`,
+      );
+    }
+    return this.kernel.setFault(
+      { packageId: packageId.data, faultId: faultId.data, active: input.active },
+      this.nextCorrelation("fault"),
+    );
   }
 
   reset(options: LocalWorldResetOptions = {}): LocalWorldResetResult {
