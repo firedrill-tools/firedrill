@@ -13,6 +13,7 @@ Firedrill starts a fresh synthetic world for each trial, connects your existing
 agent through its declared target, then verifies state and tool-call consequences.
 
 Usage:
+  firedrill cloud <command> [options]  (optional destination extension)
   firedrill agent [--prompt <task>] [--model <model>] [--effort <level>] [--max-turns <count>] [--max-budget-usd <amount>] [--timeout-ms <milliseconds>] [--json] [--root <path>]
   firedrill [run] [drill-id] [--suite <id>] [--tag <tag>] [--filter <text>] [--shard <index>/<total>] [--trials <count>] [--retries <count>] [--concurrency <count>] [--seed <seed>] [--build-hash <hash>] [--report-dir <path>] [--callback-receiver <id>=<origin>] [--callback-secret-env <id>=<variable>] [--watch] [--json] [--root <path>]
   firedrill validate [--json] [--root <path>]

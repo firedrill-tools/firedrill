@@ -23,6 +23,7 @@ import {
   verifyReport,
 } from "@firedrill/sdk";
 import { loadWorldBuild } from "@firedrill/world-build";
+import { executeCloudCommand } from "./cloud-command.js";
 import type { InitInspection, InitializedProject, InitPath } from "./init-project.js";
 import { FiredrillInitError, initProject } from "./init-project.js";
 import { watchFiles } from "./watch-files.js";
@@ -108,6 +109,7 @@ Firedrill starts a fresh synthetic world for each trial, connects your existing
 agent through its declared target, then verifies state and tool-call consequences.
 
 Usage:
+  firedrill cloud <command> [options]  (optional destination extension)
   firedrill agent [--prompt <task>] [--model <model>] [--effort <level>] [--max-turns <count>] [--max-budget-usd <amount>] [--timeout-ms <milliseconds>] [--json] [--root <path>]
   firedrill [run] [drill-id] [--suite <id>] [--tag <tag>] [--filter <text>] [--shard <index>/<total>] [--trials <count>] [--retries <count>] [--concurrency <count>] [--seed <seed>] [--build-hash <hash>] [--report-dir <path>] [--callback-receiver <id>=<origin>] [--callback-secret-env <id>=<variable>] [--watch] [--json] [--root <path>]
   firedrill validate [--json] [--root <path>]
@@ -2011,6 +2013,9 @@ async function inspectCommand(parsed: ParsedArguments, io: CliIo): Promise<numbe
 }
 
 export async function runCli(arguments_: readonly string[], io: CliIo): Promise<number> {
+  if (arguments_[0] === "cloud") {
+    return executeCloudCommand(arguments_.slice(1), io);
+  }
   const parsed = parseArguments(arguments_, io.cwd);
   try {
     if (parsed.error !== undefined) {

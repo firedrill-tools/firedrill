@@ -27,7 +27,10 @@
     "access": "public"
   },
   "firedrill": {
-    "layer": "app"
+    "layer": "app",
+    "dynamicImports": [
+      "src/cloud-command.ts"
+    ]
   },
   "scripts": {
     "build": "tsx ../../tooling/package-files.mts clean && tsc -p tsconfig.build.json && tsx scripts/copy-assets.mts && tsx ../../tooling/package-files.mts finalize --bin dist/bin.js",
