@@ -71,3 +71,11 @@ it("reports unresolved execution without leaking a thrown transport error or pre
   expect(JSON.parse(context.output()).status).toBe("unknown");
   expect(context.output()).not.toContain("SENSITIVE_TRANSPORT_VALUE");
 });
+
+it("passes terminal capability independently of allocating a prompt reader", async () => {
+  const context = consumer(
+    "export async function runCloudCli(args, io) { io.stdout.write(JSON.stringify({interactive: io.interactive, prompt: typeof io.ask})); return 0; }",
+  );
+  expect(await runCli(["cloud", "login"], { ...context.io, interactive: true, environment: {} })).toBe(0);
+  expect(JSON.parse(context.output())).toEqual({ interactive: true, prompt: "undefined" });
+});

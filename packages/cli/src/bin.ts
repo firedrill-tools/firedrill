@@ -38,15 +38,14 @@ const onSigterm = () => {
 process.once("SIGINT", onSigint);
 process.once("SIGTERM", onSigterm);
 
-const guidedInit =
-  arguments_.includes("init") &&
-  !arguments_.includes("--path") &&
+const interactive =
   !arguments_.includes("--json") &&
   !arguments_.includes("--help") &&
   !arguments_.includes("-h") &&
   process.env.CI === undefined &&
   process.stdin.isTTY === true &&
   process.stdout.isTTY === true;
+const guidedInit = arguments_.includes("init") && !arguments_.includes("--path") && interactive;
 const terminal = guidedInit
   ? createInterface({ input: process.stdin, output: process.stdout, terminal: true })
   : undefined;
@@ -58,6 +57,7 @@ try {
     stderr: process.stderr,
     environment: process.env,
     signal: cancellation.signal,
+    interactive,
     openUrl,
     ...(terminal === undefined
       ? {}

@@ -40,6 +40,8 @@ export interface CliIo {
   /** Defaults to process.env. Injectable so embedding test runners do not mutate global state. */
   readonly environment?: Readonly<Record<string, string | undefined>>;
   readonly signal?: AbortSignal;
+  /** Native terminal capability, independent of whether a prompt reader is allocated. */
+  readonly interactive?: boolean;
   /** Present only for an interactive terminal. JSON and CI callers omit it. */
   readonly ask?: (question: string) => Promise<string>;
   /** Browser launch is injected so programmatic callers retain control. */
