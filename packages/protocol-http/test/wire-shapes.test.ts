@@ -4,8 +4,16 @@ import { join } from "node:path";
 import { defineTool } from "@firedrill/tool-sdk";
 import { BoundWorldClient, WorldKernel } from "@firedrill/world-kernel";
 import { SqliteWorldStore } from "@firedrill/world-store-sqlite";
-import { afterEach, describe, expect, it } from "vitest";
-import { startHttpWorldBinding } from "../src/index.js";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import type { HttpWireRequest } from "../src/index.js";
+import {
+  httpWireCredential,
+  invokeHttpWireRoute,
+  matchWireRoute,
+  registerWireRoutes,
+  startHttpWorldBinding,
+  wireMethodsForPath,
+} from "../src/index.js";
 
 const BUILD_HASH = `sha256:${"c".repeat(64)}` as const;
 const LOCK_HASH = `sha256:${"d".repeat(64)}` as const;
@@ -317,5 +325,241 @@ describe("synthetic HTTP route shapes", () => {
       await binding.close();
       fixture.store.close();
     }
+  });
+});
+
+describe("transport-neutral HTTP codec dispatch", () => {
+  function putRequest(key = "readme"): HttpWireRequest {
+    return {
+      method: "PUT",
+      url: new URL(`https://synthetic.invalid/v3/artifacts/${key}`),
+      headers: [
+        ["Authorization", `Basic ${Buffer.from("synthetic-api-token:unused").toString("base64")}`],
+        ["Content-Type", "application/x-www-form-urlencoded"],
+        ["Idempotency-Key", `put-${key}`],
+      ],
+      body: new TextEncoder().encode("content=adapter-ready"),
+    };
+  }
+
+  it("uses host-owned invocation for real state, idempotency, declared errors and byte responses", async () => {
+    const fixture = artifactWorld();
+    const routes = registerWireRoutes([fixture.tool]);
+    const invoke = vi.fn(async (...args: Parameters<typeof fixture.client.invoke>) =>
+      fixture.client.invoke(...args),
+    );
+    const authorize = vi.fn(() => true);
+    const dispatch = (request: HttpWireRequest) => {
+      const match = matchWireRoute(routes, request.method, request.url.pathname);
+      if (match === undefined) throw new Error("test request must match a declared route");
+      expect(httpWireCredential(request, match.route.contract.auth)).toBe("synthetic-api-token");
+      return invokeHttpWireRoute({ match, request, authorize, invoke });
+    };
+    try {
+      const request = putRequest();
+      const first = await dispatch(request);
+      expect(first.status).toBe(201);
+      expect(first.headers.location).toBe("/v3/artifacts/readme");
+      expect(JSON.parse(new TextDecoder().decode(first.body))).toEqual({ key: "readme", bytes: 13 });
+      const replay = await dispatch(request);
+      expect(replay.status).toBe(first.status);
+      expect(replay.headers).toEqual(first.headers);
+      expect(JSON.parse(new TextDecoder().decode(replay.body))).toEqual(
+        JSON.parse(new TextDecoder().decode(first.body)),
+      );
+      expect(invoke).toHaveBeenCalledWith(
+        { packageId: "artifact-store", operationId: "artifacts.put" },
+        { key: "readme", content: "adapter-ready" },
+        { idempotencyKey: "put-readme" },
+      );
+      expect(fixture.store.readState("artifact-store", "artifacts", "readme")?.value).toEqual({
+        content: "adapter-ready",
+      });
+      expect(fixture.store.readEvidence().filter((entry) => entry.kind === "state_change")).toHaveLength(1);
+
+      const read = {
+        ...request,
+        method: "GET",
+        body: new Uint8Array(),
+        headers: request.headers.slice(0, 1),
+      };
+      const downloaded = await dispatch(read);
+      expect(downloaded.headers["content-type"]).toBe("application/octet-stream");
+      expect(new TextDecoder().decode(downloaded.body)).toBe("adapter-ready");
+      const missing = await dispatch({
+        ...read,
+        url: new URL("https://synthetic.invalid/v3/artifacts/missing"),
+      });
+      expect(missing.status).toBe(404);
+      expect(JSON.parse(new TextDecoder().decode(missing.body))).toEqual({
+        error: "artifact missing does not exist",
+      });
+      expect(authorize).toHaveBeenCalledTimes(4);
+    } finally {
+      fixture.store.close();
+    }
+  });
+
+  it("denies before codecs and invocation, including an authored unauthenticated route", async () => {
+    const fixture = artifactWorld();
+    const contract = fixture.tool.manifest.http[0];
+    const codec = fixture.tool.http["put-artifact"];
+    if (contract === undefined || codec === undefined) throw new Error("missing fixture route");
+    const decode = vi.fn(codec.decode);
+    const uncredentialedTool = defineTool({
+      ...fixture.tool,
+      manifest: {
+        ...fixture.tool.manifest,
+        http: fixture.tool.manifest.http.map((route) => ({ ...route, auth: { kind: "none" as const } })),
+      },
+      http: { ...fixture.tool.http, "put-artifact": { ...codec, decode } },
+    });
+    const invoke = vi.fn();
+    const request = putRequest();
+    const match = matchWireRoute(
+      registerWireRoutes([uncredentialedTool]),
+      request.method,
+      request.url.pathname,
+    );
+    if (match === undefined) throw new Error("missing fixture match");
+    try {
+      expect(httpWireCredential(request, match.route.contract.auth)).toBeUndefined();
+      await expect(
+        invokeHttpWireRoute({ match, request, authorize: () => false, invoke }),
+      ).rejects.toMatchObject({
+        code: "framework.HTTP_UNAUTHORIZED",
+        status: 401,
+      });
+      expect(decode).not.toHaveBeenCalled();
+      expect(invoke).not.toHaveBeenCalled();
+      expect(fixture.client.callsIssued()).toBe(0);
+    } finally {
+      fixture.store.close();
+    }
+  });
+
+  it("pins declared operation and received data across awaited authorization", async () => {
+    const fixture = artifactWorld();
+    const request = putRequest();
+    const match = matchWireRoute(registerWireRoutes([fixture.tool]), request.method, request.url.pathname);
+    if (match === undefined) throw new Error("missing fixture match");
+    let release!: () => void;
+    const wait = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const result = invokeHttpWireRoute({
+      match,
+      request,
+      authorize: async ({ operation, contract }) => {
+        expect(Object.isFrozen(operation)).toBe(true);
+        expect(Object.isFrozen(contract)).toBe(true);
+        expect(Object.isFrozen(contract.auth)).toBe(true);
+        expect(Object.isFrozen(contract.response.errors)).toBe(true);
+        expect(() => {
+          operation.operationId = "artifacts.get";
+        }).toThrow();
+        expect(() => {
+          contract.operationId = "artifacts.get";
+        }).toThrow();
+        await wait;
+        return true;
+      },
+      invoke: (operation, arguments_, options) => fixture.client.invoke(operation, arguments_, options),
+    });
+    request.url.pathname = "/v3/artifacts/changed";
+    request.body.fill(0);
+    release();
+    try {
+      expect((await result).status).toBe(201);
+      expect(fixture.store.readState("artifact-store", "artifacts", "readme")?.value).toEqual({
+        content: "adapter-ready",
+      });
+      expect(fixture.store.readState("artifact-store", "artifacts", "changed")).toBeNull();
+    } finally {
+      fixture.store.close();
+    }
+  });
+
+  it("rejects mismatched routing, oversized input and foreign invocation output", async () => {
+    const fixture = artifactWorld();
+    const request = putRequest();
+    const routes = registerWireRoutes([fixture.tool]);
+    const match = matchWireRoute(routes, request.method, request.url.pathname);
+    if (match === undefined) throw new Error("missing fixture match");
+    const invoke = vi.fn((...args: Parameters<typeof fixture.client.invoke>) =>
+      fixture.client.invoke(...args),
+    );
+    try {
+      expect(wireMethodsForPath(routes, request.url.pathname)).toEqual(["GET", "PUT"]);
+      expect(matchWireRoute(routes, "POST", request.url.pathname)).toBeUndefined();
+      expect(matchWireRoute(routes, "PUT", "/v3/artifacts/a%2Fb")).toBeUndefined();
+      await expect(
+        invokeHttpWireRoute({
+          match,
+          request: { ...request, method: "POST" },
+          authorize: () => true,
+          invoke,
+        }),
+      ).rejects.toMatchObject({ code: "framework.HTTP_ROUTE_MISMATCH" });
+      await expect(
+        invokeHttpWireRoute({
+          match,
+          request: { ...request, body: new Uint8Array(1024 * 1024 + 1) },
+          authorize: () => true,
+          invoke,
+        }),
+      ).rejects.toMatchObject({ code: "framework.HTTP_BODY_TOO_LARGE" });
+      expect(invoke).not.toHaveBeenCalled();
+      await expect(
+        invokeHttpWireRoute({
+          match,
+          request,
+          authorize: () => true,
+          invoke: (...args) => {
+            const result = fixture.client.invoke(...args);
+            return {
+              ...result,
+              invocation: {
+                ...result.invocation,
+                operation: { packageId: "other-package", operationId: "other-operation" },
+              },
+            };
+          },
+        }),
+      ).rejects.toThrow("different operation");
+    } finally {
+      fixture.store.close();
+    }
+  });
+
+  it("extracts only the authored credential carrier without treating it as host authority", () => {
+    const request = {
+      url: new URL("https://synthetic.invalid/route?token=query-value&token=second"),
+      headers: [
+        ["Authorization", "token authored-token"],
+        ["X-Api-Key", "header-token"],
+      ] as const,
+    };
+    expect(httpWireCredential(request, { kind: "bearer", schemes: ["Bearer", "token"] })).toBe(
+      "authored-token",
+    );
+    expect(httpWireCredential(request, { kind: "header", name: "X-Api-Key" })).toBe("header-token");
+    expect(httpWireCredential(request, { kind: "query", name: "token" })).toBeUndefined();
+    expect(
+      httpWireCredential(
+        { ...request, headers: [...request.headers, ["x-api-key", "duplicate"]] },
+        { kind: "header", name: "X-Api-Key" },
+      ),
+    ).toBeUndefined();
+    expect(httpWireCredential(request, { kind: "none" })).toBeUndefined();
+    expect(
+      httpWireCredential(
+        {
+          ...request,
+          headers: [["Authorization", `Basic ${Buffer.from("user:password-token").toString("base64")}`]],
+        },
+        { kind: "basic", token: "password", username: "user" },
+      ),
+    ).toBe("password-token");
   });
 });

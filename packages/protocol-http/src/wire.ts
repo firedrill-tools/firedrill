@@ -1,21 +1,22 @@
 import { timingSafeEqual } from "node:crypto";
-import { validateHeaderValue } from "node:http";
 import type { IncomingMessage, ServerResponse } from "node:http";
+import { validateHeaderValue } from "node:http";
+import type { HttpRouteAuth, HttpRouteContract, OperationOutcome, OperationRef } from "@firedrill/contracts";
 import {
-  JsonObjectSchema,
-  JsonValueSchema,
   httpPathParameter,
   httpPathSegments,
   httpRoutesOverlap,
+  JsonObjectSchema,
+  JsonValueSchema,
 } from "@firedrill/contracts";
-import type { HttpRouteAuth, HttpRouteContract, OperationOutcome } from "@firedrill/contracts";
 import type {
   ToolDefinition,
+  ToolHttpOperationResult,
   ToolHttpRequest,
   ToolHttpRequestBody,
   ToolHttpResponse,
 } from "@firedrill/tool-sdk";
-import type { BoundWorldClient, KernelInvocationResult } from "@firedrill/world-kernel";
+import type { BoundWorldClient } from "@firedrill/world-kernel";
 
 export const MAX_HTTP_BODY_BYTES = 1024 * 1024;
 export const MAX_HTTP_RESPONSE_HEADERS = 64;
@@ -46,11 +47,37 @@ export class WireRequestError extends Error {
   }
 }
 
-interface RegisteredRoute {
+export interface RegisteredRoute {
   readonly packageId: string;
   readonly contract: HttpRouteContract;
   readonly codec: ToolDefinition["http"][string];
   readonly segments: readonly string[];
+}
+
+/** Received wire data, before decoding. The host owns bounded I/O and cancellation. */
+export interface HttpWireRequest {
+  readonly method: string;
+  readonly url: URL;
+  /** Header pairs retain duplicate values; names are normalized before decoding. */
+  readonly headers: readonly (readonly [string, string])[];
+  readonly body: Uint8Array;
+}
+
+export interface HttpWireResponse {
+  readonly status: number;
+  readonly headers: Readonly<Record<string, string>>;
+  readonly body: Uint8Array;
+}
+
+export type HttpWireInvoke = (
+  operation: OperationRef,
+  arguments_: ReturnType<typeof JsonObjectSchema.parse>,
+  options: { readonly idempotencyKey?: string },
+) => ToolHttpOperationResult | Promise<ToolHttpOperationResult>;
+
+export interface HttpWireAuthority {
+  readonly operation: OperationRef;
+  readonly contract: HttpRouteContract;
 }
 
 export interface MatchedWireRoute {
@@ -63,7 +90,7 @@ function matchWirePath(
   concrete: readonly string[],
 ): Readonly<Record<string, string>> | undefined {
   if (route.segments.length !== concrete.length) return undefined;
-  const path: Record<string, string> = {};
+  const path: Record<string, string> = Object.create(null);
   for (const [index, expected] of route.segments.entries()) {
     const actual = concrete[index];
     if (actual === undefined) return undefined;
@@ -118,12 +145,25 @@ export function registerWireRoutes(tools: readonly ToolDefinition[]): readonly R
           `HTTP route ${tool.manifest.id}.${contract.id} overlaps ${conflict.packageId}.${conflict.contract.id}`,
         );
       }
-      routes.push({
-        packageId: tool.manifest.id,
-        contract,
-        codec,
-        segments: httpPathSegments(contract.path),
-      });
+      const immutableContract = Object.freeze({
+        ...contract,
+        auth: Object.freeze({
+          ...contract.auth,
+          ...(contract.auth.kind === "bearer" ? { schemes: Object.freeze([...contract.auth.schemes]) } : {}),
+        }),
+        response: Object.freeze({
+          ...contract.response,
+          errors: Object.freeze(contract.response.errors.map((error) => Object.freeze({ ...error }))),
+        }),
+      }) as HttpRouteContract;
+      routes.push(
+        Object.freeze({
+          packageId: tool.manifest.id,
+          contract: immutableContract,
+          codec: Object.freeze({ decode: codec.decode, encode: codec.encode }),
+          segments: Object.freeze([...httpPathSegments(contract.path)]),
+        }),
+      );
     }
   }
   return Object.freeze(routes);
@@ -156,14 +196,12 @@ export function wireMethodsForPath(routes: readonly RegisteredRoute[], pathname:
 }
 
 function requestHeaderValues(
-  request: IncomingMessage,
+  pairs: readonly (readonly [string, string])[],
   auth: HttpRouteAuth,
 ): Readonly<Record<string, readonly string[]>> {
-  const headers: Record<string, string[]> = {};
-  for (let index = 0; index < request.rawHeaders.length; index += 2) {
-    const name = request.rawHeaders[index]?.toLowerCase();
-    const value = request.rawHeaders[index + 1];
-    if (name === undefined || value === undefined) continue;
+  const headers: Record<string, string[]> = Object.create(null);
+  for (const [rawName, value] of pairs) {
+    const name = rawName.toLowerCase();
     const values = headers[name] ?? [];
     values.push(value);
     headers[name] = values;
@@ -176,7 +214,7 @@ function requestHeaderValues(
 }
 
 function requestQuery(url: URL, auth: HttpRouteAuth): Readonly<Record<string, readonly string[]>> {
-  const query: Record<string, string[]> = {};
+  const query: Record<string, string[]> = Object.create(null);
   for (const [name, value] of url.searchParams) {
     const values = query[name] ?? [];
     values.push(value);
@@ -200,40 +238,57 @@ export function wireRouteAuthorized(
 ): boolean {
   const auth = route.contract.auth;
   if (auth.kind === "none") return true;
+  const actual = credentialFromHeaders(request.headers, url, auth);
+  return actual !== undefined && equalSecret(actual, token);
+}
+
+function credentialFromHeaders(
+  headers: Readonly<Record<string, string | readonly string[] | undefined>>,
+  url: URL,
+  auth: HttpRouteAuth,
+): string | undefined {
+  const header = (name: string) => {
+    const values = headers[name];
+    return typeof values === "string" ? values : one(values);
+  };
+  if (auth.kind === "none") return undefined;
   if (auth.kind === "bearer") {
-    const header = request.headers.authorization;
-    if (typeof header !== "string") return false;
-    const separator = header.indexOf(" ");
-    if (separator <= 0) return false;
-    const scheme = header.slice(0, separator).toLowerCase();
-    return (
-      auth.schemes.some((candidate) => candidate.toLowerCase() === scheme) &&
-      equalSecret(header.slice(separator + 1), token)
-    );
+    const value = header("authorization");
+    if (value === undefined) return undefined;
+    const separator = value.indexOf(" ");
+    if (separator <= 0) return undefined;
+    const scheme = value.slice(0, separator).toLowerCase();
+    return auth.schemes.some((candidate) => candidate.toLowerCase() === scheme)
+      ? value.slice(separator + 1)
+      : undefined;
   }
-  if (auth.kind === "header") {
-    const header = request.headers[auth.name.toLowerCase()];
-    const value = Array.isArray(header) ? one(header) : header;
-    return value !== undefined && equalSecret(value, token);
-  }
+  if (auth.kind === "header") return header(auth.name.toLowerCase());
   if (auth.kind === "query") {
     const values = url.searchParams.getAll(auth.name);
-    return values.length === 1 && equalSecret(values[0] ?? "", token);
+    return one(values);
   }
-  const header = request.headers.authorization;
-  if (typeof header !== "string" || !header.startsWith("Basic ")) return false;
+  const value = header("authorization");
+  if (value === undefined || !value.startsWith("Basic ")) return undefined;
   let decoded: string;
   try {
-    decoded = Buffer.from(header.slice("Basic ".length), "base64").toString("utf8");
+    decoded = Buffer.from(value.slice("Basic ".length), "base64").toString("utf8");
   } catch {
-    return false;
+    return undefined;
   }
   const separator = decoded.indexOf(":");
-  if (separator < 0) return false;
+  if (separator < 0) return undefined;
   const username = decoded.slice(0, separator);
   const password = decoded.slice(separator + 1);
-  if (auth.token === "username") return equalSecret(username, token);
-  return auth.username === username && equalSecret(password, token);
+  if (auth.token === "username") return username;
+  return auth.username === username ? password : undefined;
+}
+
+/** Extracts only the authored API credential; this does not authenticate a host or select a world. */
+export function httpWireCredential(
+  request: Pick<HttpWireRequest, "headers" | "url">,
+  auth: HttpRouteAuth,
+): string | undefined {
+  return credentialFromHeaders(requestHeaderValues(request.headers, { kind: "none" }), request.url, auth);
 }
 
 async function requestBytes(request: IncomingMessage): Promise<Buffer> {
@@ -256,17 +311,15 @@ async function requestBytes(request: IncomingMessage): Promise<Buffer> {
   return Buffer.concat(chunks);
 }
 
-function mediaType(request: IncomingMessage): string | undefined {
-  const value = request.headers["content-type"];
-  const header = Array.isArray(value) ? value[0] : value;
+function mediaType(header: string | undefined): string | undefined {
   return header?.split(";", 1)[0]?.trim().toLowerCase();
 }
 
-async function requestBody(
-  request: IncomingMessage,
+function requestBody(
+  bytes: Buffer,
+  contentType: string | undefined,
   kind: HttpRouteContract["requestBody"],
-): Promise<ToolHttpRequestBody> {
-  const bytes = await requestBytes(request);
+): ToolHttpRequestBody {
   if (kind === "none") {
     if (bytes.length > 0) {
       throw new WireRequestError(
@@ -278,7 +331,7 @@ async function requestBody(
     return { kind: "none" };
   }
   if (kind === "json") {
-    const type = mediaType(request);
+    const type = mediaType(contentType);
     if (type !== "application/json" && !type?.endsWith("+json")) {
       throw new WireRequestError(
         "framework.HTTP_CONTENT_TYPE_UNSUPPORTED",
@@ -299,14 +352,14 @@ async function requestBody(
     throw new WireRequestError("framework.HTTP_BODY_INVALID", 400, "request body must be valid UTF-8");
   }
   if (kind === "text") return { kind: "text", value: text };
-  if (mediaType(request) !== "application/x-www-form-urlencoded") {
+  if (mediaType(contentType) !== "application/x-www-form-urlencoded") {
     throw new WireRequestError(
       "framework.HTTP_CONTENT_TYPE_UNSUPPORTED",
       415,
       "request content type must be application/x-www-form-urlencoded",
     );
   }
-  const form: Record<string, string[]> = {};
+  const form: Record<string, string[]> = Object.create(null);
   for (const [name, value] of new URLSearchParams(text)) {
     const values = form[name] ?? [];
     values.push(value);
@@ -439,15 +492,70 @@ export async function invokeWireRoute(input: {
   readonly headers: Readonly<Record<string, string>>;
   readonly body: Buffer;
 }> {
-  const { route } = input.match;
+  const headers: Array<readonly [string, string]> = [];
+  for (let index = 0; index < input.request.rawHeaders.length; index += 2) {
+    const name = input.request.rawHeaders[index];
+    const value = input.request.rawHeaders[index + 1];
+    if (name !== undefined && value !== undefined) headers.push([name, value]);
+  }
+  const response = await invokeHttpWireRoute({
+    match: input.match,
+    request: {
+      method: input.request.method ?? "",
+      url: input.url,
+      headers,
+      body: await requestBytes(input.request),
+    },
+    // The loopback server already enforced Host/Origin and authored route auth.
+    authorize: () => true,
+    invoke: (operation, arguments_, options) => input.client.invoke(operation, arguments_, options),
+  });
+  return { ...response, body: Buffer.from(response.body) };
+}
+
+/**
+ * Runs the canonical codec pipeline without a listener or a kernel owner.
+ * The host must authorize the immutable declared operation before any codec
+ * executes, then enforce current actor/world authority again when invoking it.
+ * Authored API auth and platform routing authority are independent: this strips
+ * only the declared API credential. Remove any separate host credential first.
+ */
+export async function invokeHttpWireRoute(input: {
+  readonly match: MatchedWireRoute;
+  readonly request: HttpWireRequest;
+  readonly authorize: (authority: HttpWireAuthority) => boolean | Promise<boolean>;
+  readonly invoke: HttpWireInvoke;
+}): Promise<HttpWireResponse> {
+  const route = input.match.route;
+  const authorize = input.authorize;
+  const invoke = input.invoke;
+  const url = new URL(input.request.url.href);
+  const concrete = concretePathSegments(url.pathname);
+  const path = concrete === undefined ? undefined : matchWirePath(route, concrete);
+  if (input.request.method !== route.contract.method || path === undefined) {
+    throw new WireRequestError("framework.HTTP_ROUTE_MISMATCH", 400, "request does not match its HTTP route");
+  }
+  if (input.request.body.byteLength > MAX_HTTP_BODY_BYTES) {
+    throw new WireRequestError("framework.HTTP_BODY_TOO_LARGE", 413, "request body exceeds 1 MiB");
+  }
+  // Snapshot caller-owned data before awaiting authorization. Neither the caller
+  // nor an asynchronous authorizer can retarget the selected operation/request.
+  const bytes = Buffer.from(input.request.body);
+  const pairs = input.request.headers.map(([name, value]): readonly [string, string] => [name, value]);
+  const receivedHeaders = requestHeaderValues(pairs, { kind: "none" });
+  const operation = Object.freeze({ packageId: route.packageId, operationId: route.contract.operationId });
+  const authority = Object.freeze({ operation, contract: route.contract });
+  if ((await authorize(authority)) !== true) {
+    throw new WireRequestError("framework.HTTP_UNAUTHORIZED", 401, "HTTP route is not authorized");
+  }
   const request: ToolHttpRequest = {
     routeId: route.contract.id,
     method: route.contract.method,
-    pathname: input.url.pathname,
-    path: input.match.path,
-    query: requestQuery(input.url, route.contract.auth),
-    headers: requestHeaderValues(input.request, route.contract.auth),
-    body: await requestBody(input.request, route.contract.requestBody),
+    pathname: url.pathname,
+    path,
+    query: requestQuery(url, route.contract.auth),
+    headers: requestHeaderValues(pairs, route.contract.auth),
+    body: requestBody(bytes, receivedHeaders["content-type"]?.[0], route.contract.requestBody),
   };
   let operationInput: ReturnType<typeof decodedOperationInput>;
   try {
@@ -462,11 +570,17 @@ export async function invokeWireRoute(input: {
         : "HTTP route could not decode the request",
     );
   }
-  const result: KernelInvocationResult = input.client.invoke(
-    { packageId: route.packageId, operationId: route.contract.operationId },
+  const result = await invoke(
+    operation,
     operationInput.arguments,
     operationInput.idempotencyKey === undefined ? {} : { idempotencyKey: operationInput.idempotencyKey },
   );
+  if (
+    result.invocation.operation.packageId !== operation.packageId ||
+    result.invocation.operation.operationId !== operation.operationId
+  ) {
+    throw new TypeError("HTTP route invocation returned a different operation");
+  }
   const encoded = route.codec.encode({ invocation: result.invocation, outcome: result.outcome });
   const status = outcomeStatus(route.contract, result.outcome);
   const encodedBody = responseBytes(encoded);
