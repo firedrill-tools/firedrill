@@ -3,8 +3,9 @@ import { compileWorld } from "@firedrill/compiler";
 import type { Diagnostic, Sha256 } from "@firedrill/contracts";
 import { mergeToolOverrides } from "@firedrill/contracts";
 import { FiredrillProjectError } from "@firedrill/sdk";
-import type { SimulationProject } from "./contracts.js";
+import type { SimulationProject, SimulationToolSourceDocument } from "./contracts.js";
 import { SimulationProjectSchema } from "./contracts.js";
+import { captureToolSources } from "./tool-source.js";
 
 export interface LoadSimulationProjectOptions {
   readonly root?: string;
@@ -17,6 +18,8 @@ export interface LoadedSimulationProject {
   readonly buildHash: Sha256;
   readonly diagnostics: readonly Diagnostic[];
   readonly project: SimulationProject;
+  /** Captured source text, served only by Tool/file identities from the public catalog. */
+  readonly toolSourceDocuments: ReadonlyMap<string, ReadonlyMap<string, SimulationToolSourceDocument>>;
 }
 
 /** Compiles repository source and produces the stable World/Drill catalog consumed by inspectors. */
@@ -43,6 +46,7 @@ export async function loadSimulationProject(
     ]),
   );
   const targetKinds = new Map(compiled.build.worldIr.targets.map((target) => [target.id, target.kind]));
+  const toolSources = captureToolSources(repositoryRoot, compiled.build);
   const project = SimulationProjectSchema.parse({
     schemaVersion: 1,
     world: {
@@ -74,11 +78,14 @@ export async function loadSimulationProject(
     tools: compiled.build.worldIr.tools.map((tool) => ({
       id: tool.id,
       version: tool.version,
+      definition: tool,
+      implementation: toolSources.implementations.get(tool.id),
       operations: tool.operations.map((operation) => ({
         id: operation.id,
         ...(operation.description === undefined ? {} : { description: operation.description }),
         inputSchema: operation.inputSchema,
         outputSchema: operation.outputSchema,
+        declaredErrors: operation.declaredErrors,
         fidelity: operation.fidelity,
         idempotency: operation.idempotency,
       })),
@@ -173,5 +180,6 @@ export async function loadSimulationProject(
     buildHash: compiled.build.manifest.buildHash,
     diagnostics: compiled.diagnostics,
     project,
+    toolSourceDocuments: toolSources.documents,
   };
 }

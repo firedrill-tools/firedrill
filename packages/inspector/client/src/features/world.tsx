@@ -1,19 +1,22 @@
 import { Clock3, Database, FileInput, Radio, TriangleAlert, Wrench } from "lucide-react";
 import { useMemo, useState } from "react";
 import { ActorIdentity } from "../components/actor-identity";
+import { CodeDocument } from "../components/code-document";
 import { DataViewer } from "../components/data-viewer";
 import { DetailsPanel, DetailsTrigger } from "../components/details-panel";
 import { PageIntro } from "../components/page-intro";
 import { PaginatedContent, Pagination, usePagination } from "../components/pagination";
-import { EmptyState, KeyValue, RowButton, SearchField } from "../components/primitives";
+import { Button, EmptyState, KeyValue, RowButton, SearchField } from "../components/primitives";
 import { ScrollArea } from "../components/scroll-area";
 import { SourceViewer } from "../components/source-viewer";
 import { json, plural, titleFromId, virtualTime } from "../format";
 import type { SimulationProject, SimulationScenario, SimulationSetup, SimulationTool } from "../types";
 import { startingRecords } from "./catalog-data";
 import { describeSetupChanges } from "./setup-changes";
+import { ToolImplementation } from "./tool-implementation";
 import { ToolOverrides } from "./tool-overrides";
 import "./catalog-world.css";
+import "./tool-implementation.css";
 
 type WorldSelection = "setup" | `scenario:${string}` | `tool:${string}`;
 
@@ -669,15 +672,49 @@ function SetupInspector({
   );
 }
 
-function ToolMain({ tool }: { readonly tool: SimulationTool }) {
+export function ToolMain({ tool }: { readonly tool: SimulationTool }) {
+  const [view, setView] = useState<"operations" | "implementation" | "declaration">("operations");
   return (
     <div className="fd-workspace-main">
-      <div className="fd-workspace-titlebar">
+      <div className="fd-workspace-titlebar fd-tool-titlebar">
         <div>
           <h2>{titleFromId(tool.id)}</h2>
         </div>
+        <nav aria-label="Tool views">
+          <Button size="compact" aria-pressed={view === "operations"} onClick={() => setView("operations")}>
+            Operations
+          </Button>
+          <Button
+            size="compact"
+            aria-pressed={view === "implementation"}
+            onClick={() => setView("implementation")}
+          >
+            Implementation
+          </Button>
+          <Button size="compact" aria-pressed={view === "declaration"} onClick={() => setView("declaration")}>
+            Declaration
+          </Button>
+        </nav>
       </div>
-      <OperationTable tool={tool} />
+      {view === "operations" ? (
+        <OperationTable tool={tool} />
+      ) : view === "implementation" ? (
+        <ToolImplementation key={tool.id} tool={tool} />
+      ) : tool.definition === undefined ? (
+        <EmptyState title="Full declaration unavailable">
+          Refresh source to load the complete Tool declaration.
+        </EmptyState>
+      ) : (
+        <div className="fd-tool-source">
+          <div className="fd-tool-source__intro">
+            <p>
+              The complete compiled contract: operations, inputs, responses, errors, state, and events.
+              Executable code is under Implementation.
+            </p>
+          </div>
+          <CodeDocument content={json(tool.definition)} language="json" context="Compiled Tool declaration" />
+        </div>
+      )}
     </div>
   );
 }

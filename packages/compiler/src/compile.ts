@@ -2,8 +2,8 @@ import {
   existsSync,
   mkdirSync,
   mkdtempSync,
-  readFileSync,
   readdirSync,
+  readFileSync,
   realpathSync,
   renameSync,
   rmSync,
@@ -11,17 +11,6 @@ import {
   writeFileSync,
 } from "node:fs";
 import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
-import {
-  FIREDRILL_ENGINE_VERSION,
-  InlineScenarioDefinitionSchema,
-  RunWorldSetupSchema,
-  SourcePathSchema,
-  StableIdSchema,
-  TargetDescriptorSchema,
-  canonicalJson,
-  compareStableStrings,
-  mergeToolOverrides,
-} from "@firedrill/contracts";
 import type {
   Diagnostic,
   InlineScenarioDefinition,
@@ -31,6 +20,18 @@ import type {
   ToolPackageManifest,
 } from "@firedrill/contracts";
 import {
+  canonicalJson,
+  compareStableStrings,
+  FIREDRILL_ENGINE_VERSION,
+  InlineScenarioDefinitionSchema,
+  mergeToolOverrides,
+  RunWorldSetupSchema,
+  SourcePathSchema,
+  StableIdSchema,
+  TargetDescriptorSchema,
+} from "@firedrill/contracts";
+import type { BuildProvenanceEntry, CanonicalWorldIr, ResolvedRunSetup } from "@firedrill/world-ir";
+import {
   BuildIdentitySchema,
   BuildManifestSchema,
   CanonicalWorldIrSchema,
@@ -38,7 +39,6 @@ import {
   ResolvedRunSetupSchema,
   semanticHash,
 } from "@firedrill/world-ir";
-import type { BuildProvenanceEntry, CanonicalWorldIr, ResolvedRunSetup } from "@firedrill/world-ir";
 import { satisfies, validRange } from "semver";
 import type { z } from "zod";
 import { bundleTool } from "./bundle-tool.js";
@@ -52,33 +52,33 @@ import {
 } from "./normalize.js";
 import { parseSource } from "./parse.js";
 import {
+  type DiscoveredSource,
   discoverSources,
   openRepository,
-  resolveRepositoryPath,
-  resolveToolModule,
-  type DiscoveredSource,
   type RepositoryContext,
   type ResolvedRepositoryPath,
+  resolveRepositoryPath,
+  resolveToolModule,
 } from "./repository.js";
 import {
-  ProjectConfigSchema,
-  DrillSourceSchema,
-  ScenarioSourceSchema,
-  SuiteSourceSchema,
-  TargetSourceSchema,
-  ToolSourceSchema,
-  WorldSourceSchema,
-  type ScenarioSource,
   type DrillSource,
+  DrillSourceSchema,
+  ProjectConfigSchema,
+  type ScenarioSource,
+  ScenarioSourceSchema,
   type SuiteSource,
+  SuiteSourceSchema,
   type TargetSource,
+  TargetSourceSchema,
   type ToolSource,
+  ToolSourceSchema,
   type WorldSource,
+  WorldSourceSchema,
 } from "./source-schemas.js";
 import {
+  type InstalledToolPackage,
   resolveInstalledToolModule,
   resolveInstalledToolPackage,
-  type InstalledToolPackage,
 } from "./tool-package.js";
 import type {
   BundledTool,
@@ -1176,6 +1176,7 @@ export async function compileWorld(options: CompileWorldOptions): Promise<Compil
       toolSources: sortedTools.map((tool) => ({
         packageId: tool.manifest.id,
         declarationPath: tool.document.repositoryPath,
+        entryPath: tool.bundle.entryPath,
         behaviorPaths: tool.bundle.sourcePaths,
         origin: tool.bundle.lock.source,
       })),

@@ -860,10 +860,60 @@ function RunWorkspace({
   );
 }
 
+export interface RunHistoryControls {
+  readonly hasMore: boolean;
+  readonly loadingOlder: boolean;
+  readonly refreshing: boolean;
+  readonly olderError: string | undefined;
+  readonly latestError: string | undefined;
+  readonly onLoadOlder: () => void;
+  readonly onRetryLatest: () => void;
+}
+
+function OlderRuns({ history }: { readonly history: RunHistoryControls | undefined }) {
+  if (history === undefined || !history.hasMore) return null;
+  return (
+    <>
+      {history.olderError === undefined ? null : (
+        <div className="fd-rail-empty" role="alert">
+          Older runs could not be loaded. {history.olderError}
+        </div>
+      )}
+      <div className="fd-load-more">
+        <Button
+          size="compact"
+          disabled={history.loadingOlder || history.refreshing}
+          onClick={history.onLoadOlder}
+        >
+          {history.loadingOlder ? <Spinner label="Loading older runs" /> : null}
+          {history.loadingOlder
+            ? "Loading older runs…"
+            : history.olderError === undefined
+              ? "Load older runs"
+              : "Retry older runs"}
+        </Button>
+      </div>
+    </>
+  );
+}
+
+function RunListWarning({ history }: { readonly history: RunHistoryControls | undefined }) {
+  if (history?.latestError === undefined) return null;
+  return (
+    <InlineMessage tone="warning" title="Latest runs could not be refreshed">
+      <p>{history.latestError} Previously loaded runs remain available.</p>
+      <Button size="compact" disabled={history.refreshing} onClick={history.onRetryLatest}>
+        Retry latest runs
+      </Button>
+    </InlineMessage>
+  );
+}
+
 export function RunsView({
   project,
   runs,
   unavailableReports = [],
+  history,
   requests,
   starting,
   cancelling,
@@ -876,6 +926,7 @@ export function RunsView({
   readonly project: SimulationProject;
   readonly runs: readonly SimulationRunSummary[];
   readonly unavailableReports?: SimulationRunList["unavailable"];
+  readonly history?: RunHistoryControls;
   readonly requests: readonly SimulationRunRequest[];
   readonly starting: boolean;
   readonly cancelling: boolean;
@@ -913,16 +964,26 @@ export function RunsView({
           <PageIntro page="runs" />
         </header>
         <UnavailableReports reports={unavailableReports} />
+        <RunListWarning history={history} />
         <EmptyState
-          title={unavailableReports.length > 0 ? "No readable runs" : "No drill runs yet"}
+          title={
+            history?.hasMore
+              ? "No readable loaded runs"
+              : unavailableReports.length > 0
+                ? "No readable runs"
+                : "No drill runs yet"
+          }
           action={
             <Button variant="primary" onClick={onNavigateDrills}>
               <Play size={16} /> Choose a drill
             </Button>
           }
         >
-          Run a drill to see what your agent did and whether its checks passed.
+          {history?.hasMore
+            ? "The loaded reports could not be opened. Load older runs to look for another saved result."
+            : "Run a drill to see what your agent did and whether its checks passed."}
         </EmptyState>
+        <OlderRuns history={history} />
       </section>
     );
   }
@@ -942,28 +1003,45 @@ export function RunsView({
         ) : null}
       </header>
       <UnavailableReports reports={unavailableReports} />
+      <RunListWarning history={history} />
       {activeRequests.some((request) => request.runIds.length === 0) ? (
         <InlineMessage tone="info">
           Firedrill is preparing an isolated world for the selected drill.
         </InlineMessage>
       ) : null}
       {compareOpen ? (
-        <RunComparison runs={runs} selectedRunId={selected?.runId} />
+        <>
+          {history?.hasMore ? (
+            <div className="fd-unavailable-reports">
+              <p>Comparison selectors include only loaded runs.</p>
+            </div>
+          ) : null}
+          <RunComparison runs={runs} selectedRunId={selected?.runId} />
+          <OlderRuns history={history} />
+        </>
       ) : (
         <div className="fd-workspace fd-run-workspace fd-details-workspace">
           <aside className="fd-workspace-rail fd-run-rail">
             <div className="fd-rail-head">
               <strong>Runs</strong>
-              <span>{runs.length}</span>
+              <span>
+                {runs.length}
+                {history?.hasMore ? " loaded" : ""}
+              </span>
             </div>
             <div className="fd-run-filters">
               <SearchField
                 value={query}
                 onChange={(event) => setQuery(event.target.value)}
-                placeholder="Drill, target, scenario, seed…"
+                aria-label={history?.hasMore ? "Search loaded runs" : "Search runs"}
+                placeholder={history?.hasMore ? "Search loaded runs…" : "Drill, target, scenario, seed…"}
               />
-              <Select label="Run result" value={status} onChange={(event) => setStatus(event.target.value)}>
-                <option value="all">All results</option>
+              <Select
+                label={history?.hasMore ? "Loaded run result" : "Run result"}
+                value={status}
+                onChange={(event) => setStatus(event.target.value)}
+              >
+                <option value="all">{history?.hasMore ? "All loaded results" : "All results"}</option>
                 <option value="running">Running</option>
                 <option value="passed">Passed</option>
                 <option value="failed">Failed</option>
@@ -989,8 +1067,13 @@ export function RunsView({
                 </RowButton>
               ))}
             </div>
-            <Pagination label="Runs" {...runPage} variant="rail" />
-            {filtered.length === 0 ? <div className="fd-rail-empty">No runs match these filters.</div> : null}
+            <Pagination label={history?.hasMore ? "Loaded runs" : "Runs"} {...runPage} variant="rail" />
+            {filtered.length === 0 ? (
+              <div className="fd-rail-empty">
+                {history?.hasMore ? "No loaded runs match these filters." : "No runs match these filters."}
+              </div>
+            ) : null}
+            <OlderRuns history={history} />
           </aside>
           {selected === undefined ? (
             <EmptyState title="Run is starting">

@@ -15,6 +15,7 @@ import {
   FaultActivationSchema,
   InitialEventSchema,
   JsonObjectSchema,
+  NodePackageNameSchema,
   OperationIdSchema,
   PackageIdSchema,
   ResolvedToolOverridesSchema,
@@ -22,10 +23,12 @@ import {
   RunResultSchema,
   ScheduledEventIdSchema,
   SeedSchema,
+  SemverSchema,
   Sha256Schema,
   StableIdSchema,
   StateSetupSchema,
   TargetFileAttachmentSchema,
+  ToolPackageManifestSchema,
   ToolStateContractSchema,
   VirtualTimeSchema,
   WorldInstanceIdSchema,
@@ -62,6 +65,91 @@ export const SimulationSourceDocumentSchema = z
   })
   .strict();
 
+export const SimulationToolSourceIdSchema = z.string().regex(/^file-[a-f0-9]{64}$/);
+
+const ToolSourceLanguageSchema = z.enum(["javascript", "typescript"]);
+const BaseToolSourceOriginSchema = z.discriminatedUnion("kind", [
+  z.object({ kind: z.literal("repository") }).strict(),
+  z
+    .object({
+      kind: z.literal("npm"),
+      packageName: NodePackageNameSchema,
+      packageVersion: SemverSchema,
+    })
+    .strict(),
+]);
+const ToolSourceOriginSchema = z.discriminatedUnion("kind", [
+  ...BaseToolSourceOriginSchema.options,
+  z
+    .object({
+      kind: z.literal("repository_override"),
+      module: RelativeSourcePathSchema,
+      base: BaseToolSourceOriginSchema,
+    })
+    .strict(),
+]);
+
+export const SimulationToolSourceUnavailableReasonSchema = z.enum([
+  "unsupported_file",
+  "restricted_path",
+  "missing_source",
+  "unsafe_path",
+  "too_large",
+  "invalid_text",
+  "package_changed",
+  "snapshot_limit",
+]);
+
+const ToolSourceReferenceSchema = z
+  .object({
+    id: SimulationToolSourceIdSchema,
+    path: RelativeSourcePathSchema,
+    language: ToolSourceLanguageSchema.optional(),
+    role: z.enum(["entry", "helper"]).optional(),
+    readable: z.boolean(),
+    contentHash: Sha256Schema.optional(),
+    unavailableReason: SimulationToolSourceUnavailableReasonSchema.optional(),
+  })
+  .strict()
+  .superRefine((source, context) => {
+    if (
+      source.readable
+        ? source.language === undefined ||
+          source.contentHash === undefined ||
+          source.unavailableReason !== undefined
+        : source.contentHash !== undefined || source.unavailableReason === undefined
+    ) {
+      context.addIssue({ code: "custom", message: "source availability metadata is inconsistent" });
+    }
+  });
+
+/** Source captured after compilation during the last refresh, not archived original-source proof. */
+export const SimulationToolImplementationSchema = z
+  .object({
+    snapshot: z.literal("compiled_refresh"),
+    buildHash: Sha256Schema,
+    artifactHash: Sha256Schema,
+    exportName: z.string().min(1).max(1024),
+    origin: ToolSourceOriginSchema,
+    files: z.array(ToolSourceReferenceSchema),
+  })
+  .strict();
+
+export const SimulationToolSourceDocumentSchema = z
+  .object({
+    schemaVersion: z.literal(1),
+    toolId: PackageIdSchema,
+    fileId: SimulationToolSourceIdSchema,
+    snapshot: z.literal("compiled_refresh"),
+    buildHash: Sha256Schema,
+    artifactHash: Sha256Schema,
+    path: RelativeSourcePathSchema,
+    language: ToolSourceLanguageSchema,
+    contentHash: Sha256Schema,
+    content: z.string().max(1024 * 1024),
+  })
+  .strict();
+
 const ScenarioSetupViewSchema = z
   .object({
     virtualTimeUs: VirtualTimeSchema,
@@ -85,6 +173,7 @@ const OperationViewSchema = z
     description: z.string().min(1).max(1000).optional(),
     inputSchema: JsonObjectSchema.optional(),
     outputSchema: JsonObjectSchema.optional(),
+    declaredErrors: z.array(z.string()).optional(),
     fidelity: z.enum(["contract", "stateful", "behavioral", "validated"]),
     idempotency: z.enum(["none", "optional", "required"]),
   })
@@ -94,6 +183,8 @@ const ToolViewSchema = z
   .object({
     id: PackageIdSchema,
     version: z.string().min(1).max(128),
+    definition: ToolPackageManifestSchema.optional(),
+    implementation: SimulationToolImplementationSchema.optional(),
     operations: z.array(OperationViewSchema),
     stateNamespaces: z.array(StableIdSchema),
     stateDefinitions: z.array(ToolStateContractSchema).optional(),
@@ -243,6 +334,13 @@ export const SimulationRunListSchema = z
   .object({
     schemaVersion: z.literal(1),
     runs: z.array(SimulationRunSummarySchema),
+    /** Continue through older saved report directories, including unreadable reports. */
+    nextCursor: z
+      .string()
+      .min(1)
+      .max(512)
+      .regex(/^[A-Za-z0-9_-]+$/)
+      .optional(),
     unavailable: z.array(
       z
         .object({
@@ -484,6 +582,11 @@ export const SimulationApiErrorSchema = z
 export type SimulationProject = z.infer<typeof SimulationProjectSchema>;
 export type SimulationSourceKind = z.infer<typeof SimulationSourceKindSchema>;
 export type SimulationSourceDocument = z.infer<typeof SimulationSourceDocumentSchema>;
+export type SimulationToolImplementation = z.infer<typeof SimulationToolImplementationSchema>;
+export type SimulationToolSourceDocument = z.infer<typeof SimulationToolSourceDocumentSchema>;
+export type SimulationToolSourceUnavailableReason = z.infer<
+  typeof SimulationToolSourceUnavailableReasonSchema
+>;
 export type SimulationRunSummary = z.infer<typeof SimulationRunSummarySchema>;
 export type SimulationRunList = z.infer<typeof SimulationRunListSchema>;
 export type SimulationReportAttachments = z.infer<typeof SimulationReportAttachmentsSchema>;

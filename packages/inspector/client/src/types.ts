@@ -10,6 +10,7 @@ import type {
   SimulationSourceDocument,
   SimulationSourceKind,
   SimulationStatePage,
+  SimulationToolSourceDocument,
   StartSimulationRun,
 } from "@firedrill/simulation";
 
@@ -25,6 +26,7 @@ export type {
   SimulationSourceDocument,
   SimulationSourceKind,
   SimulationStatePage,
+  SimulationToolSourceDocument,
   StartSimulationRun,
 };
 

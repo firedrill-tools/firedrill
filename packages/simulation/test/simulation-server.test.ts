@@ -483,6 +483,7 @@ describe("local simulation server", () => {
       description: "Replace the record value.",
       inputSchema,
       outputSchema,
+      declaredErrors: [],
       idempotency: "required",
       fidelity: "stateful",
     });

@@ -1,0 +1,71 @@
+.fd-tool-titlebar {
+  flex-wrap: wrap;
+  flex: none;
+}
+.fd-tool-titlebar nav {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-left: auto;
+}
+.fd-tool-source {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+}
+.fd-tool-source__intro {
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--border-subtle);
+  flex: none;
+}
+.fd-tool-source__intro p {
+  margin: 0;
+  color: var(--text-secondary);
+  font-size: 13px;
+  line-height: 1.6;
+}
+.fd-tool-source__file {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  flex: none;
+  gap: 10px 16px;
+  padding: 10px 16px;
+  border-bottom: 1px solid var(--border-subtle);
+  font-size: 13px;
+}
+.fd-tool-source__file > code,
+.fd-tool-source__file .fd-select {
+  min-width: 0;
+  max-width: 100%;
+  flex: 1 1 280px;
+}
+.fd-tool-source__file code {
+  overflow-wrap: anywhere;
+}
+.fd-tool-source__file .fd-select select {
+  width: 100%;
+  text-overflow: ellipsis;
+}
+.fd-tool-source__file > span {
+  color: var(--text-secondary);
+}
+.fd-tool-source__message {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+  padding: 16px;
+}
+.fd-tool-source__message .fd-inline-message {
+  flex: 1 1 100%;
+}
+@media (max-width: 639px) {
+  .fd-tool-titlebar nav {
+    margin-left: 0;
+    flex-basis: 100%;
+  }
+}

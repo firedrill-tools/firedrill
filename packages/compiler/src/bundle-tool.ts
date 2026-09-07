@@ -1,13 +1,12 @@
-import { builtinModules } from "node:module";
 import { existsSync, readFileSync, realpathSync } from "node:fs";
-import { createRequire } from "node:module";
+import { builtinModules, createRequire } from "node:module";
 import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
-import { build, type Plugin } from "esbuild";
-import { Sha256Schema, SourcePathSchema, compareStableStrings } from "@firedrill/contracts";
 import type { Diagnostic, ToolPackageManifest } from "@firedrill/contracts";
+import { compareStableStrings, Sha256Schema, SourcePathSchema } from "@firedrill/contracts";
 import { semanticHash, sha256Text } from "@firedrill/world-ir";
-import type { BundledTool } from "./types.js";
+import { build, type Plugin } from "esbuild";
 import { diagnostic } from "./diagnostics.js";
+import type { BundledTool } from "./types.js";
 
 const BUNDLED_FRAMEWORK_PACKAGES = new Set(["@firedrill/tool-sdk"]);
 const ALLOWED_TOOL_SDK_IMPORTS = new Set(["@firedrill/tool-sdk", "@firedrill/tool-sdk/behavior-runtime"]);
@@ -105,6 +104,9 @@ export async function bundleTool(input: {
       plugins: [importPolicy()],
       logLevel: "silent",
     });
+    const entrySourcePath = relative(provenanceRoot, realpathSync(input.modulePath)).split(sep).join("/");
+    const entryPath =
+      input.provenancePrefix === undefined ? entrySourcePath : `${input.provenancePrefix}/${entrySourcePath}`;
     const sourcePaths: string[] = [];
     for (const inputPath of Object.keys(result.metafile.inputs)) {
       const absoluteInput = realpathSync(resolve(input.sourceRoot, inputPath));
@@ -132,6 +134,8 @@ export async function bundleTool(input: {
         input.provenancePrefix === undefined ? sourcePath : `${input.provenancePrefix}/${sourcePath}`,
       );
     }
+    if (!sourcePaths.includes(entryPath))
+      throw new TypeError("Tool entry is not in the bundled source closure");
     const output = result.outputFiles[0];
     if (output === undefined) throw new TypeError("esbuild produced no Tool artifact");
     const artifactHash = sha256Text(output.contents);
@@ -150,6 +154,7 @@ export async function bundleTool(input: {
           source: input.source,
         },
         bytes: output.contents,
+        entryPath,
         sourcePaths: [...new Set(sourcePaths)].sort(compareStableStrings),
       },
     };

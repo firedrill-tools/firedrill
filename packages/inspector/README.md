@@ -32,8 +32,12 @@ Data, Tools, Personas & actors), and the test workflow under **Testing**
   It appears below the identity in this page and in world/scenario setup, and is
   searchable. Omit it when unnecessary; there is no generated description or empty
   placeholder. This is documentation, not a model prompt or permission setting.
-- **Scenarios / Tools**: starting situations and the synthetic service contracts,
-  including operation input and response schemas.
+- **Scenarios**: starting situations for the agent to encounter.
+- **Tools**: choose **Operations** for inputs, responses and declared errors,
+  **Implementation** for the executable TypeScript/JavaScript, or **Declaration**
+  for the complete compiled contract. Implementation opens in the main workspace,
+  not a narrow detail panel. It starts at the actual entry module and lets you
+  select imported helper files, with line numbers, syntax coloring, wrapping and copy.
 - **Drills**: read the agent's task, starting scenario and checks, then run the
   drill. Repeated workloads and task inputs come from the same source files.
   Execution limits stay under settings; raw check definitions open in a wide viewer.
@@ -79,16 +83,20 @@ paging; changing a filter or definition resets its page, and refreshed shorter
 lists cannot leave an empty trailing page. Check numbering continues across pages.
 Retained state reads fetch the next cursor batch through the same Next control;
 Previous reuses already loaded rows. Fixed navigation, metadata fields and native
-select options are not paginated. Saved-run discovery currently considers the
-500 most recently modified report directories; UI pagination does not remove
-that existing server limit.
+select options are not paginated. Saved reports are discovered in bounded batches
+of 100 directories, with **Load older runs** to continue through the full history.
+Invalid reports consume a batch slot and remain visible with their verification
+errors. Search and comparison selectors cover the loaded runs; the UI marks that
+scope while older batches remain. Polling updates the latest batch without
+discarding loaded history or re-verifying every historical report each second.
 
 Use **View record**, **View definition**, or the input/response actions to open
 structured data in a wide, line-numbered viewer. Copy and line wrapping work the
 same way for data and source files. Single documents do not expand inside narrow
 table cells; paired check values and recorded data changes use the inline diff.
-Operation names open the full contract, including fidelity and
-idempotency. Run details retain identifiers, seed, and execution metadata without
+Operation names open their contract, including declared errors, fidelity and
+idempotency. The Tool's Declaration view also retains full capabilities, state,
+events, faults, subscriptions, callbacks and HTTP definitions. Run details retain identifiers, seed, and execution metadata without
 repeating them throughout the workspace. Reports that cannot be opened stay
 listed under Runs with their verification errors; they are not silently omitted.
 
@@ -108,6 +116,13 @@ Tool, target, drill, and suite panels can open their current repository file in 
 line-numbered viewer; the browser cannot request arbitrary filesystem paths.
 **Current repository file** means the file on disk now, not necessarily the source
 used by an older build or run. Refresh repository source to recompile current files.
+Implementation is a separate, bounded source snapshot captured after compilation
+at the last refresh. It reads only compiler-selected files from the repository or
+the explicitly installed Tool package; it never imports code to display it. Original
+source is not archived with run reports. Missing, restricted, oversized or unsafe
+files have an explicit explanation, not a substitute generated implementation.
+The viewer does not claim that each operation maps to a particular line or that
+current source is byte-identical to the source of a historical build.
 Run search covers drill, target, scenario, seed, trial, and result identity;
 evidence search covers nested actor, Tool, operation, event, assertion, fault,
 and payload facts. A failed assertion is the default evidence selection.

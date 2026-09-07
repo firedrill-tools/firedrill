@@ -11,11 +11,128 @@ import type {
   Notice,
   Route,
   SimulationProject,
-  SimulationRunRequest,
   SimulationRunList,
+  SimulationRunRequest,
   SimulationRunSummary,
   StartSimulationRun,
 } from "./types";
+
+export interface RunHistory {
+  readonly runs: readonly SimulationRunSummary[];
+  readonly unavailable: SimulationRunList["unavailable"];
+  readonly nextCursor: string | undefined;
+  readonly loadedOlder: boolean;
+  readonly revisions: ReadonlyMap<string, number>;
+}
+
+export function emptyRunHistory(): RunHistory {
+  return { runs: [], unavailable: [], nextCursor: undefined, loadedOlder: false, revisions: new Map() };
+}
+
+/** Poll only the newest page; continuation retains its own oldest-loaded cursor and every prior page. */
+export function mergeRunHistory(
+  previous: RunHistory,
+  page: SimulationRunList,
+  direction: "latest" | "older",
+  revision: number,
+): RunHistory {
+  const runs = new Map(previous.runs.map((run) => [run.runId, run]));
+  const unavailable = new Map(previous.unavailable.map((report) => [report.runId, report]));
+  const revisions = new Map(previous.revisions);
+  const tracked = (run: SimulationRunSummary) =>
+    run.requestId !== undefined || ["queued", "running", "cancelling"].includes(run.status);
+  if (direction === "latest") {
+    const present = new Set(page.runs.map((run) => run.runId));
+    for (const run of previous.runs) {
+      if (!tracked(run) || present.has(run.runId) || (revisions.get(run.runId) ?? -1) > revision) continue;
+      // Every tracked attempt is returned on every page. Its absence is not a recorded terminal verdict.
+      runs.delete(run.runId);
+      revisions.set(run.runId, revision);
+    }
+  }
+  const knownSavedIds = new Set([
+    ...previous.runs.filter((run) => run.reportAvailable && !tracked(run)).map((run) => run.runId),
+    ...previous.unavailable.map((report) => report.runId),
+  ]);
+  const incomingSavedIds = [
+    ...page.runs.filter((run) => run.reportAvailable && !tracked(run)).map((run) => run.runId),
+    ...page.unavailable.map((report) => report.runId),
+  ];
+  const reopenContinuation =
+    direction === "latest" &&
+    previous.loadedOlder &&
+    page.nextCursor !== undefined &&
+    incomingSavedIds.length > 0 &&
+    !incomingSavedIds.some((id) => knownSavedIds.has(id));
+  for (const run of page.runs) {
+    const previousRevision = revisions.get(run.runId) ?? -1;
+    // A missing active summary is only an unknown, not evidence contradicting a
+    // verified saved report that was fetched concurrently from an older page.
+    if (
+      previousRevision > revision &&
+      (runs.has(run.runId) || unavailable.has(run.runId) || !run.reportAvailable || tracked(run))
+    )
+      continue;
+    runs.set(run.runId, run);
+    unavailable.delete(run.runId);
+    revisions.set(run.runId, Math.max(previousRevision, revision));
+  }
+  for (const report of page.unavailable) {
+    if ((revisions.get(report.runId) ?? -1) > revision) continue;
+    unavailable.set(report.runId, report);
+    runs.delete(report.runId);
+    revisions.set(report.runId, revision);
+  }
+  const runOrder =
+    direction === "latest" ? [...page.runs, ...previous.runs] : [...previous.runs, ...page.runs];
+  const unavailableOrder =
+    direction === "latest"
+      ? [...page.unavailable, ...previous.unavailable]
+      : [...previous.unavailable, ...page.unavailable];
+  return {
+    runs: [...new Set(runOrder.map((run) => run.runId))].flatMap((id) => {
+      const run = runs.get(id);
+      return run === undefined ? [] : [run];
+    }),
+    unavailable: [...new Set(unavailableOrder.map((report) => report.runId))].flatMap((id) => {
+      const report = unavailable.get(id);
+      return report === undefined ? [] : [report];
+    }),
+    nextCursor:
+      direction === "older" || !previous.loadedOlder || reopenContinuation
+        ? page.nextCursor
+        : previous.nextCursor,
+    loadedOlder: previous.loadedOlder || direction === "older",
+    revisions,
+  };
+}
+
+/** Independent request lanes can overlap, but superseded requests and previous source generations cannot apply. */
+export function createRunListGuard() {
+  let generation = 0;
+  let sequence = 0;
+  let active = true;
+  const lanes = new Map<string, number>();
+  return {
+    begin(lane: "latest" | "older" | "source") {
+      const epoch = generation;
+      const revision = ++sequence;
+      lanes.set(lane, revision);
+      return { revision, isCurrent: () => active && generation === epoch && lanes.get(lane) === revision };
+    },
+    invalidate() {
+      generation += 1;
+    },
+    activate() {
+      active = true;
+      generation += 1;
+    },
+    dispose() {
+      active = false;
+      generation += 1;
+    },
+  };
+}
 
 function routeFromPath(path: string): Route {
   return path === "/drills" ||
@@ -64,7 +181,7 @@ function Notices({
 export function App() {
   const [route, setRoute] = useState<Route>(() => routeFromPath(window.location.pathname));
   const [project, setProject] = useState<SimulationProject>();
-  const [runs, setRuns] = useState<readonly SimulationRunSummary[]>([]);
+  const [history, setHistory] = useState<RunHistory>(emptyRunHistory);
   const [requests, setRequests] = useState<readonly SimulationRunRequest[]>([]);
   const [loading, setLoading] = useState(true);
   const [fatal, setFatal] = useState<string>();
@@ -73,7 +190,13 @@ export function App() {
   const [cancelling, setCancelling] = useState(false);
   const [notices, setNotices] = useState<readonly Notice[]>([]);
   const noticeId = useRef(0);
-  const [unavailableReports, setUnavailableReports] = useState<SimulationRunList["unavailable"]>([]);
+  const [loadingOlder, setLoadingOlder] = useState(false);
+  const [olderError, setOlderError] = useState<string>();
+  const [latestError, setLatestError] = useState<string>();
+  const [runListGuard] = useState(createRunListGuard);
+  const latestPending = useRef<Promise<void> | undefined>(undefined);
+  const olderPending = useRef(false);
+  const sourceRefreshing = useRef(false);
 
   const notify = useCallback((tone: Notice["tone"], message: string) => {
     noticeId.current += 1;
@@ -84,25 +207,60 @@ export function App() {
 
   const showError = useCallback((message: string) => notify("danger", message), [notify]);
 
-  const applyRunList = useCallback((runList: SimulationRunList) => {
-    setRuns(runList.runs);
-    setUnavailableReports(runList.unavailable);
-  }, []);
+  const readRuntime = useCallback(
+    (force = false): Promise<void> => {
+      if (sourceRefreshing.current && !force) return Promise.resolve();
+      if (latestPending.current !== undefined && !force) return latestPending.current;
+      const ticket = runListGuard.begin("latest");
+      const pending = Promise.all([inspectorApi.runs(), inspectorApi.runRequests()])
+        .then(([runList, requestList]) => {
+          if (!ticket.isCurrent()) return;
+          setHistory((previous) => mergeRunHistory(previous, runList, "latest", ticket.revision));
+          setRequests(requestList.requests);
+          setLatestError(undefined);
+        })
+        .catch((error: unknown) => {
+          if (!ticket.isCurrent()) return;
+          setLatestError(error instanceof Error ? error.message : "The latest runs could not be refreshed.");
+          throw error;
+        })
+        .finally(() => {
+          if (latestPending.current === pending) latestPending.current = undefined;
+        });
+      latestPending.current = pending;
+      return pending;
+    },
+    [runListGuard],
+  );
 
-  const readRuntime = useCallback(async () => {
-    const [runList, requestList] = await Promise.all([inspectorApi.runs(), inspectorApi.runRequests()]);
-    applyRunList(runList);
-    setRequests(requestList.requests);
-  }, [applyRunList]);
+  const loadOlderRuns = async () => {
+    if (history.nextCursor === undefined || olderPending.current || sourceRefreshing.current) return;
+    const ticket = runListGuard.begin("older");
+    olderPending.current = true;
+    setLoadingOlder(true);
+    setOlderError(undefined);
+    try {
+      const page = await inspectorApi.runs({ cursor: history.nextCursor });
+      if (ticket.isCurrent())
+        setHistory((previous) => mergeRunHistory(previous, page, "older", ticket.revision));
+    } catch (error) {
+      if (ticket.isCurrent())
+        setOlderError(error instanceof Error ? error.message : "Older runs could not be loaded.");
+    } finally {
+      if (ticket.isCurrent()) {
+        olderPending.current = false;
+        setLoadingOlder(false);
+      }
+    }
+  };
 
   useEffect(() => {
     let current = true;
-    Promise.all([inspectorApi.project(), inspectorApi.runs(), inspectorApi.runRequests()])
-      .then(([nextProject, runList, requestList]) => {
+    runListGuard.activate();
+    Promise.all([inspectorApi.project(), readRuntime(true)])
+      .then(([nextProject]) => {
         if (!current) return;
         setProject(nextProject);
-        applyRunList(runList);
-        setRequests(requestList.requests);
       })
       .catch((error: unknown) => {
         if (current)
@@ -113,8 +271,11 @@ export function App() {
       });
     return () => {
       current = false;
+      runListGuard.dispose();
+      latestPending.current = undefined;
+      olderPending.current = false;
     };
-  }, [applyRunList]);
+  }, [readRuntime, runListGuard]);
 
   useEffect(() => {
     if (window.location.pathname !== route) window.history.replaceState({}, "", route);
@@ -140,15 +301,29 @@ export function App() {
   };
 
   const refresh = async () => {
+    if (sourceRefreshing.current) return;
+    sourceRefreshing.current = true;
+    runListGuard.invalidate();
+    latestPending.current = undefined;
+    olderPending.current = false;
+    setLoadingOlder(false);
+    setOlderError(undefined);
+    const ticket = runListGuard.begin("source");
     setRefreshing(true);
     try {
       const next = await inspectorApi.refreshProject();
+      if (!ticket.isCurrent()) return;
       setProject(next);
       notify("success", "Repository source recompiled successfully.");
+      await readRuntime(true).catch(() => undefined);
     } catch (error) {
-      showError(error instanceof Error ? error.message : "Repository source could not be refreshed.");
+      if (ticket.isCurrent())
+        showError(error instanceof Error ? error.message : "Repository source could not be refreshed.");
     } finally {
-      setRefreshing(false);
+      if (ticket.isCurrent()) {
+        sourceRefreshing.current = false;
+        setRefreshing(false);
+      }
     }
   };
 
@@ -159,7 +334,7 @@ export function App() {
       notify("info", "Drill run requested. Its live world will appear when ready.");
       navigate("/runs");
       try {
-        await readRuntime();
+        await readRuntime(true);
       } catch {
         showError(
           "The run was accepted, but its results could not be refreshed yet. Do not submit it again; wait for results or refresh this page.",
@@ -178,7 +353,7 @@ export function App() {
     setCancelling(true);
     try {
       await inspectorApi.cancelRun(requestId);
-      await readRuntime();
+      await readRuntime(true);
       notify("warning", "Cancellation requested. Partial evidence will remain available.");
     } catch (error) {
       showError(error instanceof Error ? error.message : "The drill run could not be cancelled.");
@@ -256,9 +431,18 @@ export function App() {
         {route === "/runs" ? (
           <RunsView
             project={project}
-            runs={runs}
+            runs={history.runs}
             requests={requests}
-            unavailableReports={unavailableReports}
+            unavailableReports={history.unavailable}
+            history={{
+              hasMore: history.nextCursor !== undefined,
+              loadingOlder,
+              refreshing,
+              olderError,
+              latestError,
+              onLoadOlder: () => void loadOlderRuns(),
+              onRetryLatest: () => void readRuntime().catch(() => undefined),
+            }}
             starting={starting}
             cancelling={cancelling}
             onCancel={(requestId) => void cancel(requestId)}

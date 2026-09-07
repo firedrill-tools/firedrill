@@ -11,6 +11,7 @@ import type {
   SimulationSourceDocument,
   SimulationSourceKind,
   SimulationStatePage,
+  SimulationToolSourceDocument,
   StartSimulationRun,
 } from "./types";
 
@@ -71,7 +72,16 @@ export const inspectorApi = {
   refreshProject: () => request<SimulationProject>("/api/v1/project/refresh", { method: "POST" }),
   source: (kind: SimulationSourceKind, id: string) =>
     request<SimulationSourceDocument>(`/api/v1/sources/${kind}/${encodeURIComponent(id)}`),
-  runs: () => request<SimulationRunList>("/api/v1/runs"),
+  toolSource: (toolId: string, fileId: string) =>
+    request<SimulationToolSourceDocument>(
+      `/api/v1/tools/${encodeURIComponent(toolId)}/implementation/${encodeURIComponent(fileId)}`,
+    ),
+  runs: (options: { readonly cursor?: string; readonly limit?: number } = {}) => {
+    const query = new URLSearchParams();
+    if (options.cursor !== undefined) query.set("cursor", options.cursor);
+    if (options.limit !== undefined) query.set("limit", String(options.limit));
+    return request<SimulationRunList>(`/api/v1/runs${query.size === 0 ? "" : `?${query.toString()}`}`);
+  },
   runRequests: () => request<SimulationRunRequestList>("/api/v1/run-requests"),
   run: (runId: string) => request<SimulationRunDetail>(`/api/v1/runs/${encodeURIComponent(runId)}`),
   evidence: (runId: string, from = 1, limit = 500) =>

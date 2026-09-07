@@ -1,7 +1,7 @@
 import { Check, Copy, WrapText } from "lucide-react";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { Button } from "./primitives";
-import { jsonLineTokens } from "./json-tokens";
+import { sourceLines } from "./source-tokens";
 import "./data-viewer.css";
 
 /** Read-only document surface shared by authored source and captured data. */
@@ -17,7 +17,7 @@ export function CodeDocument({
   const [wrap, setWrap] = useState(false);
   const [copied, setCopied] = useState(false);
   const [copyError, setCopyError] = useState(false);
-  const lines = content.split("\n");
+  const lines = useMemo(() => sourceLines(content, language), [content, language]);
   const copy = async () => {
     try {
       await navigator.clipboard.writeText(content);
@@ -59,13 +59,11 @@ export function CodeDocument({
                   {index + 1}
                 </span>
                 <span className="fd-document-line__text">
-                  {language === "json"
-                    ? jsonLineTokens(line).map((token) => (
-                        <span key={token.offset} data-token={token.kind}>
-                          {token.text}
-                        </span>
-                      ))
-                    : line}
+                  {line.map((token) => (
+                    <span key={token.offset} data-token={token.kind}>
+                      {token.text}
+                    </span>
+                  ))}
                 </span>
               </span>
             ))}
