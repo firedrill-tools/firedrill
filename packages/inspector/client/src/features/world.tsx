@@ -11,6 +11,7 @@ import {
   Wrench,
 } from "lucide-react";
 import { useMemo, useState } from "react";
+import { PageIntro } from "../components/page-intro";
 import { CodeBlock, KeyValue, SearchField } from "../components/primitives";
 import { SourceViewer } from "../components/source-viewer";
 import { compactId, json, plural, titleFromId, virtualTime } from "../format";
@@ -555,9 +556,7 @@ export function WorldView({ project }: { readonly project: SimulationProject }) 
   return (
     <section className="fd-page fd-page--workspace">
       <header className="fd-page-header">
-        <div>
-          <h1>World</h1>
-        </div>
+        <PageIntro page="world" />
         {project.diagnostics.length === 0 ? null : (
           <span className="fd-page-diagnostic">
             <TriangleAlert size={15} aria-hidden="true" />

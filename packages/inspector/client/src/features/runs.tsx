@@ -18,6 +18,7 @@ import {
 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { inspectorApi } from "../api";
+import { PageIntro } from "../components/page-intro";
 import {
   Button,
   CodeBlock,
@@ -894,10 +895,7 @@ export function RunsView({
     return (
       <section className="fd-page">
         <header className="fd-page-header">
-          <div>
-            <h1>Runs</h1>
-            <p>Live and sealed evidence from local drills.</p>
-          </div>
+          <PageIntro page="runs" />
         </header>
         <EmptyState
           title="No drill runs yet"
@@ -916,12 +914,7 @@ export function RunsView({
   return (
     <section className="fd-page fd-page--workspace">
       <header className="fd-page-header">
-        <div>
-          <h1>Runs</h1>
-          <p>
-            {plural(runs.length, "retained run")} · {plural(activeRequests.length, "active request")}
-          </p>
-        </div>
+        <PageIntro page="runs" />
         {runs.filter((run) => run.reportAvailable).length > 1 ? (
           <Button onClick={() => setCompareOpen(true)}>
             <GitCompareArrows size={16} /> Compare runs

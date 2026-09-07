@@ -403,10 +403,21 @@ summary:focus-visible {
   font-weight: 680;
 }
 
+.fd-page-intro {
+  min-width: 0;
+  padding-block: 16px;
+}
+
 .fd-page-header p {
   margin: 2px 0 0;
   color: var(--text-secondary);
   font-size: 13px;
+}
+
+.fd-page-intro p {
+  max-width: 75ch;
+  line-height: 1.5;
+  text-wrap: pretty;
 }
 
 .fd-page-header code {

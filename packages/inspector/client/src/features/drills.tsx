@@ -11,6 +11,7 @@ import {
   X,
 } from "lucide-react";
 import { useEffect, useId, useMemo, useRef, useState } from "react";
+import { PageIntro } from "../components/page-intro";
 import { plural, titleFromId, virtualTime } from "../format";
 import type { SimulationDrill, SimulationProject, SimulationSuite, StartSimulationRun } from "../types";
 import {
@@ -376,10 +377,7 @@ export function DrillsView({
     return (
       <section className="fd-page">
         <header className="fd-page-header">
-          <div>
-            <h1>Drills</h1>
-            <p>Executable behavioral tests for this repository-defined world.</p>
-          </div>
+          <PageIntro page="drills" />
         </header>
         <EmptyState title="No drills found">
           Add a <code>*.drill.yaml</code> or <code>*.drill.json</code> file, validate it, then refresh.
@@ -391,12 +389,7 @@ export function DrillsView({
   return (
     <section className="fd-page fd-page--workspace">
       <header className="fd-page-header">
-        <div>
-          <h1>Drills</h1>
-          <p>
-            {plural(project.drills.length, "drill")} · {plural(project.suites.length, "suite")}
-          </p>
-        </div>
+        <PageIntro page="drills" />
         <Button
           variant="primary"
           onClick={() => setDialogOpen(true)}
