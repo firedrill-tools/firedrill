@@ -4,11 +4,13 @@ import { join, resolve } from "node:path";
 import type {
   BindingEvidence,
   EvidenceEntry,
+  RunCaptureHandle,
   RunId,
   RunResult,
   Seed,
   StableId,
   TargetDescriptor,
+  TargetInvocation,
   WorldInstanceId,
 } from "@firedrill/contracts";
 import {
@@ -19,8 +21,8 @@ import {
   WorldInstanceIdSchema,
 } from "@firedrill/contracts";
 import { startCliWorldBinding } from "@firedrill/protocol-cli";
-import { CallbackDispatcher, startHttpWorldBinding } from "@firedrill/protocol-http";
 import type { CallbackReceiver } from "@firedrill/protocol-http";
+import { CallbackDispatcher, startHttpWorldBinding } from "@firedrill/protocol-http";
 import { startMcpWorldBinding } from "@firedrill/protocol-mcp";
 import type { LoadedWorldBuild } from "@firedrill/world-build";
 import type { BoundWorldClient } from "@firedrill/world-kernel";
@@ -79,6 +81,8 @@ export interface RunDrillTrialOptions {
   readonly externalHandler?: TargetHandler;
   /** Stages files explicitly attached by an in-process target handler. */
   readonly attachmentSink?: TargetAttachmentSink;
+  /** Optional supporting capture supplied by the embedding runner; never an actor capability. */
+  readonly captureFactory?: (invocation: TargetInvocation, signal: AbortSignal) => RunCaptureHandle;
   readonly hostEnvironment?: Readonly<Record<string, string | undefined>>;
   readonly allowRemoteHttp?: boolean;
   /** Local application endpoints that receive world-emitted callbacks during this trial. */
@@ -392,6 +396,7 @@ export async function runDrillTrial(options: RunDrillTrialOptions): Promise<Dril
         ...(options.hostEnvironment === undefined ? {} : { hostEnvironment: options.hostEnvironment }),
         ...(options.allowRemoteHttp === undefined ? {} : { allowRemoteHttp: options.allowRemoteHttp }),
         ...(options.attachmentSink === undefined ? {} : { attachmentSink: options.attachmentSink }),
+        ...(options.captureFactory === undefined ? {} : { captureFactory: options.captureFactory }),
         signal: targetSignal,
       });
       const callsIssued = client.callsIssued();

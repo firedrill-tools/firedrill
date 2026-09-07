@@ -448,7 +448,7 @@ describe("repository-level TypeScript API", () => {
     expect(verified.attachments[0]?.attachment).toMatchObject({ name: "agent-screen.png" });
     const html = readFileSync(trial?.report.files.html ?? "", "utf8");
     expect(html).toContain(`href="attachments/${attachment?.id}/agent-screen.png"`);
-    expect(html).toContain('download="agent-screen.png">agent-screen.png</a>');
+    expect(html).toContain('download="agent-screen.png">Download agent-screen.png</a>');
   });
 
   it("fails closed when an agent tries to attach an outside or symlinked file", async () => {

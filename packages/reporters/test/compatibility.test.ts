@@ -7,6 +7,7 @@ import { canonicalJson, JsonValueSchema, RunResultSchema } from "@firedrill/cont
 import { trajectoryHash } from "@firedrill/world-ir";
 import { afterEach, describe, expect, it } from "vitest";
 import { legacyProjections as initialProjections } from "../src/compatibility/initial.js";
+import { renderReportPage as versionTwoHtml } from "../src/compatibility/report-html-v2.js";
 import { trajectoryHash as initialTrajectoryHash } from "../src/compatibility/trajectory-initial.js";
 import { legacyProjections as versionOneProjections } from "../src/compatibility/v1.js";
 import { verifyLocalReport, writeLocalReport } from "../src/reporters.js";
@@ -94,11 +95,29 @@ function saveManifest(directory: string, manifest: MutableManifest): void {
   writeFileSync(join(directory, "manifest.json"), `${JSON.stringify(manifest, null, 2)}\n`);
 }
 
-function legacyBundle(version: "initial" | "v1"): string {
+function legacyBundle(version: "initial" | "v1" | "v2"): string {
   const directory = mkdtempSync(join(tmpdir(), "firedrill-compatibility-"));
   directories.push(directory);
   const data = input();
   const report = writeLocalReport(data, join(directory, "run_compat001"));
+  if (version === "v2") {
+    const verified = verifyLocalReport(report.directory);
+    const body = versionTwoHtml({
+      ...verified,
+      reproduce: `firedrill run empty-world --build-hash ${HASH} --seed 13 --trials 1`,
+      reproductionNote:
+        "Restores the same world inputs and seed. Your agent may make different choices on another run; use the original harness for external targets.",
+    });
+    const manifest = manifestAt(report.directory);
+    manifest.presentationVersion = 2;
+    const artifact = manifest.artifacts.find((entry) => entry.path === "index.html");
+    if (artifact === undefined) throw new Error("fixture has no HTML artifact");
+    writeFileSync(join(report.directory, artifact.path), body);
+    artifact.bytes = Buffer.byteLength(body);
+    artifact.hash = hash(body);
+    saveManifest(report.directory, manifest);
+    return report.directory;
+  }
   const result = data.result;
   if (result.status !== "sealed") throw new Error("expected sealed fixture");
   const trajectory = version === "initial" ? initialTrajectoryHash : trajectoryHash;
@@ -146,10 +165,11 @@ function fileHashes(directory: string): Record<string, string> {
 }
 
 describe("versioned local report compatibility", () => {
-  it.each(["initial", "v1"] as const)("verifies %s reports without rewriting evidence", (version) => {
+  it.each(["initial", "v1", "v2"] as const)("verifies %s reports without rewriting evidence", (version) => {
     const directory = legacyBundle(version);
     const before = fileHashes(directory);
     expect(verifyLocalReport(directory).result.identity.drillId).toBe("empty-world");
+    expect(readFileSync(join(directory, "index.html"), "utf8")).not.toContain("Content-Security-Policy");
     expect(fileHashes(directory)).toEqual(before);
   });
 
@@ -206,7 +226,7 @@ describe("versioned local report compatibility", () => {
     );
   });
 
-  it.each(["initial", "v1"] as const)("rejects rehashed misleading HTML in %s reports", (version) => {
+  it.each(["initial", "v1", "v2"] as const)("rejects rehashed misleading HTML in %s reports", (version) => {
     const directory = legacyBundle(version);
     const manifest = manifestAt(directory);
     const artifact = manifest.artifacts.find((entry) => entry.path === "index.html");

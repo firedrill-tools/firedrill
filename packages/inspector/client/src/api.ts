@@ -1,5 +1,10 @@
 import type { SimulationReportAttachments as ReportAttachments } from "@firedrill/simulation";
-import { attachmentDataUrl, embedReportAttachments } from "./report-attachments";
+import {
+  attachmentDataUrl,
+  attachmentPreviewDataUrl,
+  type EmbeddedReportAttachment,
+  embedReportAttachments,
+} from "./report-attachments";
 import type {
   SimulationEvidencePage,
   SimulationProject,
@@ -20,6 +25,77 @@ interface ApiFailure {
     readonly code?: string;
     readonly message?: string;
   };
+}
+
+export type RunFileAttachment = ReportAttachments["attachments"][number];
+
+/** Read a single selected file with the report's byte ceiling, then verify it before any rendering. */
+export async function readVerifiedAttachment(
+  response: Response,
+  file: Pick<RunFileAttachment, "bytes" | "hash">,
+): Promise<ArrayBuffer> {
+  if (!response.ok)
+    throw new InspectorApiError(
+      response.status,
+      "framework.REPORT_UNAVAILABLE",
+      "The attachment could not be loaded. Retry, or reopen the run.",
+    );
+  if (
+    !Number.isSafeInteger(file.bytes) ||
+    file.bytes < 0 ||
+    file.bytes > 64 * 1024 * 1024 ||
+    !/^sha256:[a-f0-9]{64}$/.test(file.hash)
+  ) {
+    await response.body?.cancel();
+    throw new InspectorApiError(422, "framework.REPORT_INVALID", "The attachment metadata is invalid.");
+  }
+  const declaredLength = response.headers.get("content-length");
+  if (declaredLength !== null && Number(declaredLength) !== file.bytes) {
+    await response.body?.cancel();
+    throw new InspectorApiError(
+      422,
+      "framework.REPORT_INVALID",
+      "The attachment size no longer matches its verified report.",
+    );
+  }
+  const chunks: Uint8Array[] = [];
+  let length = 0;
+  const reader = response.body?.getReader();
+  if (reader !== undefined) {
+    try {
+      while (true) {
+        const chunk = await reader.read();
+        if (chunk.done) break;
+        length += chunk.value.byteLength;
+        if (length > file.bytes) {
+          await reader.cancel();
+          throw new InspectorApiError(
+            422,
+            "framework.REPORT_INVALID",
+            "The attachment exceeded its recorded size.",
+          );
+        }
+        chunks.push(chunk.value);
+      }
+    } finally {
+      reader.releaseLock();
+    }
+  }
+  const body = new Uint8Array(length);
+  let offset = 0;
+  for (const chunk of chunks) {
+    body.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+  const digest = await crypto.subtle.digest("SHA-256", body);
+  const hash = `sha256:${Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, "0")).join("")}`;
+  if (body.byteLength !== file.bytes || hash !== file.hash)
+    throw new InspectorApiError(
+      422,
+      "framework.REPORT_INVALID",
+      "The attachment no longer matches its verified bytes.",
+    );
+  return body.buffer;
 }
 
 export class InspectorApiError extends Error {
@@ -109,6 +185,21 @@ export const inspectorApi = {
     request<SimulationRunRequest>(`/api/v1/run-requests/${encodeURIComponent(requestId)}/cancel`, {
       method: "POST",
     }),
+  runAttachments: (runId: string, signal?: AbortSignal) =>
+    request<ReportAttachments>(
+      `/api/v1/runs/${encodeURIComponent(runId)}/report/attachments`,
+      signal === undefined ? {} : { signal },
+    ),
+  async attachmentBytes(runId: string, file: RunFileAttachment, signal?: AbortSignal): Promise<ArrayBuffer> {
+    const response = await fetch(
+      `/api/v1/runs/${encodeURIComponent(runId)}/report/attachments/${encodeURIComponent(file.id)}`,
+      {
+        headers: { authorization: `Bearer ${token()}` },
+        ...(signal === undefined ? {} : { signal }),
+      },
+    );
+    return readVerifiedAttachment(response, file);
+  },
   async report(runId: string): Promise<Blob> {
     const response = await fetch(`/api/v1/runs/${encodeURIComponent(runId)}/report`, {
       headers: { authorization: `Bearer ${token()}` },
@@ -124,33 +215,28 @@ export const inspectorApi = {
       throw new InspectorApiError(response.status, "framework.REPORT_UNAVAILABLE", message);
     }
     const html = await response.text();
-    const files = await request<ReportAttachments>(
-      `/api/v1/runs/${encodeURIComponent(runId)}/report/attachments`,
-    );
-    const embedded: { path: string; dataUrl: string }[] = [];
-    for (const file of files.attachments) {
-      const attachment = await fetch(
-        `/api/v1/runs/${encodeURIComponent(runId)}/report/attachments/${encodeURIComponent(file.id)}`,
-        { headers: { authorization: `Bearer ${token()}` } },
+    const files = await inspectorApi.runAttachments(runId);
+    if (
+      files.runId !== runId ||
+      files.attachments.length > 32 ||
+      files.attachments.reduce((total, file) => total + file.bytes, 0) > 128 * 1024 * 1024
+    ) {
+      throw new InspectorApiError(
+        422,
+        "framework.REPORT_INVALID",
+        "The report attachment list is invalid or exceeds the portable report limit.",
       );
-      if (!attachment.ok) {
-        throw new InspectorApiError(
-          attachment.status,
-          "framework.REPORT_UNAVAILABLE",
-          "A report attachment could not be verified. Refresh the runs and try again.",
-        );
-      }
-      const body = await attachment.arrayBuffer();
-      const digest = await crypto.subtle.digest("SHA-256", body);
-      const hash = `sha256:${Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, "0")).join("")}`;
-      if (body.byteLength !== file.bytes || hash !== file.hash) {
-        throw new InspectorApiError(
-          422,
-          "framework.REPORT_INVALID",
-          "A report attachment no longer matches its verified bytes.",
-        );
-      }
-      embedded.push({ path: file.path, dataUrl: attachmentDataUrl(new Uint8Array(body)) });
+    }
+    const embedded: EmbeddedReportAttachment[] = [];
+    for (const file of files.attachments) {
+      const body = await inspectorApi.attachmentBytes(runId, file);
+      const dataUrl = attachmentDataUrl(new Uint8Array(body));
+      const previewDataUrl = attachmentPreviewDataUrl(dataUrl, file.mediaType);
+      embedded.push({
+        path: file.path,
+        dataUrl,
+        ...(previewDataUrl === undefined ? {} : { previewDataUrl }),
+      });
     }
     return new Blob([embedReportAttachments(html, embedded)], { type: "text/html;charset=utf-8" });
   },

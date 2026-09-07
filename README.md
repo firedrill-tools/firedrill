@@ -6,6 +6,9 @@ Firedrill gives your AI agent a world to work inside—tools, data, and state wi
 
 Firedrill runs worlds and drills. It does not host, rewrite, or choose the agent.
 
+**New here? [Start with the developer guide](docs/README.md)** for setup, file
+organization, connecting your agent, reading results, and optional capture.
+
 ## The product loop
 
 1. **World** — repository-owned starting state, actors, permissions, clock, and deterministic behavior.
@@ -55,7 +58,7 @@ firedrill report verify .firedrill/reports/<run-id>
 
 The complete command reference is [generated from the executable CLI](docs/cli-reference.md), so command examples cannot quietly drift from `--help`.
 
-Keep `firedrill.json`, `firedrill/`, and any test-runner integration in version control. Firedrill keeps generated builds, retained SQLite worlds, reports, and contribution staging under the project-local `.firedrill/` directory. `firedrill init --path ...` ensures that directory is ignored by Git; do not commit it because reports can contain synthetic records and agent output. Copy a specific self-contained HTML report elsewhere only when you intend to share it. `firedrill report verify <report-directory>` checks a received bundle locally; unsigned local reports detect corruption but do not prove authorship.
+Keep `firedrill.json`, `firedrill/`, and any test-runner integration in version control. Firedrill keeps generated builds, retained SQLite worlds, reports, and contribution staging under the project-local `.firedrill/` directory. `firedrill init --path ...` ensures that directory is ignored by Git; do not commit it because reports can contain synthetic records and agent output. Share a report deliberately, keeping its attachment folder with it when present. The inspector's Open report embeds verified attachments in the opened copy. `firedrill report verify <report-directory>` checks a received bundle locally; unsigned local reports detect corruption but do not prove authorship.
 
 ## Bind an existing agent without changing its logic
 
@@ -105,7 +108,7 @@ Setup and source errors throw `FiredrillProjectError`. A completed drill that fa
 
 The optional `setup` layers test-local data, actors, clock, events, faults and Tool overrides for one drill. It can select reusable Tools, replace behavior with a repository module, and map synthetic connections to the existing agent's configuration. Firedrill compiles this setup into the report's immutable build. For imported functions and SDK methods, use `mockTool` from `@firedrill/sdk/testing` with existing runner mocks or spies—no production agent edits. See [test-side mocking](docs/test-mocking.md) and the [SDK guide](packages/sdk/README.md#per-test-synthetic-data-and-tools).
 
-For UI-backed agents, the customer's Playwright, browser driver, or application harness still owns the UI and agent lifecycle. The `agent` callback can attach bounded repository-local screenshots, traces, videos, or text files to the portable report. Firedrill hashes and verifies those files, but world consequences remain the verdict authority. See [supporting file evidence](packages/sdk/README.md#supporting-file-evidence).
+For UI-backed agents, the customer's Playwright, browser driver, or application harness still owns the UI and agent lifecycle. Optional SDK capture keeps logs, screenshots, recordings, and files always or only after an attempt fails its final checks. The inspector and HTML report provide safe previews and original downloads. World consequences remain the verdict authority. See the [capture guide](docs/capture.md) and [supporting file evidence](packages/sdk/README.md#supporting-file-evidence).
 
 ## Optional Firedrill Agent
 

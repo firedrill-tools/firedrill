@@ -74,8 +74,8 @@ function staticHeaders(contentType: string): Readonly<Record<string, string>> {
     "cache-control": "no-store",
     "content-security-policy":
       // Locally opened verified report blobs inherit this policy and carry their own inline CSS.
-      // Only styles are relaxed; scripts and network requests remain same-origin restricted.
-      "default-src 'self'; connect-src 'self'; font-src 'self'; img-src 'self' data:; script-src 'self'; style-src 'self' 'unsafe-inline'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'",
+      // Verified local attachment previews use blob/data media; scripts and network remain same-origin.
+      "default-src 'self'; connect-src 'self'; font-src 'self'; img-src 'self' data: blob:; media-src 'self' data: blob:; script-src 'self'; style-src 'self' 'unsafe-inline'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'",
     "content-type": contentType,
     "cross-origin-resource-policy": "same-origin",
     "referrer-policy": "no-referrer",

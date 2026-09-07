@@ -2,7 +2,12 @@ import { createHash } from "node:crypto";
 import { mkdtempSync, readdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import type { EvidenceEntry, RunResult, ToolPackageManifest } from "@firedrill/contracts";
+import type {
+  EvidenceEntry,
+  RunResult,
+  TargetFileAttachment,
+  ToolPackageManifest,
+} from "@firedrill/contracts";
 import { AssertionResultSchema, canonicalJson, JsonValueSchema, RunResultSchema } from "@firedrill/contracts";
 import { trajectoryHash } from "@firedrill/world-ir";
 import { afterEach, describe, expect, it } from "vitest";
@@ -11,6 +16,7 @@ import {
   renderHtmlReport,
   renderJsonReport,
   renderJunitReport,
+  renderSavedReport,
   renderTerminalReport,
   verifyLocalReport,
   writeLocalReport,
@@ -639,10 +645,136 @@ describe("local evidence reporters", () => {
       },
     ]);
     expect(readFileSync(written.files.html, "utf8")).toMatch(/copied verbatim without redaction/i);
+    expect(written.manifest.presentationVersion).toBe(3);
+    expect(readFileSync(written.files.html, "utf8")).toContain('data-attachment-preview="image"');
+    expect(renderSavedReport(destination)).toBe(readFileSync(written.files.html, "utf8"));
+    expect(renderHtmlReport({ result, evidence: entries })).not.toContain('data-attachment-preview="image"');
 
     writeFileSync(written.attachments[0]?.path ?? "", "tampered");
     expect(() => verifyLocalReport(destination)).toThrowError(
       expect.objectContaining({ code: "reporter.ARTIFACT_MISMATCH" }),
+    );
+  });
+
+  it("preserves capture artifacts and renders safe, bounded supporting previews without changing evidence", () => {
+    const root = temporaryDirectory();
+    const entries = evidence();
+    const original = run(entries);
+    if (original.status !== "sealed") throw new Error("fixture must be sealed");
+    function source(id: string, name: string, mediaType: string, body: Buffer) {
+      const path = join(root, name);
+      writeFileSync(path, body);
+      const attachment: TargetFileAttachment = {
+        schemaVersion: 1,
+        kind: "file",
+        id,
+        name,
+        mediaType,
+        bytes: body.byteLength,
+        hash: `sha256:${createHash("sha256").update(body).digest("hex")}`,
+        redaction: { status: "not_applied", note: null },
+      };
+      return { attachment, path };
+    }
+    const legacy = source("attachment-legacy001", "legacy.txt", "text/plain", Buffer.from("Legacy file"));
+    const log = source(
+      "attachment-capturelog001",
+      "logs.txt",
+      "text/plain",
+      Buffer.from(
+        `${JSON.stringify({ interactionId: "inspect-record", message: '<script>"literal log"</script>\nnot-redacted-log-secret' })}\n`,
+      ),
+    );
+    const video = source(
+      "attachment-capturevideo001",
+      "screen.webm",
+      "video/webm",
+      Buffer.from([0x1a, 0x45, 0xdf, 0xa3, 0]),
+    );
+    const active = source(
+      "attachment-capturehtml001",
+      "unsafe.html",
+      "text/html",
+      Buffer.from("<script>unsafeFile()</script>"),
+    );
+    const long = source(
+      "attachment-capturelong001",
+      "long.txt",
+      "text/plain",
+      Buffer.from(`${"x".repeat(65_536)}TAIL_NOT_IN_PREVIEW`),
+    );
+    const interactions = original.interactions.map((interaction) => ({
+      ...interaction,
+      targetResult: {
+        ...interaction.targetResult,
+        attachments: [legacy.attachment, { kind: "process.stderr", text: "Readable stderr <message>" }],
+      },
+    }));
+    const withLegacy = RunResultSchema.parse({
+      ...original,
+      interactions,
+      trajectoryHash: trajectoryHash({ interactions, checkpoints: original.checkpoints, evidence: entries }),
+    });
+    const result = RunResultSchema.parse({
+      ...withLegacy,
+      capture: {
+        schemaVersion: 1,
+        policies: { logs: "always", screenshots: "retain-on-failure", video: "always", files: "always" },
+        attachments: [
+          { kind: "log", policy: "always", attachment: log.attachment },
+          { kind: "video", policy: "always", interactionId: "inspect-record", attachment: video.attachment },
+          { kind: "file", policy: "always", attachment: active.attachment },
+          { kind: "file", policy: "always", attachment: long.attachment },
+        ],
+        errors: [{ code: "capture.DRIVER_ERROR", message: "Could not capture <frame>", kind: "screenshot" }],
+        discarded: { logs: 0, screenshots: 1, video: 0, files: 0 },
+      },
+    });
+    const files = [legacy, log, video, active, long];
+    const written = writeLocalReport(
+      {
+        result,
+        evidence: entries,
+        attachmentSources: files.map((file) => ({ attachmentId: file.attachment.id, path: file.path })),
+      },
+      join(root, "capture-report"),
+    );
+    const verified = verifyLocalReport(written.directory);
+    expect(verified.attachments).toHaveLength(5);
+    expect(verified.result.capture).toEqual(result.capture);
+    expect(written.manifest.trajectoryHash).toBe(
+      withLegacy.status === "sealed" ? withLegacy.trajectoryHash : undefined,
+    );
+    expect(written.manifest.evidenceHash).toBe(original.evidenceHash);
+    expect(verified.result.status === "sealed" && verified.result.verdict).toBe("passed");
+    for (const file of files) {
+      const copied = verified.attachments.find((entry) => entry.attachment.id === file.attachment.id);
+      expect(readFileSync(copied?.path ?? "")).toEqual(readFileSync(file.path));
+    }
+    const html = readFileSync(written.files.html, "utf8");
+    expect(renderSavedReport(written.directory)).toBe(html);
+    expect(html).toContain("Logs and attachments");
+    expect(html).toContain('http-equiv="Content-Security-Policy"');
+    expect(html).toContain(
+      "default-src &#39;none&#39;; img-src &#39;self&#39; data:; media-src &#39;self&#39; data:",
+    );
+    expect(html).toContain("script-src &#39;none&#39;");
+    expect(html).toContain("[inspect-record] &lt;script&gt;&quot;literal log&quot;&lt;/script&gt;");
+    expect(html).toContain("not-redacted-log-secret");
+    expect(html).toContain("Readable stderr &lt;message&gt;");
+    expect(html).toContain('data-attachment-preview="video"');
+    expect(html).toContain('controls preload="metadata" playsinline');
+    expect(html).not.toMatch(/autoplay|<iframe|<object|<embed|<script/);
+    expect(html).not.toContain("unsafeFile()");
+    expect(html).toContain('download="unsafe.html"');
+    expect(html).not.toContain("TAIL_NOT_IN_PREVIEW");
+    expect(html).toContain("Preview limited to the first 64 KiB");
+    expect(html).toContain("Capture errors");
+    expect(html).toContain("Could not capture &lt;frame&gt;");
+    expect(html).toContain("Discarded by retention policy: 1 screenshots");
+    expect(html).toContain("supporting files, not the world verdict");
+    expect(() => writeLocalReport({ result, evidence: entries }, join(root, "missing-capture"))).toThrow(
+      /descriptors and staged sources must match exactly/,
     );
   });
 

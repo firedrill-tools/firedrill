@@ -1,0 +1,92 @@
+.fd-attachment-list {
+  border-top: 1px solid var(--border-subtle);
+}
+
+.fd-attachment-list__item {
+  width: 100%;
+  min-height: 56px;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--border-subtle);
+  text-align: left;
+}
+
+.fd-attachment-list__item > span {
+  min-width: 0;
+}
+
+.fd-attachment-list__item strong,
+.fd-attachment-list__item small {
+  display: block;
+  overflow-wrap: anywhere;
+  line-height: 1.6;
+}
+
+.fd-attachment-list__item strong {
+  font-size: 14px;
+  font-weight: 500;
+}
+
+.fd-attachment-list__item small {
+  color: var(--text-secondary);
+  font-size: 12px;
+}
+
+.fd-attachment-preview {
+  min-width: 0;
+  margin-top: 20px;
+}
+
+.fd-attachment-preview__heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.fd-attachment-preview h4 {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 500;
+  overflow-wrap: anywhere;
+}
+
+.fd-attachment-image,
+.fd-attachment-video {
+  display: block;
+  width: 100%;
+  max-height: 70vh;
+  object-fit: contain;
+  border: 1px solid var(--border-subtle);
+  background: var(--surface);
+}
+
+.fd-attachment-text {
+  min-width: 0;
+  border: 1px solid var(--border-subtle);
+}
+
+.fd-attachment-text .fd-document-code {
+  max-height: 520px;
+}
+
+.fd-attachment-text > .fd-muted-copy {
+  margin: 12px;
+}
+
+.fd-capture-errors {
+  padding-left: 20px;
+  color: var(--text-secondary);
+  font-size: 13px;
+  line-height: 1.65;
+}
+
+.fd-capture-errors li {
+  margin-bottom: 8px;
+  overflow-wrap: anywhere;
+}
+
+.fd-capture-errors strong {
+  color: var(--text);
+  font-weight: 500;
+}

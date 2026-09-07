@@ -9,10 +9,12 @@ export function CodeDocument({
   content,
   language,
   context,
+  startLine = 1,
 }: {
   readonly content: string;
   readonly language?: string;
   readonly context?: string;
+  readonly startLine?: number;
 }) {
   const [wrap, setWrap] = useState(false);
   const [copied, setCopied] = useState(false);
@@ -56,7 +58,7 @@ export function CodeDocument({
               // biome-ignore lint/suspicious/noArrayIndexKey: read-only line positions
               <span className="fd-document-line" key={index}>
                 <span className="fd-document-line__number" aria-hidden="true">
-                  {index + 1}
+                  {index + startLine}
                 </span>
                 <span className="fd-document-line__text">
                   {line.map((token) => (

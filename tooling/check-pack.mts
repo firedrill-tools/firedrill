@@ -1,5 +1,5 @@
 import { spawnSync } from "node:child_process";
-import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { cpSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { packPublicPackages } from "./public-packages.mts";
@@ -675,6 +675,10 @@ try {
   }
 
   run("node", ["index.mjs"], consumer);
+  const captureProject = join(temporary, "capture-project");
+  cpSync(join(root, "examples", "quickstart"), captureProject, { recursive: true });
+  writeFileSync(join(consumer, "capture.mjs"), readFileSync(join(root, "tooling", "packed-capture.mjs")));
+  run("node", ["capture.mjs", captureProject], consumer);
   process.stdout.write(`packed consumer check passed for ${publishable.length} package(s)\n`);
 } finally {
   if (temporary.startsWith(`${tmpdir()}/firedrill-pack-`)) {

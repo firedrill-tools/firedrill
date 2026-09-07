@@ -6,6 +6,7 @@ import type {
   ErrorEnvelope,
   JsonObject,
   JsonValue,
+  RunCaptureHandle,
   TargetDescriptor,
   TargetFileAttachment,
   TargetInvocation,
@@ -31,6 +32,8 @@ export interface TargetExecutionContext {
   readonly world?: BoundWorldClient;
   /** Copies one caller-owned file into the eventual report bundle. */
   readonly attach?: (input: TargetFileAttachmentInput) => TargetFileAttachment;
+  /** Optional supporting capture supplied by the embedding runner. */
+  readonly capture?: RunCaptureHandle;
 }
 
 export interface TargetFileAttachmentInput {
@@ -74,6 +77,7 @@ export interface InvokeTargetOptions {
   readonly signal?: AbortSignal;
   /** Runtime-owned sink used to stage portable report files. */
   readonly attachmentSink?: TargetAttachmentSink;
+  readonly captureFactory?: (invocation: TargetInvocation, signal: AbortSignal) => RunCaptureHandle;
 }
 
 export class TargetAttachmentError extends Error {
@@ -750,7 +754,12 @@ export async function invokeTarget(options: InvokeTargetOptions): Promise<Target
     const completion = await withinTimeout(
       descriptor.timeoutMs,
       async (signal) => {
-        const context = executionContext(descriptor, signal, options.worldClient, attach);
+        const context = {
+          ...executionContext(descriptor, signal, options.worldClient, attach),
+          ...(options.captureFactory === undefined
+            ? {}
+            : { capture: options.captureFactory(invocation, signal) }),
+        };
         if (descriptor.kind === "module") {
           return {
             output: await invokeModule(descriptor, invocation, options, context),

@@ -53,6 +53,9 @@ describe("local inspector server", () => {
     const page = await fetch(server.url);
     expect(page.status).toBe(200);
     expect(page.headers.get("content-security-policy")).toContain("connect-src 'self'");
+    expect(page.headers.get("content-security-policy")).toContain("img-src 'self' data: blob:");
+    expect(page.headers.get("content-security-policy")).toContain("media-src 'self' data: blob:");
+    expect(page.headers.get("content-security-policy")).toContain("script-src 'self'");
     const html = await page.text();
     expect(html).toContain(`content="${token}"`);
     expect(html).not.toContain("__FIREDRILL_TOKEN__");

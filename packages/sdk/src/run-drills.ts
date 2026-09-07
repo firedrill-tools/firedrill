@@ -16,6 +16,7 @@ import type {
   DrillShard,
   EvidenceEntry,
   JsonValue,
+  RunCaptureHandle,
   RunId,
   RunResult,
   RunSetupRecord,
@@ -48,6 +49,7 @@ import type { LocalReportAttachmentSource, WrittenLocalReport } from "@firedrill
 import { verifyLocalReport, writeLocalReport, writeReportIndex } from "@firedrill/reporters";
 import type { LoadedWorldBuild } from "@firedrill/world-build";
 import type { BoundWorldClient } from "@firedrill/world-kernel";
+import { LocalCaptureManager, type RunCaptureOptions, validateCaptureOptions } from "./capture.js";
 import { prepareExecutableBuild } from "./project-build.js";
 import { FiredrillProjectError } from "./project-error.js";
 
@@ -86,6 +88,8 @@ export interface AgentInvocation {
   readonly signal: AbortSignal;
   /** Copies a repository-local file into this attempt's portable report bundle. */
   readonly attach: (input: AgentFileAttachmentInput) => AgentFileAttachment;
+  /** Optional supporting capture is off by default; it never changes the drill verdict. */
+  readonly capture: RunCaptureHandle;
 }
 
 export type AgentCallback = (invocation: AgentInvocation) => unknown | Promise<unknown>;
@@ -129,6 +133,8 @@ export interface RunDrillsOptions {
   readonly hostEnvironment?: Readonly<Record<string, string | undefined>>;
   readonly signal?: AbortSignal;
   readonly hooks?: RunDrillsHooks;
+  /** Opt-in supporting logs and caller-owned browser/file capture, retained per attempt. */
+  readonly capture?: RunCaptureOptions;
 }
 
 export interface ReportedAttempt {
@@ -215,7 +221,9 @@ export interface RunDrillsHooks {
       DrillTrialHookContext & { readonly execution: DrillExecution["trials"][number] },
   ) => void | Promise<void>;
   /** Observe a live attempt once its queryable world exists and before the target acts. */
-  readonly attemptStarted?: (context: RunDrillContext & DrillAttemptHookContext) => void | Promise<void>;
+  readonly attemptStarted?: (
+    context: RunDrillContext & DrillAttemptHookContext & { readonly capture: RunCaptureHandle },
+  ) => void | Promise<void>;
   readonly attemptFinished?: (
     context: RunDrillContext &
       DrillAttemptHookContext & { readonly execution: DrillExecution["trials"][number]["attempts"][number] },
@@ -261,6 +269,11 @@ class LocalAttachmentStager {
   readonly root: string;
   readonly byRun = new Map<RunId, StagedAttachment[]>();
   #stageRoot: string | undefined;
+  additionalUsage: (runId: RunId) => { readonly count: number; readonly bytes: number } = () => ({
+    count: 0,
+    bytes: 0,
+  });
+  reserveCaptureBudget: (runId: RunId, bytes: number) => void = () => undefined;
 
   constructor(repositoryRoot: string) {
     this.root = realpathSync(repositoryRoot);
@@ -354,7 +367,9 @@ class LocalAttachmentStager {
       });
     }
     const existing = this.byRun.get(invocation.runId) ?? [];
-    if (existing.length >= MAX_ATTACHMENTS_PER_RUN) {
+    this.reserveCaptureBudget(invocation.runId, metadata.size);
+    const additional = this.additionalUsage(invocation.runId);
+    if (existing.length + additional.count >= MAX_ATTACHMENTS_PER_RUN) {
       throw new TargetAttachmentError(
         "target.ATTACHMENT_LIMIT_EXCEEDED",
         `one run supports at most ${MAX_ATTACHMENTS_PER_RUN} file attachments`,
@@ -368,7 +383,7 @@ class LocalAttachmentStager {
       );
     }
     const totalBytes = existing.reduce((total, item) => total + item.attachment.bytes, 0) + body.byteLength;
-    if (totalBytes > MAX_ATTACHMENT_BYTES_PER_RUN) {
+    if (totalBytes + additional.bytes > MAX_ATTACHMENT_BYTES_PER_RUN) {
       throw new TargetAttachmentError(
         "target.ATTACHMENT_LIMIT_EXCEEDED",
         "file attachments for one run cannot exceed 128 MiB",
@@ -402,6 +417,11 @@ class LocalAttachmentStager {
       attachmentId: attachment.attachment.id,
       path: attachment.path,
     }));
+  }
+
+  usage(runId: RunId): { readonly count: number; readonly bytes: number } {
+    const files = this.byRun.get(runId) ?? [];
+    return { count: files.length, bytes: files.reduce((sum, file) => sum + file.attachment.bytes, 0) };
   }
 
   dispose(): void {
@@ -570,6 +590,7 @@ function validatedCallbackReceivers(
 }
 
 function validateOptions(options: RunDrillsOptions): ValidatedRunOptions {
+  validateCaptureOptions(options.capture);
   const callbackReceivers = validatedCallbackReceivers(options.callbackReceivers);
   let setup: RunWorldSetup | undefined;
   if (options.setup !== undefined) {
@@ -693,6 +714,7 @@ function agentHandler(input: {
   readonly callback: AgentCallback;
   readonly drillId: StableId;
   readonly targetId: StableId;
+  readonly capture: LocalCaptureManager;
 }) {
   return (invocation: TargetInvocation, context: TargetExecutionContext) => {
     if (context.attach === undefined) {
@@ -717,6 +739,8 @@ function agentHandler(input: {
       },
       signal: context.signal,
       attach: context.attach,
+      capture:
+        context.capture ?? input.capture.handle(invocation.runId, invocation.interactionId, context.signal),
     });
   };
 }
@@ -790,6 +814,7 @@ async function refreshReportsAfterRun(reportDirectory: string, runFailed: boolea
 export async function runDrills(options: RunDrillsOptions = {}): Promise<RunDrillsResult> {
   const root = resolve(options.root ?? process.cwd());
   const validated = validateOptions(options);
+  const captureOptions = options.capture === undefined ? undefined : Object.freeze({ ...options.capture });
   const preparedBuild = await prepareExecutableBuild(
     root,
     options.buildHash,
@@ -799,6 +824,12 @@ export async function runDrills(options: RunDrillsOptions = {}): Promise<RunDril
   );
   const build = preparedBuild.build;
   const attachmentStager = new LocalAttachmentStager(root);
+  const captureManager = new LocalCaptureManager(root, captureOptions, (runId) =>
+    attachmentStager.usage(runId),
+  );
+  attachmentStager.additionalUsage = (runId) => captureManager.usage(runId);
+  attachmentStager.reserveCaptureBudget = (runId, bytes) => captureManager.reserveLegacy(runId, bytes);
+  const capturedResults = new Map<RunId, RunResult>();
   const reportDirectory = resolve(root, options.reportDirectory ?? join(".firedrill", "reports"));
   let reportsWritten = 0;
   let runFailed = false;
@@ -871,11 +902,14 @@ export async function runDrills(options: RunDrillsOptions = {}): Promise<RunDril
                 callback: options.agent,
                 drillId: drill.id,
                 targetId: target.id,
+                capture: captureManager,
               }),
             }),
         ...(options.hostEnvironment === undefined ? {} : { hostEnvironment: options.hostEnvironment }),
         ...(options.allowRemoteHttp === undefined ? {} : { allowRemoteHttp: options.allowRemoteHttp }),
         attachmentSink: attachmentStager.sink,
+        captureFactory: (invocation, signal) =>
+          captureManager.handle(invocation.runId, invocation.interactionId, signal),
         ...(validated.callbackReceivers === undefined
           ? {}
           : { callbackReceivers: validated.callbackReceivers }),
@@ -884,17 +918,25 @@ export async function runDrills(options: RunDrillsOptions = {}): Promise<RunDril
           ? {}
           : {
               attemptStarted: (context: DrillAttemptHookContext) =>
-                options.hooks?.attemptStarted?.({ ...drillContext, ...context }),
+                options.hooks?.attemptStarted?.({
+                  ...drillContext,
+                  ...context,
+                  capture: captureManager.handle(context.runId, undefined, options.signal),
+                }),
             }),
-        ...(options.hooks?.attemptFinished === undefined
-          ? {}
-          : {
-              attemptFinished: (
-                context: DrillAttemptHookContext & {
-                  readonly execution: DrillExecution["trials"][number]["attempts"][number];
-                },
-              ) => options.hooks?.attemptFinished?.({ ...drillContext, ...context }),
-            }),
+        attemptFinished: async (
+          context: DrillAttemptHookContext & {
+            readonly execution: DrillExecution["trials"][number]["attempts"][number];
+          },
+        ) => {
+          const result = await captureManager.finish(context.execution.result);
+          capturedResults.set(context.runId, result);
+          await options.hooks?.attemptFinished?.({
+            ...drillContext,
+            ...context,
+            execution: { ...context.execution, result },
+          });
+        },
         ...(options.hooks?.beforeTrial === undefined
           ? {}
           : {
@@ -913,19 +955,23 @@ export async function runDrills(options: RunDrillsOptions = {}): Promise<RunDril
       });
       const trials = execution.trials.map((trial): ReportedTrial => {
         const attempts = trial.attempts.map((attempt): ReportedAttempt => {
+          const result = capturedResults.get(attempt.result.identity.runId) ?? attempt.result;
           const report = writeLocalReport(
             {
-              result: attempt.result,
+              result,
               evidence: attempt.evidence,
               tools: build.worldIr.tools,
-              attachmentSources: attachmentStager.sources(attempt.result.identity.runId),
+              attachmentSources: [
+                ...attachmentStager.sources(result.identity.runId),
+                ...captureManager.sources(result.identity.runId),
+              ],
             },
             join(reportDirectory, attempt.result.identity.runId),
           );
           reportsWritten += 1;
           verifyLocalReport(report.directory);
           return {
-            result: attempt.result,
+            result,
             evidence: attempt.evidence,
             worldFilePath: attempt.worldFilePath,
             report,
@@ -996,7 +1042,11 @@ export async function runDrills(options: RunDrillsOptions = {}): Promise<RunDril
         await refreshReportsAfterRun(reportDirectory, runFailed);
       }
     } finally {
-      attachmentStager.dispose();
+      try {
+        await captureManager.dispose();
+      } finally {
+        attachmentStager.dispose();
+      }
     }
   }
 }

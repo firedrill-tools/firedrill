@@ -35,6 +35,7 @@ import {
   Spinner,
   Status,
 } from "../components/primitives";
+import { hasRunAttachments, RunAttachments } from "../components/run-attachments";
 import { ScrollArea } from "../components/scroll-area";
 import { ValueDiff } from "../components/value-diff";
 import { compactId, evidenceLabel, plural, titleFromId, virtualTime } from "../format";
@@ -644,6 +645,9 @@ function RunWorkspace({
               : [
                   ...(detail?.result === undefined ? [] : [{ id: "task", label: "Task" }]),
                   ...(assertions.length || checkpoints.length ? [{ id: "checks", label: "Checks" }] : []),
+                  ...(detail?.result !== undefined && hasRunAttachments(detail.result)
+                    ? [{ id: "attachments", label: "Attachments" }]
+                    : []),
                   { id: "activity", label: "Activity" },
                   ...(detail?.stateNamespaces.length ? [{ id: "data", label: "Data after run" }] : []),
                   ...(detail !== undefined && pendingRuntimeWork(detail).total > 0
@@ -758,6 +762,14 @@ function RunWorkspace({
                   )}
                 </section>
               ) : null}
+              {detail?.result === undefined ? null : (
+                <RunAttachments
+                  key={`attachments:${summary.runId}`}
+                  runId={summary.runId}
+                  result={detail.result}
+                  reportAvailable={summary.reportAvailable}
+                />
+              )}
               <section className="fd-timeline-section" data-scroll-section="activity">
                 <div className="fd-timeline-toolbar">
                   <div>
@@ -841,7 +853,7 @@ function RunWorkspace({
               </section>
               {detail === undefined ? null : (
                 <StateBrowser
-                  key={summary.runId}
+                  key={`state:${summary.runId}`}
                   runId={summary.runId}
                   namespaces={detail.stateNamespaces}
                   onError={onError}

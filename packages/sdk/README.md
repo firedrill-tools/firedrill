@@ -76,6 +76,16 @@ Callback output may be any ordinary JSON-serializable value; optional `undefined
 
 ## Supporting file evidence
 
+For optional logs, screenshots, recordings, and failure-only retention, start
+with the [capture guide](../../docs/capture.md). `runDrills({ capture })` exposes
+`capture.log`, `capture.file`, `capture.screenshot`, `capture.video`, and
+`capture.registerDriver` to caller-owned targets and lifecycle hooks. Every
+category defaults to off. Retention runs after the attempt's final assertions;
+capture errors remain visible without changing the behavioral verdict.
+
+The existing `attach()` API below always retains its file independently of those
+policies. Use it when an attachment should be part of the record in every outcome.
+
 A caller-owned browser or application harness can copy a screenshot, trace, video, or text artifact into the report for the current attempt:
 
 ```ts
