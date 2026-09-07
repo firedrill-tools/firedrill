@@ -28,6 +28,10 @@ Data, Tools, Personas & actors), and the test workflow under **Testing**
   scenario to see its resolved starting data; this is not a running database.
 - **Personas & actors**: source-defined identities, attributes and permissions.
   Customer records stay under Data; an actor is not assumed to be a human persona.
+  Actors may include an optional plain-text `description` (1–500 characters).
+  It appears below the identity in this page and in world/scenario setup, and is
+  searchable. Omit it when unnecessary; there is no generated description or empty
+  placeholder. This is documentation, not a model prompt or permission setting.
 - **Scenarios / Tools**: starting situations and the synthetic service contracts,
   including operation input and response schemas.
 - **Drills**: read the agent's task, starting scenario and checks, then run the

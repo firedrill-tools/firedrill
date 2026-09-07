@@ -1,5 +1,6 @@
 import { Clock3, Database, FileInput, Radio, TriangleAlert, Wrench } from "lucide-react";
 import { useMemo, useState } from "react";
+import { ActorIdentity } from "../components/actor-identity";
 import { DataViewer } from "../components/data-viewer";
 import { DetailsPanel, DetailsTrigger } from "../components/details-panel";
 import { PageIntro } from "../components/page-intro";
@@ -290,7 +291,7 @@ function ActorsTable({ setup }: { readonly setup: SimulationSetup }) {
           {setup.actors.map((actor) => (
             <tr key={actor.id}>
               <td>
-                <code>{actor.id}</code>
+                <ActorIdentity actor={actor} />
               </td>
               <td>
                 {actor.grants.length === 0

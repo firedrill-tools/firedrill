@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  ActorDefinitionSchema,
   AssertionDefinitionSchema,
   AssertionResultSchema,
   DiagnosticSchema,
@@ -621,6 +622,33 @@ describe("generic world and drill contracts", () => {
       },
     ],
   } as const;
+
+  it("keeps optional actor descriptions separate from attributes and grants without rewriting text", () => {
+    const actor = scenario.actors[0];
+    const description = "  Handles routine requests during the night shift.  ";
+    expect(ActorDefinitionSchema.parse({ ...actor, description })).toEqual({ ...actor, description });
+    expect(ActorDefinitionSchema.parse(actor)).toEqual(actor);
+    expect(ActorDefinitionSchema.parse({ id: "observer", description })).toEqual({
+      id: "observer",
+      description,
+      attributes: {},
+      grants: [],
+    });
+    for (const length of [1, 500]) {
+      expect(ActorDefinitionSchema.safeParse({ ...actor, description: "a".repeat(length) }).success).toBe(
+        true,
+      );
+    }
+  });
+
+  it.each(["", " \t\n\u00a0", "a".repeat(501), null, 42, {}, []].map((description) => ({ description })))(
+    "rejects invalid actor description %#",
+    ({ description }) => {
+      const result = ActorDefinitionSchema.safeParse({ ...scenario.actors[0], description });
+      expect(result.success).toBe(false);
+      expect(result.error?.issues).toContainEqual(expect.objectContaining({ path: ["description"] }));
+    },
+  );
 
   it("addresses state through package-owned namespaces rather than a reference-world entity", () => {
     const assertion = AssertionDefinitionSchema.parse({

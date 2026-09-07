@@ -58,7 +58,12 @@ function actorKey(actor: SimulationSetup["actors"][number]): string {
   const permissions = new Set(
     actor.grants.map((grant) => JSON.stringify([grant.packageId, grant.operationId])),
   );
-  return structuralKey({ id: actor.id, attributes: actor.attributes, grants: [...permissions].sort() });
+  return structuralKey({
+    id: actor.id,
+    ...(actor.description === undefined ? {} : { description: actor.description }),
+    attributes: actor.attributes,
+    grants: [...permissions].sort(),
+  });
 }
 
 /** Compares effective starting conditions, not authored patch history or run-time state. */

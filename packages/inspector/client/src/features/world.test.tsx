@@ -1,6 +1,7 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { SimulationProject, SimulationSetup } from "../types";
+import { CatalogView } from "./catalog";
 import { WorldView } from "./world";
 
 function setup(overrides: Partial<SimulationSetup> = {}): SimulationSetup {
@@ -179,5 +180,23 @@ describe("scenario starting setup", () => {
     expect(markup).not.toContain('data-scroll-section="changes"');
     expect(markup).not.toContain("Changes from world baseline");
     expect(markup).not.toContain("Uses the world baseline unchanged");
+  });
+
+  it("shows the exact description on the identities page and in the selected scenario setup", () => {
+    const actor = {
+      id: "operator",
+      description: "Reviews daytime observations.",
+      attributes: {},
+      grants: [],
+    };
+    const baseline = setup({ actors: [actor] });
+    const scenario = setup({ actors: [{ ...actor, description: "Reviews overnight observations." }] });
+    const definitions = project(baseline, scenario);
+    const catalog = renderToStaticMarkup(<CatalogView project={definitions} page="personas" />);
+    expect(catalog).toContain("Reviews daytime observations.");
+    expect(catalog).not.toContain("Reviews overnight observations.");
+    const scenarioMarkup = renderToStaticMarkup(<WorldView project={definitions} page="scenarios" />);
+    expect(section(scenarioMarkup, "permissions")).toContain("Reviews overnight observations.");
+    expect(section(scenarioMarkup, "permissions")).not.toContain("Reviews daytime observations.");
   });
 });

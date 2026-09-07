@@ -138,6 +138,28 @@ describe("effective starting setup differences", () => {
     });
   });
 
+  it("recognizes description changes without changing attributes or permissions", () => {
+    const actor = {
+      id: "operator",
+      description: "Reviews incoming observations.",
+      attributes: {},
+      grants: [],
+    };
+    const changed = { ...actor, description: "Reviews the overnight observation batch." };
+    const baseline = setup({ actors: [actor] });
+    expect(describeSetupChanges(baseline, baseline).hasChanges).toBe(false);
+    expect(describeSetupChanges(baseline, setup({ actors: [changed] }))).toMatchObject({
+      actors: [changed],
+      hasChanges: true,
+    });
+    const withoutDescription = { id: actor.id, attributes: actor.attributes, grants: actor.grants };
+    expect(describeSetupChanges(baseline, setup({ actors: [withoutDescription] })).actors).toEqual([
+      withoutDescription,
+    ]);
+    expect(changed.attributes).toEqual(actor.attributes);
+    expect(changed.grants).toEqual(actor.grants);
+  });
+
   it("compares actor grants as permission sets, not ordered arrays", () => {
     const grants = [
       { packageId: "observatory", operationId: "sample.read" },

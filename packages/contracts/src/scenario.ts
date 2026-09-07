@@ -12,6 +12,13 @@ import { OperationRefSchema } from "./identifiers.js";
 export const ActorDefinitionSchema = z
   .object({
     id: ActorIdSchema,
+    description: z
+      .string()
+      .min(1)
+      .max(500)
+      .regex(/\S/, "description must not be blank")
+      .describe("Plain-text actor description for authoring and inspection; not a prompt or permission.")
+      .optional(),
     attributes: JsonObjectSchema.default({}),
     grants: z.array(OperationRefSchema).default([]),
   })

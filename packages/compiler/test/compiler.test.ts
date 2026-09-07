@@ -20,10 +20,12 @@ import {
   type InlineScenarioDefinition,
   type JsonObject,
 } from "@firedrill/contracts";
-import { parse as parseYaml } from "yaml";
+import { parse as parseYaml, stringify as stringifyYaml } from "yaml";
 import { afterEach, describe, expect, it } from "vitest";
+import { z } from "zod";
 import { compileWorld, formatWorldSources } from "../src/index.js";
 import { normalizeManifest } from "../src/normalize.js";
+import { DrillSourceSchema, ScenarioSourceSchema, WorldSourceSchema } from "../src/source-schemas.js";
 
 const fixtureRoot = fileURLToPath(new URL("./fixtures/", import.meta.url));
 const temporaryDirectories: string[] = [];
@@ -181,6 +183,31 @@ function installReservationsPack(
 }
 
 describe("source to executable world", () => {
+  it("emits optional bounded actor descriptions in authored-input JSON Schemas", () => {
+    const actorSchema = {
+      type: "object",
+      required: ["id"],
+      properties: {
+        description: {
+          type: "string",
+          minLength: 1,
+          maxLength: 500,
+          pattern: "\\S",
+          description:
+            "Plain-text actor description for authoring and inspection; not a prompt or permission.",
+        },
+      },
+    };
+    for (const schema of [WorldSourceSchema, ScenarioSourceSchema]) {
+      expect(z.toJSONSchema(schema, { target: "draft-2020-12", io: "input" })).toMatchObject({
+        properties: { actors: { items: actorSchema } },
+      });
+    }
+    expect(z.toJSONSchema(DrillSourceSchema, { target: "draft-2020-12", io: "input" })).toMatchObject({
+      properties: { inlineScenario: { properties: { actors: { items: actorSchema } } } },
+    });
+  });
+
   it("normalizes equivalent compatibility claims to one canonical manifest", () => {
     const route = (id: "read-record" | "update-record") => ({
       id,
@@ -599,24 +626,76 @@ describe("source to executable world", () => {
     });
   });
 
-  it("keeps build identity stable across YAML/JSON representation and source relocation", async () => {
+  it("retains actor descriptions and build identity across YAML/JSON representation and source relocation", async () => {
     const repository = temporaryFixture("appointments");
-    const first = await compileWorld({ repositoryRoot: repository, materialize: false });
+    const worldYaml = join(repository, "world", "world.yaml");
+    const world = WorldSourceSchema.parse(parseYaml(readFileSync(worldYaml, "utf8")));
+    const actor = world.actors[0];
+    if (actor === undefined) throw new Error("fixture has no actor");
+    const baselineActor = { ...actor, description: "  Handles routine scheduling requests.  " };
+    const undescribedActor = { id: "observer", attributes: {}, grants: [] };
+    writeFileSync(worldYaml, stringifyYaml({ ...world, actors: [baselineActor, undescribedActor] }));
+    const oldScenario = join(repository, "world", "busy-morning.scenario.yaml");
+    const scenarioActor = {
+      id: "reviewer",
+      description: "Reviews the busy morning schedule.",
+      attributes: {},
+      grants: [],
+    };
+    writeFileSync(
+      oldScenario,
+      stringifyYaml({
+        ...ScenarioSourceSchema.parse(parseYaml(readFileSync(oldScenario, "utf8"))),
+        actors: [scenarioActor],
+      }),
+    );
+    const inlineYaml = join(repository, "world", "inline-review.drill.yaml");
+    const { scenarioId: _scenarioId, ...drill } = DrillSourceSchema.parse(
+      parseYaml(readFileSync(join(repository, "world", "reserve-slot.drill.yaml"), "utf8")),
+    );
+    const inlineActor = { ...actor, description: "Handles one inline scheduling request." };
+    writeFileSync(
+      inlineYaml,
+      stringifyYaml({
+        ...drill,
+        id: "inline-review",
+        inlineScenario: { virtualTimeUs: 0, actors: [inlineActor], state: world.state },
+      }),
+    );
+
+    const first = await compileWorld({ repositoryRoot: repository });
     expect(first.status).toBe("success");
     if (first.status !== "success") return;
+    expect(first.build.worldIr.baseline.actors).toEqual([undescribedActor, baselineActor]);
+    expect(first.build.worldIr.scenarios[0]?.actors).toEqual([
+      undescribedActor,
+      scenarioActor,
+      baselineActor,
+    ]);
+    expect(
+      first.build.worldIr.drills.find((entry) => entry.id === "inline-review")?.inlineScenario?.actors,
+    ).toEqual([inlineActor]);
+    expect(first.build.buildDirectory).toBeDefined();
+    if (first.build.buildDirectory === undefined) return;
+    const loaded = await loadWorldBuild(first.build.buildDirectory);
+    expect(loaded.status).toBe("success");
+    if (loaded.status === "success") expect(loaded.build.worldIr).toEqual(first.build.worldIr);
 
-    const worldYaml = join(repository, "world", "world.yaml");
     const worldJson = join(repository, "world", "world.json");
     writeFileSync(worldJson, `${JSON.stringify(parseYaml(readFileSync(worldYaml, "utf8")), null, 2)}\n`);
     writeFileSync(
       join(repository, "firedrill.json"),
       `${JSON.stringify({ schemaVersion: 1, sourceRoot: "world", world: "world.json" }, null, 2)}\n`,
     );
-    const oldScenario = join(repository, "world", "busy-morning.scenario.yaml");
     const newScenario = join(repository, "world", "situations", "remaining-slot.scenario.json");
     mkdirSync(dirname(newScenario), { recursive: true });
     writeFileSync(newScenario, `${JSON.stringify(parseYaml(readFileSync(oldScenario, "utf8")), null, 2)}\n`);
     rmSync(oldScenario);
+    writeFileSync(
+      join(repository, "world", "inline-review.drill.json"),
+      `${JSON.stringify(parseYaml(readFileSync(inlineYaml, "utf8")), null, 2)}\n`,
+    );
+    rmSync(inlineYaml);
     const toolDirectory = join(repository, "world", "tools", "reservations");
     mkdirSync(toolDirectory, { recursive: true });
     renameSync(join(repository, "world", "reservations.tool.yaml"), join(toolDirectory, "package.tool.yaml"));
@@ -625,6 +704,7 @@ describe("source to executable world", () => {
     const second = await compileWorld({ repositoryRoot: repository, materialize: false });
     expect(second.status).toBe("success");
     if (second.status !== "success") return;
+    expect(second.build.worldIr).toEqual(first.build.worldIr);
     expect(second.build.manifest.buildHash).toBe(first.build.manifest.buildHash);
     expect(second.build.manifest.sourceDigest).toBe(first.build.manifest.sourceDigest);
     expect(second.build.sourceProvenance.find((entry) => entry.kind === "scenario")?.sourcePath).not.toBe(

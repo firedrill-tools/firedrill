@@ -1,5 +1,6 @@
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import { useMemo, useState } from "react";
+import { ActorIdentity } from "../components/actor-identity";
 import { DataViewer } from "../components/data-viewer";
 import { PageIntro } from "../components/page-intro";
 import { EmptyState, IconButton, RowButton, SearchField, Select } from "../components/primitives";
@@ -75,7 +76,9 @@ export function CatalogView({
     `${field.name} ${field.type}`.toLowerCase().includes(normalized),
   );
   const actors = setup.actors.filter((actor) =>
-    `${actor.id} ${JSON.stringify(actor.attributes)}`.toLowerCase().includes(normalized),
+    `${actor.id} ${actor.description ?? ""} ${JSON.stringify(actor.attributes)}`
+      .toLowerCase()
+      .includes(normalized),
   );
   const count = page === "schema" ? fields.length : page === "data" ? currentRows.length : actors.length;
   const index = Math.min(pageIndex, Math.max(0, Math.ceil(count / 25) - 1));
@@ -311,7 +314,7 @@ export function CatalogView({
                       {actors.slice(index * 25, (index + 1) * 25).map((actor) => (
                         <tr key={actor.id}>
                           <td>
-                            <code>{actor.id}</code>
+                            <ActorIdentity actor={actor} />
                           </td>
                           <td>
                             {Object.keys(actor.attributes).length === 0 ? (
