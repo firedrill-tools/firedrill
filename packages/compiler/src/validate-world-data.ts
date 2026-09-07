@@ -1,4 +1,5 @@
 import type { CanonicalWorldIr } from "@firedrill/world-ir";
+import type { ResolvedToolOverride } from "@firedrill/contracts";
 import { Ajv } from "ajv";
 import type { ErrorObject, ValidateFunction } from "ajv";
 import formatsModule from "ajv-formats";
@@ -34,6 +35,7 @@ export function validateWorldData(world: CanonicalWorldIr): readonly WorldDataIs
   formatsModule.default(ajv);
   const stateValidators = new Map<string, ValidateFunction<unknown>>();
   const eventValidators = new Map<string, ValidateFunction<unknown>>();
+  const outputValidators = new Map<string, ValidateFunction<unknown>>();
 
   for (const [toolIndex, tool] of world.tools.entries()) {
     for (const [stateIndex, state] of tool.state.entries()) {
@@ -52,7 +54,8 @@ export function validateWorldData(world: CanonicalWorldIr): readonly WorldDataIs
         ["outputSchema", operation.outputSchema],
       ] as const) {
         try {
-          ajv.compile(schema);
+          const validate = ajv.compile(schema);
+          if (field === "outputSchema") outputValidators.set(`${tool.id}\u0000${operation.id}`, validate);
         } catch (error) {
           issues.push({
             path: ["tools", toolIndex, "operations", operationIndex, field],
@@ -73,12 +76,32 @@ export function validateWorldData(world: CanonicalWorldIr): readonly WorldDataIs
     }
   }
 
+  const validateOverrides = (
+    rules: readonly ResolvedToolOverride[] | undefined,
+    path: readonly (string | number)[],
+  ) => {
+    for (const [index, rule] of (rules ?? []).entries()) {
+      if (rule.outcome.kind !== "return") continue;
+      const validate = outputValidators.get(`${rule.operation.packageId}\u0000${rule.operation.operationId}`);
+      if (validate !== undefined && !validate(rule.outcome.value)) {
+        issues.push(
+          ...validationIssues(
+            validate.errors,
+            [...path, "toolOverrides", index, "outcome", "value"],
+            `Tool override ${rule.id} output`,
+          ),
+        );
+      }
+    }
+  };
+
   const validateScenario = (
     scenario: CanonicalWorldIr["baseline"] | CanonicalWorldIr["scenarios"][number],
     path: readonly (string | number)[],
     stateStart: number,
     eventStart: number,
   ) => {
+    validateOverrides(scenario.toolOverrides, path);
     for (let index = stateStart; index < scenario.state.length; index += 1) {
       const state = scenario.state[index];
       if (state?.action !== "upsert") continue;
@@ -132,6 +155,11 @@ export function validateWorldData(world: CanonicalWorldIr): readonly WorldDataIs
         });
       }
     }
+  }
+  for (const [index, drill] of world.drills.entries()) {
+    validateOverrides(drill.toolOverrides, ["drills", index]);
+    if (drill.inlineScenario !== undefined)
+      validateOverrides(drill.inlineScenario.toolOverrides, ["drills", index, "inlineScenario"]);
   }
   return issues;
 }

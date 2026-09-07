@@ -5,7 +5,7 @@ import {
   DrillTaskSchema,
   DrillTimelineSchema,
   FaultActivationSchema,
-  InlineScenarioDefinitionSchema,
+  AuthoredInlineScenarioDefinitionSchema,
   InitialEventSchema,
   NodePackageNameSchema,
   SeedSchema,
@@ -14,6 +14,7 @@ import {
   StateSetupSchema,
   TargetDescriptorSchema,
   ToolPackageManifestSchema,
+  ToolOverridesSchema,
   VirtualTimeSchema,
   TrialPolicySchema,
 } from "@firedrill/contracts";
@@ -50,6 +51,7 @@ export const WorldSourceSchema = z
     state: z.array(StateSetupSchema).default([]),
     faults: z.array(FaultActivationSchema).default([]),
     initialEvents: z.array(InitialEventSchema).default([]),
+    toolOverrides: ToolOverridesSchema.optional(),
   })
   .strict();
 
@@ -63,6 +65,7 @@ export const ScenarioSourceSchema = z
     state: z.array(StateSetupSchema).default([]),
     faults: z.array(FaultActivationSchema).default([]),
     initialEvents: z.array(InitialEventSchema).default([]),
+    toolOverrides: ToolOverridesSchema.optional(),
   })
   .strict();
 
@@ -92,7 +95,8 @@ const DrillSourceShape = {
   tags: z.array(StableIdSchema).default([]),
   targetId: StableIdSchema,
   scenarioId: StableIdSchema.optional(),
-  inlineScenario: InlineScenarioDefinitionSchema.optional(),
+  inlineScenario: AuthoredInlineScenarioDefinitionSchema.optional(),
+  toolOverrides: ToolOverridesSchema.optional(),
 };
 
 /**

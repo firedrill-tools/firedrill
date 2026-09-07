@@ -191,6 +191,103 @@ afterEach(() => {
 });
 
 describe("SQLite world transactions", () => {
+  it("rolls back a savepoint's SQL, clock and buffered evidence without losing outer usage", () => {
+    const store = createStore(temporaryDirectory());
+    try {
+      const committed = store.transact(CORRELATION, (transaction) => {
+        expect(transaction.consumeToolOverride("calendar", "bounded-rule")).toBe(1);
+        expect(() =>
+          transaction.withSavepoint(() => {
+            transaction.consumeToolOverride("calendar", "bounded-rule");
+            transaction.putState("calendar", "events", "rolled-back", { title: "discard" });
+            transaction.setVirtualTime(2_000);
+            transaction.nextRandomU64("calendar");
+            transaction.setFaultActive("calendar", "slow-write", false);
+            transaction.putIdempotencyReceipt(INVOCATION, "request-hash", SUCCESS);
+            transaction.scheduleEvent(
+              { packageId: "calendar", eventId: "created" },
+              {},
+              3_000,
+              "actor_primary",
+            );
+            throw new Error("rollback effects");
+          }),
+        ).toThrow("rollback effects");
+        expect(transaction.virtualTimeUs).toBe(1_000);
+        expect(transaction.toolOverrideMatchCount("calendar", "bounded-rule")).toBe(1);
+        expect(transaction.getIdempotencyReceipt(INVOCATION)).toBeNull();
+        expect(transaction.activeFaultIds("calendar")).toEqual(["slow-write"]);
+        transaction.putState("calendar", "events", "kept", { title: "kept" });
+        return {
+          value: undefined,
+          primary: {
+            kind: "operation",
+            invocation: INVOCATION,
+            outcome: SUCCESS,
+            idempotency: "not_recorded",
+            toolOverride: {
+              id: "bounded-rule",
+              scope: { kind: "baseline" },
+              outcome: "original",
+              matchIndex: 1,
+            },
+          },
+        };
+      });
+      expect(committed.evidence.map((entry) => entry.kind)).toEqual(["operation", "state_change"]);
+      expect(store.readState("calendar", "events", "rolled-back")).toBeNull();
+      expect(store.readState("calendar", "events", "kept")?.value).toEqual({ title: "kept" });
+      expect(store.metadata()).toMatchObject({ virtualTimeUs: 1_000, randomDraws: 0 });
+      expect(store.listScheduledEvents()).toEqual([]);
+      store.transact(CORRELATION, (transaction) => {
+        expect(() => transaction.withSavepoint(() => Promise.resolve(true))).toThrow("synchronous");
+        expect(transaction.toolOverrideMatchCount("calendar", "bounded-rule")).toBe(1);
+        return {
+          value: undefined,
+          primary: {
+            kind: "operation",
+            invocation: INVOCATION,
+            outcome: SUCCESS,
+            idempotency: "not_recorded",
+          },
+        };
+      });
+    } finally {
+      store.close();
+    }
+  });
+
+  it("package reset restores snapshot counters without clearing other packages", () => {
+    const directory = temporaryDirectory();
+    const store = createScopedResetStore(directory);
+    const count = (packageId: string, consume = false) =>
+      store.transact(CORRELATION, (transaction) => ({
+        value: consume
+          ? transaction.consumeToolOverride(packageId, "same-id")
+          : transaction.toolOverrideMatchCount(packageId, "same-id"),
+        primary: { kind: "lifecycle", action: "world_reset", worldInstanceId: "world_scoped01" },
+      })).value;
+    try {
+      const empty = join(directory, "zero-counts.sqlite");
+      store.createSnapshot(empty, CORRELATION);
+      expect(count("calendar", true)).toBe(1);
+      expect(count("messaging", true)).toBe(1);
+      const snapshot = join(directory, "used-counts.sqlite");
+      store.createSnapshot(snapshot, CORRELATION);
+      expect(count("calendar", true)).toBe(2);
+      expect(count("messaging", true)).toBe(2);
+      store.resetPackagesFromSnapshot(snapshot, ["calendar"], CORRELATION);
+      expect(count("calendar")).toBe(1);
+      expect(count("messaging")).toBe(2);
+      store.resetPackagesFromSnapshot(empty, ["calendar"], CORRELATION);
+      expect(count("calendar")).toBe(0);
+      expect(count("messaging")).toBe(2);
+      expect(count("calendar", true)).toBe(1);
+    } finally {
+      store.close();
+    }
+  });
+
   it("provides a query-only concurrent reader for live inspection", () => {
     const directory = temporaryDirectory();
     const store = createStore(directory);

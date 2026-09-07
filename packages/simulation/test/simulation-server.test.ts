@@ -11,7 +11,7 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
-import { AssertionDefinitionSchema, DrillTimelineSchema } from "@firedrill/contracts";
+import { AssertionDefinitionSchema, DrillTimelineSchema, type ToolOverride } from "@firedrill/contracts";
 import { afterEach, describe, expect, it } from "vitest";
 import { SimulationProjectSchema, SimulationReportAttachmentsSchema } from "../src/contracts.js";
 import type { LocalSimulationServer } from "../src/index.js";
@@ -412,6 +412,63 @@ describe("local simulation server", () => {
       SimulationProjectSchema.safeParse({
         ...project,
         tools: [{ ...tool, stateDefinitions: [{ namespace: "records", schema: "guessed" }] }],
+      }).success,
+    ).toBe(false);
+  });
+
+  it("preserves Tool override scopes and effective priority in baseline, scenario and drill views", async () => {
+    const root = repository();
+    const rule = (id: string, value: number): ToolOverride => ({
+      id,
+      operation: { packageId: "workspace", operationId: "records.set" },
+      outcome: { kind: "return", value: { value } },
+    });
+    const appendOverrides = (path: string, toolOverrides: readonly ToolOverride[]) => {
+      const file = join(root, "firedrill", path);
+      writeFileSync(file, `${readFileSync(file, "utf8")}\ntoolOverrides: ${JSON.stringify(toolOverrides)}\n`);
+    };
+    appendOverrides("world.yaml", [rule("baseline-only", 1), rule("shared", 2)]);
+    appendOverrides("scenarios/empty.scenario.yaml", [rule("shared", 3), rule("scenario-only", 4)]);
+    appendOverrides("drills/set-record.drill.yaml", [
+      { ...rule("shared", 5), outcome: { kind: "original" } },
+    ]);
+    const server = await startLocalSimulationServer({ root });
+    servers.push(server);
+    const { response, value } = await api(server, "/api/v1/project");
+    expect(response.status).toBe(200);
+    const project = SimulationProjectSchema.parse(value);
+    const baseline = project.world.baseline.toolOverrides;
+    const scenario = project.scenarios.find((item) => item.id === "empty")?.toolOverrides;
+    const drill = project.drills.find((item) => item.id === "set-record")?.toolOverrides;
+    expect(baseline?.map((item) => [item.id, item.scope])).toEqual([
+      ["baseline-only", { kind: "baseline" }],
+      ["shared", { kind: "baseline" }],
+    ]);
+    expect(scenario?.map((item) => [item.id, item.scope])).toEqual([
+      ["baseline-only", { kind: "baseline" }],
+      ["shared", { kind: "scenario", scenarioId: "empty" }],
+      ["scenario-only", { kind: "scenario", scenarioId: "empty" }],
+    ]);
+    expect(drill?.map((item) => [item.id, item.scope, item.outcome.kind])).toEqual([
+      ["baseline-only", { kind: "baseline" }, "return"],
+      ["scenario-only", { kind: "scenario", scenarioId: "empty" }, "return"],
+      ["shared", { kind: "drill", drillId: "set-record" }, "original"],
+    ]);
+    const { toolOverrides: _baseline, ...legacyBaseline } = project.world.baseline;
+    const legacy = {
+      ...project,
+      world: { ...project.world, baseline: legacyBaseline },
+      scenarios: project.scenarios.map(({ toolOverrides: _rules, ...item }) => item),
+      drills: project.drills.map(({ toolOverrides: _rules, ...item }) => item),
+    };
+    expect(SimulationProjectSchema.safeParse(legacy).success).toBe(true);
+    expect(
+      SimulationProjectSchema.safeParse({
+        ...project,
+        world: {
+          ...project.world,
+          baseline: { ...project.world.baseline, toolOverrides: [rule("missing-scope", 0)] },
+        },
       }).success,
     ).toBe(false);
   });

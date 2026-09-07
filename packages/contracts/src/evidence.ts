@@ -18,6 +18,7 @@ import {
   WorldInstanceIdSchema,
 } from "./identifiers.js";
 import { JsonObjectSchema } from "./json.js";
+import { ToolOverrideEvidenceSchema } from "./tool-overrides.js";
 import {
   OperationIdempotencyDispositionSchema,
   OperationInvocationSchema,
@@ -42,6 +43,7 @@ export const OperationEvidenceSchema = EvidenceBaseSchema.extend({
   outcome: OperationOutcomeSchema,
   idempotency: OperationIdempotencyDispositionSchema,
   replayedFromSequence: z.number().int().positive().safe().optional(),
+  toolOverride: ToolOverrideEvidenceSchema.optional(),
 }).passthrough();
 
 export const StateChangeEvidenceSchema = EvidenceBaseSchema.extend({

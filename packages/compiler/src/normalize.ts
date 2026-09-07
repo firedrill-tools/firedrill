@@ -5,6 +5,7 @@ import {
   ScenarioDefinitionSchema,
   ToolPackageManifestSchema,
   compareStableStrings,
+  mergeToolOverrides,
 } from "@firedrill/contracts";
 import type {
   ActorDefinitionSchema,
@@ -13,6 +14,7 @@ import type {
   InlineScenarioDefinition,
   ScenarioDefinition,
   ToolPackageManifest,
+  ToolOverrideScope,
 } from "@firedrill/contracts";
 import type { z } from "zod";
 import type { DrillSource, ScenarioSource, SuiteSource, WorldSource } from "./source-schemas.js";
@@ -112,12 +114,21 @@ export function baselineFromWorld(world: WorldSource): InlineScenarioDefinition 
     state: world.state,
     faults: world.faults,
     initialEvents: world.initialEvents,
+    ...(world.toolOverrides === undefined
+      ? {}
+      : {
+          toolOverrides: world.toolOverrides.map((rule) => ({
+            ...rule,
+            scope: { kind: "baseline" as const },
+          })),
+        }),
   });
 }
 
 export function resolveScenario(
   baseline: InlineScenarioDefinition,
   overlay: ScenarioSource,
+  overrideScope: ToolOverrideScope = { kind: "scenario", scenarioId: overlay.id },
 ): ScenarioDefinition {
   const actors = new Map(baseline.actors.map((actor) => [actor.id, actor]));
   for (const actor of overlay.actors) actors.set(actor.id, actor);
@@ -127,6 +138,14 @@ export function resolveScenario(
     state: [...baseline.state, ...overlay.state],
     faults: [...baseline.faults, ...overlay.faults],
     initialEvents: [...baseline.initialEvents, ...overlay.initialEvents],
+    ...(baseline.toolOverrides === undefined && overlay.toolOverrides === undefined
+      ? {}
+      : {
+          toolOverrides: mergeToolOverrides(
+            baseline.toolOverrides,
+            overlay.toolOverrides?.map((rule) => ({ ...rule, scope: overrideScope })),
+          ),
+        }),
   });
   return ScenarioDefinitionSchema.parse({
     schemaVersion: 1,
@@ -164,7 +183,29 @@ export function normalizeDrill(drill: DrillSource): DrillDefinition {
     tags: [...drill.tags].sort(),
     targetId: drill.targetId,
     ...(drill.scenarioId === undefined ? {} : { scenarioId: drill.scenarioId }),
-    ...(drill.inlineScenario === undefined ? {} : { inlineScenario: drill.inlineScenario }),
+    ...(drill.inlineScenario === undefined
+      ? {}
+      : {
+          inlineScenario: {
+            ...drill.inlineScenario,
+            ...(drill.inlineScenario.toolOverrides === undefined
+              ? {}
+              : {
+                  toolOverrides: drill.inlineScenario.toolOverrides.map((rule) => ({
+                    ...rule,
+                    scope: { kind: "drill", drillId: drill.id },
+                  })),
+                }),
+          },
+        }),
+    ...(drill.toolOverrides === undefined
+      ? {}
+      : {
+          toolOverrides: drill.toolOverrides.map((rule) => ({
+            ...rule,
+            scope: { kind: "drill", drillId: drill.id },
+          })),
+        }),
     timeline,
     trials: drill.trials,
     assertions: drill.assertions,

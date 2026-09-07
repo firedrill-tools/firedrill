@@ -17,6 +17,7 @@ import {
   JsonObjectSchema,
   OperationIdSchema,
   PackageIdSchema,
+  ResolvedToolOverridesSchema,
   RunIdSchema,
   RunResultSchema,
   ScheduledEventIdSchema,
@@ -68,6 +69,7 @@ const ScenarioSetupViewSchema = z
     state: z.array(StateSetupSchema),
     faults: z.array(FaultActivationSchema),
     initialEvents: z.array(InitialEventSchema),
+    toolOverrides: ResolvedToolOverridesSchema.optional(),
   })
   .strict();
 
@@ -145,6 +147,7 @@ const DrillViewSchema = z
       })
       .strict(),
     execution: DrillTimelineSchema.optional(),
+    toolOverrides: ResolvedToolOverridesSchema.optional(),
     assertions: z.number().int().positive(),
     expectations: z.array(
       z

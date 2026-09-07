@@ -10,6 +10,9 @@ export interface SetupChanges {
   readonly addedInitialEvents: SimulationSetup["initialEvents"];
   readonly removedInitialEvents: SimulationSetup["initialEvents"];
   readonly eventOrderChanged: boolean;
+  readonly changedToolOverrides: NonNullable<SimulationSetup["toolOverrides"]>;
+  readonly removedToolOverrides: NonNullable<SimulationSetup["toolOverrides"]>;
+  readonly toolOverrideOrderChanged: boolean;
   readonly clockChanged: boolean;
   readonly hasChanges: boolean;
 }
@@ -109,6 +112,22 @@ export function describeSetupChanges(baseline: SimulationSetup, setup: Simulatio
   const removedInitialEvents = previousEvents.unmatched;
   const eventOrderChanged = structuralKey(currentEvents.retained) !== structuralKey(previousEvents.retained);
   const clockChanged = baseline.virtualTimeUs !== setup.virtualTimeUs;
+  const previousOverrides = baseline.toolOverrides ?? [];
+  const currentOverrides = setup.toolOverrides ?? [];
+  const previousOverridesById = new Map(previousOverrides.map((rule) => [rule.id, rule]));
+  const currentOverrideIds = new Set(currentOverrides.map((rule) => rule.id));
+  const changedToolOverrides = currentOverrides.filter(
+    (rule) => structuralKey(previousOverridesById.get(rule.id)) !== structuralKey(rule),
+  );
+  const removedToolOverrides = previousOverrides.filter((rule) => !currentOverrideIds.has(rule.id));
+  const retainedPreviousOrder = previousOverrides
+    .filter((rule) => currentOverrideIds.has(rule.id))
+    .map((rule) => rule.id);
+  const retainedCurrentOrder = currentOverrides
+    .filter((rule) => previousOverridesById.has(rule.id))
+    .map((rule) => rule.id);
+  const toolOverrideOrderChanged =
+    structuralKey(retainedPreviousOrder) !== structuralKey(retainedCurrentOrder);
   return {
     state,
     actors,
@@ -118,10 +137,14 @@ export function describeSetupChanges(baseline: SimulationSetup, setup: Simulatio
     addedInitialEvents,
     removedInitialEvents,
     eventOrderChanged,
+    changedToolOverrides,
+    removedToolOverrides,
+    toolOverrideOrderChanged,
     clockChanged,
     hasChanges:
       clockChanged ||
       eventOrderChanged ||
+      toolOverrideOrderChanged ||
       [
         state,
         actors,
@@ -130,6 +153,8 @@ export function describeSetupChanges(baseline: SimulationSetup, setup: Simulatio
         removedFaults,
         addedInitialEvents,
         removedInitialEvents,
+        changedToolOverrides,
+        removedToolOverrides,
       ].some((items) => items.length > 0),
   };
 }

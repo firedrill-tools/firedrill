@@ -326,6 +326,12 @@ describe("local evidence reporters", () => {
         actorId: "operator",
         outcome: { status: "ok", value: { acceptedValue: unsafe } },
         idempotency: "not_requested",
+        toolOverride: {
+          id: "use-stateful-handler",
+          scope: { kind: "drill", drillId: "update-record" },
+          outcome: "original",
+          matchIndex: 2,
+        },
       },
       {
         schemaVersion: 1,
@@ -386,6 +392,9 @@ describe("local evidence reporters", () => {
     expect(actions).toContain("Response received");
     expect(actions).toContain("acceptedValue");
     expect(actions).toContain("Success");
+    expect(actions).toContain("Override: use-stateful-handler");
+    expect(actions).toContain("drill update-record · match 2");
+    expect(actions).toContain("Used the tool&#39;s normal behavior");
     expect(changes).toContain(escaped);
     expect(changes).toContain("before agent action");
     expect(changes).toContain("after agent action");

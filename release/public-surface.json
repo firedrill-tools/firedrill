@@ -98,7 +98,7 @@
       "name": "@firedrill/sdk",
       "directory": "packages/sdk",
       "layer": "adapter",
-      "exports": ["."]
+      "exports": [".", "./testing"]
     },
     {
       "name": "@firedrill/simulation",

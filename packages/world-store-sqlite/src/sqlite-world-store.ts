@@ -1,10 +1,21 @@
 import { randomUUID } from "node:crypto";
 import { copyFileSync, existsSync, mkdirSync, renameSync, rmSync } from "node:fs";
 import { dirname, resolve } from "node:path";
+import type {
+  CorrelationId,
+  EvidenceEntry,
+  JsonValue,
+  PackageId,
+  SnapshotId,
+  StableId,
+  VirtualTime,
+} from "@firedrill/contracts";
 import {
   ActorBindingIdSchema,
   ActorIdSchema,
   CorrelationIdSchema,
+  canonicalJson,
+  compareStableStrings,
   EvidenceEntrySchema,
   JsonObjectSchema,
   OperationIdSchema,
@@ -17,17 +28,6 @@ import {
   StableIdSchema,
   VirtualTimeSchema,
   WorldInstanceIdSchema,
-  canonicalJson,
-  compareStableStrings,
-} from "@firedrill/contracts";
-import type {
-  CorrelationId,
-  EvidenceEntry,
-  JsonValue,
-  PackageId,
-  SnapshotId,
-  StableId,
-  VirtualTime,
 } from "@firedrill/contracts";
 import type {
   ActiveFault,
@@ -46,13 +46,14 @@ import type {
 import Database from "better-sqlite3";
 import { decodeObject, decodeStoredCount, encodeJson, hashFile, hashJson } from "./codec.js";
 import { assertIntegrity, assertSupportedSchema, configureDatabase, installSchema } from "./schema.js";
+import type { CallbackRow } from "./sqlite-transaction.js";
 import {
   CALLBACK_COLUMNS,
-  SqliteWorldTransaction,
   callbackDelivery,
+  SqliteWorldTransaction,
   scheduledEvent,
 } from "./sqlite-transaction.js";
-import type { CallbackRow } from "./sqlite-transaction.js";
+import { clearPackageToolOverrideUsage, readPackageToolOverrideUsage } from "./tool-override-usage.js";
 import type { CreateSqliteWorldOptions, ForkSqliteWorldOptions } from "./types.js";
 
 interface EvidenceRow {
@@ -756,8 +757,14 @@ export class SqliteWorldStore implements WorldStore {
         outcome: OperationOutcomeSchema.parse(JSON.parse(row.outcome_json)),
         firstSequence: decodeStoredCount(String(row.first_sequence), "idempotency receipt sequence"),
       }));
+      const baselineOverrideUsage = packages.flatMap((packageId) =>
+        readPackageToolOverrideUsage(baseline, packageId),
+      );
 
       return this.transact(parsedCorrelation, (transaction) => {
+        const replacesOverrideUsage =
+          baselineOverrideUsage.length > 0 ||
+          packages.some((packageId) => readPackageToolOverrideUsage(this.database, packageId).length > 0);
         const baselineByStateKey = new Map(
           normalizedState.map((record) => [
             `${record.packageId}\u0000${record.namespace}\u0000${record.rowId}`,
@@ -801,10 +808,15 @@ export class SqliteWorldStore implements WorldStore {
           deleteOwned("active_faults", packageId);
           deleteOwned("scheduled_events", packageId);
           deleteOwned("idempotency_receipts", packageId);
+          clearPackageToolOverrideUsage(this.database, packageId);
           this.database
             .prepare("DELETE FROM callback_deliveries WHERE package_id = ? OR event_package_id = ?")
             .run(packageId, packageId);
         }
+        const insertOverrideUsage = this.database.prepare(
+          "INSERT INTO world_meta (key, value) VALUES (?, ?)",
+        );
+        for (const usage of baselineOverrideUsage) insertOverrideUsage.run(usage.key, usage.value);
 
         const insertFault = this.database.prepare(
           "INSERT INTO active_faults (package_id, fault_id) VALUES (?, ?)",
@@ -897,6 +909,9 @@ export class SqliteWorldStore implements WorldStore {
               scheduledEventsRestored: normalizedEvents.length,
               callbacksRestored: normalizedCallbacks.length,
               idempotencyReceiptsRestored: normalizedReceipts.length,
+              ...(replacesOverrideUsage
+                ? { toolOverrideCountersRestored: baselineOverrideUsage.length }
+                : {}),
             },
           },
         };

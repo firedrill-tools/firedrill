@@ -60,9 +60,11 @@ The framework does not capture arbitrary harness scheduling or model randomness.
 
 - package state and active faults;
 - scheduled events and callback deliveries owned by the selected packages; and
-- operation idempotency receipts for the selected packages.
+- operation idempotency receipts and Tool override match counts for the selected packages.
 
 Scoped reset preserves actors, virtual time, random progress, prior evidence, and unselected Tool state. It does not guess how to reverse an already committed consequence in another Tool. Select every affected Tool or use a whole-world reset when the initial condition spans packages.
+
+Whole-world reset also restores initial Tool override counts. Neither reset changes your test runner's installed mocks or spies; restore those through the runner. See [test-side mocking](test-mocking.md).
 
 A reset fails without changing the world while a relevant callback request is in flight. Its external outcome is unknown until delivery settles, so silently rewinding would make a duplicate side effect possible.
 

@@ -10,7 +10,9 @@ import type {
   OperationContract,
   OperationInvocation,
   OperationOutcome,
+  ResolvedToolOverride,
   ToolEventContract,
+  ToolOverrideEvidence,
   ToolPackageManifest,
 } from "@firedrill/contracts";
 import {
@@ -23,6 +25,7 @@ import {
   OperationInvocationSchema,
   OperationOutcomeSchema,
   PackageIdSchema,
+  ResolvedToolOverridesSchema,
   Sha256Schema,
   StableIdSchema,
   VirtualTimeSchema,
@@ -185,6 +188,7 @@ export class WorldKernel {
   private readonly state = new Map<string, StateRuntime>();
   private readonly subscriptions = new Map<string, readonly SubscriptionRuntime[]>();
   private readonly callbacks = new Map<string, readonly CallbackRuntime[]>();
+  private readonly toolOverrides: readonly ResolvedToolOverride[];
   private readonly budgets: WorldKernelBudgets;
   private readonly onToolCallBudgetExceeded: WorldKernelOptions["onToolCallBudgetExceeded"];
   private toolCalls = 0;
@@ -332,6 +336,20 @@ export class WorldKernel {
             : packageOrder;
         }),
       );
+    }
+
+    this.toolOverrides = ResolvedToolOverridesSchema.parse(options.toolOverrides ?? []);
+    for (const rule of this.toolOverrides) {
+      const runtime = this.operations.get(operationKey(rule.operation.packageId, rule.operation.operationId));
+      if (runtime === undefined) {
+        throw new TypeError(`Tool override ${rule.id} names an unavailable operation`);
+      }
+      if (rule.outcome.kind === "return" && !runtime.schemas.output(rule.outcome.value)) {
+        throw new TypeError(`Tool override ${rule.id} returns a value outside the declared output schema`);
+      }
+      if (rule.outcome.kind === "error" && !runtime.contract.declaredErrors.includes(rule.outcome.code)) {
+        throw new TypeError(`Tool override ${rule.id} uses undeclared error ${rule.outcome.code}`);
+      }
     }
   }
 
@@ -606,7 +624,100 @@ export class WorldKernel {
       };
     }
 
-    const fault = this.activeFault(transaction, runtime.tool.manifest, runtime.contract.id);
+    const rule = this.selectToolOverride(transaction, invocation, actor);
+    if (rule === undefined)
+      return this.executeSelectedOperation(transaction, invocation, runtime, actor, hash);
+    const toolOverride: ToolOverrideEvidence = {
+      id: rule.id,
+      scope: rule.scope,
+      outcome: rule.outcome.kind,
+      matchIndex: transaction.consumeToolOverride(rule.operation.packageId, rule.id),
+    };
+    try {
+      const result = transaction.withSavepoint(() =>
+        this.executeSelectedOperation(transaction, invocation, runtime, actor, hash, rule),
+      );
+      if (result.primary.kind !== "operation")
+        throw new TypeError("operation produced non-operation evidence");
+      return { value: result.value, primary: { ...result.primary, toolOverride } };
+    } catch (error) {
+      if (!(error instanceof ExecutionAbort)) throw error;
+      if (error.failedEvent !== undefined) {
+        transaction.appendEvidence({
+          kind: "event",
+          event: error.failedEvent.event,
+          phase: "failed",
+          payload: error.failedEvent.payload,
+          ...(error.failedEvent.handlerPackageId === undefined
+            ? {}
+            : { handlerPackageId: error.failedEvent.handlerPackageId }),
+          ...(error.failedEvent.subscriptionId === undefined
+            ? {}
+            : { subscriptionId: error.failedEvent.subscriptionId }),
+        });
+      }
+      const outcome: OperationOutcome = { status: "tool_error", error: error.envelope };
+      return {
+        value: outcome,
+        primary: {
+          kind: "operation",
+          invocation,
+          actorId: actor.actorId,
+          outcome,
+          idempotency: unrecordedIdempotency(invocation),
+          toolOverride,
+        },
+      };
+    }
+  }
+
+  private selectToolOverride(
+    transaction: WorldTransaction,
+    invocation: OperationInvocation,
+    actor: StoredActor,
+  ): ResolvedToolOverride | undefined {
+    for (let index = this.toolOverrides.length - 1; index >= 0; index -= 1) {
+      const rule = this.toolOverrides[index];
+      if (
+        rule === undefined ||
+        rule.operation.packageId !== invocation.operation.packageId ||
+        rule.operation.operationId !== invocation.operation.operationId ||
+        (rule.when?.actorId !== undefined && rule.when.actorId !== actor.actorId)
+      )
+        continue;
+      if (
+        !Object.entries(rule.when?.arguments ?? {}).every(([key, value]) => {
+          const argument = invocation.arguments[key];
+          return (
+            Object.hasOwn(invocation.arguments, key) &&
+            argument !== undefined &&
+            canonicalJson(argument) === canonicalJson(value)
+          );
+        })
+      )
+        continue;
+      if (
+        rule.times !== undefined &&
+        transaction.toolOverrideMatchCount(rule.operation.packageId, rule.id) >= rule.times
+      )
+        continue;
+      return rule;
+    }
+    return undefined;
+  }
+
+  private executeSelectedOperation(
+    transaction: WorldTransaction,
+    invocation: OperationInvocation,
+    runtime: OperationRuntime,
+    actor: StoredActor,
+    hash: string | undefined,
+    rule?: ResolvedToolOverride,
+  ): WorldTransactionResult<OperationOutcome> {
+    const fault =
+      rule === undefined || rule.outcome.kind === "original"
+        ? this.activeFault(transaction, runtime.tool.manifest, runtime.contract.id)
+        : undefined;
     if (fault?.timing === "before") {
       const outcome: OperationOutcome = {
         status: "tool_error",
@@ -647,10 +758,17 @@ export class WorldKernel {
     );
     let value: JsonValue;
     try {
-      const candidate: unknown = runtime.handler(
-        JsonObjectSchema.parse(JSON.parse(canonicalJson(invocation.arguments))),
-        context,
-      );
+      if (rule?.outcome.kind === "error") {
+        throw new ToolFailure({
+          code: rule.outcome.code,
+          message: rule.outcome.message,
+          ...(rule.outcome.retryable === undefined ? {} : { retryable: rule.outcome.retryable }),
+        });
+      }
+      const candidate: unknown =
+        rule?.outcome.kind === "return"
+          ? rule.outcome.value
+          : runtime.handler(JsonObjectSchema.parse(JSON.parse(canonicalJson(invocation.arguments))), context);
       if (isPromiseLike(candidate)) {
         throw new ExecutionAbort(
           worldError(

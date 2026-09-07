@@ -439,6 +439,9 @@ class LocalWorldController implements LocalWorld {
       store: this.store,
       packageLockHash: this.build.manifest.packageLockHash,
       tools: this.build.tools,
+      ...(this.materialized.toolOverrides === undefined
+        ? {}
+        : { toolOverrides: this.materialized.toolOverrides }),
       budgets: { maxToolCalls: this.materialized.drill.timeline.maxToolCalls },
     });
   }

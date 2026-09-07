@@ -3,6 +3,7 @@ import { createServer } from "node:http";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { FIREDRILL_ENGINE_VERSION } from "@firedrill/contracts";
+import type { ResolvedToolOverride } from "@firedrill/contracts";
 import { invokeCliWorldOperation } from "@firedrill/protocol-cli";
 import { defineTool } from "@firedrill/tool-sdk";
 import type { LoadedWorldBuild } from "@firedrill/world-build";
@@ -339,6 +340,58 @@ function withWorldIr(
 }
 
 describe("drill scenario materialization", () => {
+  it("passes resolved scenario and drill rules to the shared kernel in scope order", () => {
+    const operation = { packageId: "parcel-service", operationId: "parcels.release" };
+    const scenarioRule: ResolvedToolOverride = {
+      id: "scenario-result",
+      operation,
+      outcome: { kind: "return", value: { released: false } },
+      scope: { kind: "scenario", scenarioId: "ready-for-release" },
+    };
+    const drillRule: ResolvedToolOverride = {
+      id: "drill-result",
+      operation,
+      outcome: { kind: "return", value: { released: true } },
+      times: 1,
+      scope: { kind: "drill", drillId: "release-ready-parcel" },
+    };
+    const build = withWorldIr(loadedBuild(), (world) => ({
+      ...world,
+      scenarios: world.scenarios.map((scenario) => ({ ...scenario, toolOverrides: [scenarioRule] })),
+      drills: world.drills.map((drill) => ({ ...drill, toolOverrides: [drillRule] })),
+    }));
+    expect(materializeDrillScenario(build, "release-ready-parcel").toolOverrides).toEqual([
+      scenarioRule,
+      drillRule,
+    ]);
+    const created = createDrillWorld({
+      build,
+      drillId: "release-ready-parcel",
+      filePath: join(temporaryDirectory(), "world.sqlite"),
+      worldInstanceId: "world_override001",
+      correlationId: "corr_overridecreate001",
+    });
+    try {
+      const client = created.clients.get("dispatcher");
+      if (client === undefined) throw new Error("fixture has no dispatcher");
+      const first = client.invoke(operation, { parcelId: "parcel-a" }, { idempotencyKey: "first" });
+      expect(first.outcome).toEqual({ status: "ok", value: { released: true } });
+      expect(first.evidence.find((entry) => entry.kind === "operation")?.toolOverride?.scope).toEqual(
+        drillRule.scope,
+      );
+      const next = client.invoke(operation, { parcelId: "parcel-a" }, { idempotencyKey: "next" });
+      expect(next.outcome).toEqual({ status: "ok", value: { released: false } });
+      expect(next.evidence.find((entry) => entry.kind === "operation")?.toolOverride?.scope).toEqual(
+        scenarioRule.scope,
+      );
+      expect(created.store.readState("parcel-service", "parcels", "parcel-a")?.value).toEqual({
+        status: "ready",
+      });
+    } finally {
+      created.store.close();
+    }
+  });
+
   it("resolves state actions and actor bindings deterministically", () => {
     const build = loadedBuild();
     const first = materializeDrillScenario(build, "release-ready-parcel");

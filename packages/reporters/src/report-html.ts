@@ -42,11 +42,29 @@ function checkRows(checks: readonly AssertionResult[], evidence: readonly Eviden
     .join("")}</div>`;
 }
 
+function overrideDetail(entry: Extract<EvidenceEntry, { kind: "operation" }>): string {
+  const rule = entry.toolOverride;
+  if (rule === undefined) return "";
+  const source =
+    rule.scope.kind === "scenario"
+      ? `scenario ${rule.scope.scenarioId}`
+      : rule.scope.kind === "drill" || rule.scope.kind === "run"
+        ? `${rule.scope.kind} ${rule.scope.drillId}`
+        : "world baseline";
+  const action =
+    rule.outcome === "original"
+      ? "Used the tool's normal behavior"
+      : rule.outcome === "error"
+        ? "Returned a test error without running the tool"
+        : "Returned a test value without running the tool";
+  return `<p><strong>Override: ${escapeHtml(rule.id)}</strong> · ${escapeHtml(source)} · match ${rule.matchIndex}<br>${escapeHtml(action)}.</p>`;
+}
+
 function operations(evidence: readonly EvidenceEntry[]): string {
   const calls = evidence.filter((entry) => entry.kind === "operation");
   if (calls.length === 0)
     return '<p class="empty">No tool calls were recorded. This alone does not prove the agent was connected.</p>';
-  return `<div class="list">${calls.map((entry, index) => `<details class="item"><summary><span class="call-number">${index + 1}.</span><strong>${escapeHtml(`${entry.invocation.operation.packageId}.${entry.invocation.operation.operationId}`)}</strong><span class="tag ${entry.outcome.status === "ok" ? "passed" : "failed"}">${escapeHtml(entry.outcome.status === "ok" ? "Success" : label(entry.outcome.status))}</span></summary><p class="muted">Actor ${escapeHtml(entry.actorId ?? "Not recorded")} · <a href="#event-${entry.sequence}">Event ${entry.sequence}</a></p><div class="columns"><div><h3>Arguments sent</h3><pre>${pretty(entry.invocation.arguments)}</pre></div><div><h3>Response received</h3><pre>${pretty(entry.outcome)}</pre></div></div></details>`).join("")}</div>`;
+  return `<div class="list">${calls.map((entry, index) => `<details class="item"><summary><span class="call-number">${index + 1}.</span><strong>${escapeHtml(`${entry.invocation.operation.packageId}.${entry.invocation.operation.operationId}`)}</strong><span class="tag ${entry.outcome.status === "ok" ? "passed" : "failed"}">${escapeHtml(entry.outcome.status === "ok" ? "Success" : label(entry.outcome.status))}</span></summary><p class="muted">Actor ${escapeHtml(entry.actorId ?? "Not recorded")} · <a href="#event-${entry.sequence}">Event ${entry.sequence}</a></p>${overrideDetail(entry)}<div class="columns"><div><h3>Arguments sent</h3><pre>${pretty(entry.invocation.arguments)}</pre></div><div><h3>Response received</h3><pre>${pretty(entry.outcome)}</pre></div></div></details>`).join("")}</div>`;
 }
 
 function changes(evidence: readonly EvidenceEntry[]): string {

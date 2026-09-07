@@ -3,6 +3,7 @@ import { rmSync } from "node:fs";
 import {
   ActorBindingIdSchema,
   compareStableStrings,
+  mergeToolOverrides,
   CorrelationIdSchema,
   SeedSchema,
   StableIdSchema,
@@ -21,6 +22,7 @@ import type {
   StableId,
   VirtualTime,
   WorldInstanceId,
+  ResolvedToolOverride,
 } from "@firedrill/contracts";
 import type { LoadedWorldBuild } from "@firedrill/world-build";
 import { BoundWorldClient, WorldKernel } from "@firedrill/world-kernel";
@@ -68,6 +70,7 @@ export interface MaterializedDrillScenario {
   readonly state: readonly InitialStateRecord[];
   readonly activeFaults: readonly { readonly packageId: PackageId; readonly faultId: StableId }[];
   readonly initialEvents: readonly MaterializedInitialEvent[];
+  readonly toolOverrides?: readonly ResolvedToolOverride[];
 }
 
 export interface CreateDrillWorldOptions {
@@ -175,6 +178,11 @@ export function materializeDrillScenario(
     actors,
     state: finalState(scenario.state),
     activeFaults: scenario.faults,
+    ...(scenario.toolOverrides === undefined && drill.toolOverrides === undefined
+      ? {}
+      : {
+          toolOverrides: mergeToolOverrides(scenario.toolOverrides, drill.toolOverrides),
+        }),
     initialEvents: scenario.initialEvents.map((event) => {
       const bindingId = bindings.get(event.actorId);
       if (bindingId === undefined) {
@@ -232,6 +240,7 @@ export function createDrillWorld(input: CreateDrillWorldOptions): CreatedDrillWo
       store,
       packageLockHash: input.build.manifest.packageLockHash,
       tools: input.build.tools,
+      ...(materialized.toolOverrides === undefined ? {} : { toolOverrides: materialized.toolOverrides }),
       ...(input.maxToolCalls === undefined ? {} : { budgets: { maxToolCalls: input.maxToolCalls } }),
       ...(input.onToolCallBudgetExceeded === undefined
         ? {}

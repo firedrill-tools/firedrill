@@ -8,6 +8,7 @@ import {
 } from "./identifiers.js";
 import { JsonObjectSchema } from "./json.js";
 import { OperationRefSchema } from "./identifiers.js";
+import { ResolvedToolOverridesSchema, ToolOverridesSchema } from "./tool-overrides.js";
 
 export const ActorDefinitionSchema = z
   .object({
@@ -77,6 +78,7 @@ const ScenarioBodyShape = {
   state: z.array(StateSetupSchema).default([]),
   faults: z.array(FaultActivationSchema).default([]),
   initialEvents: z.array(InitialEventSchema).default([]),
+  toolOverrides: ResolvedToolOverridesSchema.optional(),
 };
 
 interface ScenarioActorContent {
@@ -111,6 +113,15 @@ function scenarioFaultIssues(scenario: { readonly faults: readonly FaultActivati
 
 export const InlineScenarioDefinitionSchema = z
   .object(ScenarioBodyShape)
+  .strict()
+  .superRefine((scenario, context) => {
+    for (const issue of scenarioActorIssues(scenario)) context.addIssue({ code: "custom", ...issue });
+    for (const issue of scenarioFaultIssues(scenario)) context.addIssue({ code: "custom", ...issue });
+  });
+
+/** Repository inline setup has no compiler-owned override provenance. */
+export const AuthoredInlineScenarioDefinitionSchema = z
+  .object({ ...ScenarioBodyShape, toolOverrides: ToolOverridesSchema.optional() })
   .strict()
   .superRefine((scenario, context) => {
     for (const issue of scenarioActorIssues(scenario)) context.addIssue({ code: "custom", ...issue });

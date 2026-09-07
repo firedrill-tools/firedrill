@@ -1,6 +1,7 @@
 import { resolve } from "node:path";
 import { compileWorld } from "@firedrill/compiler";
 import type { Diagnostic, Sha256 } from "@firedrill/contracts";
+import { mergeToolOverrides } from "@firedrill/contracts";
 import { FiredrillProjectError } from "@firedrill/sdk";
 import type { SimulationProject } from "./contracts.js";
 import { SimulationProjectSchema } from "./contracts.js";
@@ -65,6 +66,7 @@ export async function loadSimulationProject(
       state: scenario.state,
       faults: scenario.faults,
       initialEvents: scenario.initialEvents,
+      ...(scenario.toolOverrides === undefined ? {} : { toolOverrides: scenario.toolOverrides }),
       ...(source.get(`scenario:${scenario.id}`) === undefined
         ? {}
         : { source: source.get(`scenario:${scenario.id}`) }),
@@ -104,41 +106,47 @@ export async function loadSimulationProject(
         ? {}
         : { source: source.get(`target:${target.id}`) }),
     })),
-    drills: compiled.build.worldIr.drills.map((drill) => ({
-      id: drill.id,
-      ...(drill.title === undefined ? {} : { title: drill.title }),
-      tags: [...drill.tags],
-      targetId: drill.targetId,
-      ...(drill.scenarioId === undefined ? {} : { scenarioId: drill.scenarioId }),
-      inlineScenario: drill.inlineScenario !== undefined,
-      trials: drill.trials,
-      timeline: {
-        interactions: drill.timeline.interactions.length,
-        workloads: drill.timeline.workloads.length,
-        horizonUs: drill.timeline.horizonUs,
-        maxToolCalls: drill.timeline.maxToolCalls,
-        maxEvents: drill.timeline.maxEvents,
-      },
-      execution: drill.timeline,
-      assertions: drill.assertions.length + drill.timeline.invariants.length,
-      expectations: [
-        ...drill.timeline.invariants.map((assertion) => ({
-          id: assertion.id,
-          kind: assertion.kind,
-          gate: assertion.gate,
-          checkpoint: "invariant" as const,
-          definition: assertion,
-        })),
-        ...drill.assertions.map((assertion) => ({
-          id: assertion.id,
-          kind: assertion.kind,
-          gate: assertion.gate,
-          checkpoint: "final" as const,
-          definition: assertion,
-        })),
-      ],
-      ...(source.get(`drill:${drill.id}`) === undefined ? {} : { source: source.get(`drill:${drill.id}`) }),
-    })),
+    drills: compiled.build.worldIr.drills.map((drill) => {
+      const scenario =
+        drill.inlineScenario ?? compiled.build.worldIr.scenarios.find((item) => item.id === drill.scenarioId);
+      const toolOverrides = mergeToolOverrides(scenario?.toolOverrides, drill.toolOverrides);
+      return {
+        id: drill.id,
+        ...(drill.title === undefined ? {} : { title: drill.title }),
+        tags: [...drill.tags],
+        targetId: drill.targetId,
+        ...(drill.scenarioId === undefined ? {} : { scenarioId: drill.scenarioId }),
+        inlineScenario: drill.inlineScenario !== undefined,
+        trials: drill.trials,
+        timeline: {
+          interactions: drill.timeline.interactions.length,
+          workloads: drill.timeline.workloads.length,
+          horizonUs: drill.timeline.horizonUs,
+          maxToolCalls: drill.timeline.maxToolCalls,
+          maxEvents: drill.timeline.maxEvents,
+        },
+        execution: drill.timeline,
+        ...(toolOverrides.length === 0 ? {} : { toolOverrides }),
+        assertions: drill.assertions.length + drill.timeline.invariants.length,
+        expectations: [
+          ...drill.timeline.invariants.map((assertion) => ({
+            id: assertion.id,
+            kind: assertion.kind,
+            gate: assertion.gate,
+            checkpoint: "invariant" as const,
+            definition: assertion,
+          })),
+          ...drill.assertions.map((assertion) => ({
+            id: assertion.id,
+            kind: assertion.kind,
+            gate: assertion.gate,
+            checkpoint: "final" as const,
+            definition: assertion,
+          })),
+        ],
+        ...(source.get(`drill:${drill.id}`) === undefined ? {} : { source: source.get(`drill:${drill.id}`) }),
+      };
+    }),
     suites: compiled.build.worldIr.suites.map((suite) => ({
       id: suite.id,
       ...(suite.title === undefined ? {} : { title: suite.title }),

@@ -3,6 +3,7 @@ import { AssertionDefinitionSchema } from "./assertions.js";
 import { ActorIdSchema, StableIdSchema, VirtualTimeSchema } from "./identifiers.js";
 import { compareStableStrings, JsonValueSchema } from "./json.js";
 import { InlineScenarioDefinitionSchema } from "./scenario.js";
+import { ResolvedToolOverridesSchema } from "./tool-overrides.js";
 
 export const TrialPolicySchema = z
   .object({
@@ -156,6 +157,7 @@ export const DrillDefinitionSchema = z
     targetId: StableIdSchema,
     scenarioId: StableIdSchema.optional(),
     inlineScenario: InlineScenarioDefinitionSchema.optional(),
+    toolOverrides: ResolvedToolOverridesSchema.optional(),
     timeline: DrillTimelineSchema,
     trials: TrialPolicySchema.default({ count: 1, classification: "contract" }),
     assertions: z.array(AssertionDefinitionSchema).min(1),

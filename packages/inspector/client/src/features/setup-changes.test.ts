@@ -20,6 +20,39 @@ function event(label: string): SimulationSetup["initialEvents"][number] {
 }
 
 describe("effective starting setup differences", () => {
+  it("counts override replacements, removals and priority changes without mutating setup", () => {
+    const first = {
+      id: "first",
+      operation: { packageId: "archive", operationId: "lookup" },
+      outcome: { kind: "return" as const, value: null },
+      scope: { kind: "baseline" as const },
+    };
+    const second = { ...first, id: "second" };
+    const baseline = setup({ toolOverrides: [first, second] });
+    const before = JSON.stringify(baseline);
+    const reordered = describeSetupChanges(baseline, setup({ toolOverrides: [second, first] }));
+    expect(reordered).toMatchObject({
+      changedToolOverrides: [],
+      removedToolOverrides: [],
+      toolOverrideOrderChanged: true,
+      hasChanges: true,
+    });
+    const changed = {
+      ...first,
+      outcome: { kind: "original" as const },
+      scope: { kind: "scenario" as const, scenarioId: "overnight" },
+    };
+    expect(describeSetupChanges(baseline, setup({ toolOverrides: [changed] }))).toMatchObject({
+      changedToolOverrides: [changed],
+      removedToolOverrides: [second],
+      toolOverrideOrderChanged: false,
+      hasChanges: true,
+    });
+    expect(describeSetupChanges(baseline, baseline).hasChanges).toBe(false);
+    expect(describeSetupChanges(setup(), setup({ toolOverrides: [] })).hasChanges).toBe(false);
+    expect(JSON.stringify(baseline)).toBe(before);
+  });
+
   it("reports no changes for an unchanged baseline without mutating inputs", () => {
     const baseline = setup({
       actors: [{ id: "operator", grants: [], attributes: { zone: "west" } }],
@@ -37,6 +70,9 @@ describe("effective starting setup differences", () => {
       addedInitialEvents: [],
       removedInitialEvents: [],
       eventOrderChanged: false,
+      changedToolOverrides: [],
+      removedToolOverrides: [],
+      toolOverrideOrderChanged: false,
       clockChanged: false,
       hasChanges: false,
     });

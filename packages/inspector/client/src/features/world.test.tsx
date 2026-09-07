@@ -180,6 +180,34 @@ describe("scenario starting setup", () => {
     expect(markup).not.toContain('data-scroll-section="changes"');
     expect(markup).not.toContain("Changes from world baseline");
     expect(markup).not.toContain("Uses the world baseline unchanged");
+    expect(markup).not.toContain('data-scroll-section="tool-overrides"');
+  });
+
+  it("shows inherited and changed Tool overrides without hiding the setup or inventing state changes", () => {
+    const inherited = {
+      id: "cached-lookup",
+      operation: { packageId: "archive", operationId: "lookup" },
+      outcome: { kind: "return" as const, value: { found: false } },
+      scope: { kind: "baseline" as const },
+    };
+    const changed = {
+      ...inherited,
+      id: "restore-lookup",
+      outcome: { kind: "original" as const },
+      scope: { kind: "scenario" as const, scenarioId: "overnight" },
+    };
+    const baseline = setup({ toolOverrides: [inherited] });
+    const scenario = setup({ toolOverrides: [inherited, changed] });
+    const markup = renderToStaticMarkup(<WorldView project={project(baseline, scenario)} page="scenarios" />);
+    expect(text(section(markup, "changes"))).toContain("1 Tool override added or changed.");
+    expect(text(section(markup, "changes"))).not.toContain("starting record");
+    const overrides = section(markup, "tool-overrides");
+    expect(overrides).toContain("cached-lookup");
+    expect(overrides).toContain("restore-lookup");
+    expect(overrides).toContain("Original Tool behavior");
+    expect(overrides).toContain("World baseline");
+    expect(overrides).toContain("Scenario: overnight");
+    expect(markup.match(/data-scroll-section="tool-overrides"/g)).toHaveLength(1);
   });
 
   it("shows the exact description on the identities page and in the selected scenario setup", () => {

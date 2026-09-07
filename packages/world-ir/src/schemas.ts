@@ -23,6 +23,7 @@ import type {
   InlineScenarioDefinition,
   OperationRef,
   ToolPackageManifest,
+  ResolvedToolOverride,
 } from "@firedrill/contracts";
 import { z } from "zod";
 import { semanticHash } from "./hash.js";
@@ -148,6 +149,13 @@ function validateScenario(
   path: Array<string | number>,
   context: z.RefinementCtx,
 ): void {
+  validateToolOverrides(
+    scenario.toolOverrides,
+    scenario.actors.map((actor) => actor.id),
+    indexes,
+    path,
+    context,
+  );
   for (const [actorIndex, actor] of scenario.actors.entries()) {
     for (const [grantIndex, grant] of actor.grants.entries()) {
       if (!indexes.operations.has(operationKey(grant))) {
@@ -183,6 +191,41 @@ function validateScenario(
         code: "custom",
         path: [...path, "initialEvents", eventIndex],
         message: `scenario references unknown event ${event.event.packageId}.${event.event.eventId}`,
+      });
+    }
+  }
+}
+
+function validateToolOverrides(
+  rules: readonly ResolvedToolOverride[] | undefined,
+  actors: readonly string[],
+  indexes: ToolIndexes,
+  path: Array<string | number>,
+  context: z.RefinementCtx,
+): void {
+  for (const [index, rule] of (rules ?? []).entries()) {
+    const rulePath = [...path, "toolOverrides", index];
+    const operation = indexes.packages
+      .get(rule.operation.packageId)
+      ?.operations.find((candidate) => candidate.id === rule.operation.operationId);
+    if (operation === undefined) {
+      context.addIssue({
+        code: "custom",
+        path: [...rulePath, "operation"],
+        message: `Tool override references unknown operation ${rule.operation.packageId}.${rule.operation.operationId}`,
+      });
+    } else if (rule.outcome.kind === "error" && !operation.declaredErrors.includes(rule.outcome.code)) {
+      context.addIssue({
+        code: "custom",
+        path: [...rulePath, "outcome", "code"],
+        message: `Tool override error ${rule.outcome.code} is not declared by operation ${operation.id}`,
+      });
+    }
+    if (rule.when?.actorId !== undefined && !actors.includes(rule.when.actorId)) {
+      context.addIssue({
+        code: "custom",
+        path: [...rulePath, "when", "actorId"],
+        message: `Tool override references unknown actor ${rule.when.actorId}`,
       });
     }
   }
@@ -297,6 +340,13 @@ export const CanonicalWorldIrSchema = z
           message: `drill references unknown scenario ${drill.scenarioId}`,
         });
       } else if (scenario !== undefined) {
+        validateToolOverrides(
+          drill.toolOverrides,
+          scenario.actors.map((actor) => actor.id),
+          indexes,
+          ["drills", drillIndex],
+          context,
+        );
         const actors = new Set(scenario.actors.map((actor) => actor.id));
         for (const [interactionIndex, interaction] of drill.timeline.interactions.entries()) {
           if (actors.has(interaction.actorId)) continue;

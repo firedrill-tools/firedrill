@@ -20,6 +20,7 @@ import {
   TargetDescriptorSchema,
   canonicalJson,
   compareStableStrings,
+  mergeToolOverrides,
 } from "@firedrill/contracts";
 import type {
   Diagnostic,
@@ -183,6 +184,7 @@ function normalizeRunSetup(input: RunWorldSetup): RunWorldSetup {
               ),
             ),
             initialEvents: scenario.initialEvents,
+            ...(scenario.toolOverrides === undefined ? {} : { toolOverrides: scenario.toolOverrides }),
           },
         }),
     tools: {
@@ -241,6 +243,7 @@ function resolvedRunSetup(
 function applyRunScenarioOverlay(
   base: InlineScenarioDefinition,
   overlay: RunScenarioOverlay,
+  drillId: string,
 ): InlineScenarioDefinition {
   const activatedFaults = new Set(overlay.faults.map((fault) => `${fault.packageId}\u0000${fault.faultId}`));
   const resolved = resolveScenario(
@@ -256,7 +259,9 @@ function applyRunScenarioOverlay(
       state: overlay.state,
       faults: overlay.faults,
       initialEvents: overlay.initialEvents,
+      ...(overlay.toolOverrides === undefined ? {} : { toolOverrides: overlay.toolOverrides }),
     },
+    { kind: "run", drillId },
   );
   return InlineScenarioDefinitionSchema.parse({
     virtualTimeUs: resolved.virtualTimeUs,
@@ -264,6 +269,7 @@ function applyRunScenarioOverlay(
     state: resolved.state,
     faults: resolved.faults,
     initialEvents: resolved.initialEvents,
+    ...(resolved.toolOverrides === undefined ? {} : { toolOverrides: resolved.toolOverrides }),
   });
 }
 
@@ -298,7 +304,7 @@ function issueDocument(
   targets: readonly TypedResource<TargetSource>[],
 ): { readonly document: SourceDocument; readonly localPath: readonly (string | number)[] } {
   const [group, index, ...rest] = issuePath;
-  if (group === "baseline") return { document: world.document, localPath: rest as (string | number)[] };
+  if (group === "baseline") return { document: world.document, localPath: issuePath.slice(1) };
   if (group === "tools" && typeof index === "number") {
     return {
       document: tools[index]?.document ?? fallback,
@@ -371,6 +377,16 @@ function issueDocument(
           );
           if (baselineIndex >= 0) {
             return { document: world.document, localPath: ["faults", baselineIndex, ...tail] };
+          }
+        }
+      }
+      if (field === "toolOverrides" && typeof itemIndex === "number") {
+        const rule = resolved.toolOverrides?.[itemIndex];
+        if (rule !== undefined) {
+          const owner = rule.scope.kind === "baseline" ? world : source;
+          const ownerIndex = owner.value.toolOverrides?.findIndex((candidate) => candidate.id === rule.id);
+          if (ownerIndex !== undefined && ownerIndex >= 0) {
+            return { document: owner.document, localPath: ["toolOverrides", ownerIndex, ...tail] };
           }
         }
       }
@@ -931,11 +947,23 @@ export async function compileWorld(options: CompileWorldOptions): Promise<Compil
       const {
         scenarioId: _scenarioId,
         inlineScenario: _inlineScenario,
+        toolOverrides: _toolOverrides,
         ...drillWithoutScenario
       } = selectedDrill;
       const derivedDrill = {
         ...drillWithoutScenario,
-        inlineScenario: applyRunScenarioOverlay(baseScenario, runSetup.setup.scenario),
+        inlineScenario: applyRunScenarioOverlay(
+          {
+            ...baseScenario,
+            ...(baseScenario.toolOverrides === undefined && selectedDrill.toolOverrides === undefined
+              ? {}
+              : {
+                  toolOverrides: mergeToolOverrides(baseScenario.toolOverrides, selectedDrill.toolOverrides),
+                }),
+          },
+          runSetup.setup.scenario,
+          selectedDrill.id,
+        ),
       };
       resolvedDrills = resolvedDrills.map((drill) => (drill.id === selectedDrill.id ? derivedDrill : drill));
     }

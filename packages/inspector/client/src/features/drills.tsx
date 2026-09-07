@@ -14,11 +14,12 @@ import {
   SearchField,
   Spinner,
 } from "../components/primitives";
-import { SourceViewer } from "../components/source-viewer";
 import { ScrollArea } from "../components/scroll-area";
+import { SourceViewer } from "../components/source-viewer";
 import { plural, titleFromId, virtualTime } from "../format";
 import type { SimulationDrill, SimulationProject, SimulationSuite, StartSimulationRun } from "../types";
 import { describeExpectation } from "./drill-expectations";
+import { ToolOverrides } from "./tool-overrides";
 
 type Selection =
   | { readonly kind: "drill"; readonly value: SimulationDrill }
@@ -324,6 +325,7 @@ function DrillDetails({
           </ol>
         )}
       </section>
+      <ToolOverrides rules={drill.toolOverrides} />
       <section className="fd-definition__section" data-scroll-section="settings">
         <details className="fd-drill-disclosure">
           <summary>Execution settings</summary>
@@ -562,6 +564,9 @@ export function DrillsView({
                 : [
                     { id: "task", label: "Task" },
                     { id: "checks", label: "Checks" },
+                    ...(selected?.kind === "drill" && (selected.value.toolOverrides?.length ?? 0) > 0
+                      ? [{ id: "tool-overrides", label: "Tool overrides" }]
+                      : []),
                     { id: "settings", label: "Execution settings" },
                   ]
             }

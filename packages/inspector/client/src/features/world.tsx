@@ -4,13 +4,14 @@ import { ActorIdentity } from "../components/actor-identity";
 import { DataViewer } from "../components/data-viewer";
 import { DetailsPanel, DetailsTrigger } from "../components/details-panel";
 import { PageIntro } from "../components/page-intro";
-import { Button, EmptyState, KeyValue, RowButton, SearchField } from "../components/primitives";
+import { EmptyState, KeyValue, RowButton, SearchField } from "../components/primitives";
 import { ScrollArea } from "../components/scroll-area";
 import { SourceViewer } from "../components/source-viewer";
 import { json, plural, titleFromId, virtualTime } from "../format";
 import type { SimulationProject, SimulationScenario, SimulationSetup, SimulationTool } from "../types";
 import { startingRecords } from "./catalog-data";
 import { describeSetupChanges } from "./setup-changes";
+import { ToolOverrides } from "./tool-overrides";
 import "./catalog-world.css";
 
 type WorldSelection = "setup" | `scenario:${string}` | `tool:${string}`;
@@ -472,6 +473,15 @@ function ScenarioChanges({
             <li>{plural(changes.removedInitialEvents.length, "scheduled event")} removed.</li>
           ) : null}
           {changes.eventOrderChanged ? <li>The setup order of inherited scheduled events changes.</li> : null}
+          {changes.changedToolOverrides.length > 0 ? (
+            <li>{plural(changes.changedToolOverrides.length, "Tool override")} added or changed.</li>
+          ) : null}
+          {changes.removedToolOverrides.length > 0 ? (
+            <li>{plural(changes.removedToolOverrides.length, "Tool override")} removed.</li>
+          ) : null}
+          {changes.toolOverrideOrderChanged ? (
+            <li>The priority order of inherited Tool overrides changes.</li>
+          ) : null}
           {changes.clockChanged ? (
             <li>
               Starting clock: {virtualTime(baseline.virtualTimeUs)} → {virtualTime(setup.virtualTimeUs)}.
@@ -498,6 +508,7 @@ function SetupMain({
     { id: "data", label: "Starting data" },
     { id: "failures", label: "Failures" },
     { id: "events", label: "Events" },
+    ...((setup.toolOverrides?.length ?? 0) === 0 ? [] : [{ id: "tool-overrides", label: "Tool overrides" }]),
     { id: "permissions", label: "Permissions" },
   ];
   return (
@@ -524,6 +535,7 @@ function SetupMain({
           <StateTable setup={{ ...setup, state: records }} />
         </section>
         <WorldWork setup={setup} />
+        <ToolOverrides rules={setup.toolOverrides} />
         <section className="fd-definition__section" data-scroll-section="permissions">
           <div className="fd-section-heading">
             <div>

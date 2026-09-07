@@ -15,3 +15,4 @@ export * from "./schemas.js";
 export * from "./setup.js";
 export * from "./suite.js";
 export * from "./target.js";
+export * from "./tool-overrides.js";

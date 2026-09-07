@@ -45,6 +45,8 @@ Select the target that matches how the agent already runs:
 
 Read [references/bindings.md](references/bindings.md) before wiring the seam. Never give an out-of-process target a direct binding. Never point a local HTTP target outside loopback unless the user explicitly authorizes the credential exposure.
 
+For imported functions or SDK methods, a separate test may install `mockTool` from `@firedrill/sdk/testing` with the existing runner's module mocks or spies. Use an external target with a direct binding, preserve input/result/error signatures, and install mocks before loading the agent as required by the runner. Keep shared mocked modules out of concurrent drills: use sequential tests and `concurrency: 1` within each worker. Parallel trials require isolated processes or module instances. This does not intercept private calls or opaque subprocess internals. Read [references/mocking.md](references/mocking.md) before adding a function mock or scoped response rule.
+
 If a target protocol conflicts with the product interface—for example, a command target needs one JSON stdout value but the product CLI streams human output—prefer a separate thin target wrapper around the existing callable seam. Do not put target-specific transport or output branches into production agent logic. If no safe wrapper or existing configuration seam is possible, stop and report the unsupported boundary.
 
 Module and external targets may execute concurrently in one process. Their adapters must be reentrant: never replace `process.stdout.write`, `process.stderr.write`, `console` methods, `process.env`, the working directory, or another process-global registry during an invocation. Inject a logger/output sink into the existing callable seam, or use a command target when the agent cannot avoid process-global output. A single passing trial does not prove a process-global adapter is safe.
@@ -119,7 +121,7 @@ For a reusable Tool, add a `<tool-id>-conformance.suite.yaml`, then run `firedri
 - Never edit an installed Tool package. Select it in `firedrill.json`; contribute changes from its owned source repository.
 - Assert on state, calls, events, callbacks, time, and errors. Treat response text as supporting evidence, not ground truth.
 - Keep fixtures deterministic. Never make network calls from Tool behavior.
-- In runner-owned tests, use the public `runDrills({ drill, setup })` surface for per-test starting state, declared faults, installed Tool selection, traceable behavior replacement, and binding aliases. Do not mutate a generated SQLite world behind the runner or use anonymous behavior closures that cannot be hashed and reported.
+- In runner-owned tests, use `runDrills({ drill, setup })` for per-test state, faults, Tool selection, traceable behavior replacement and binding aliases. Use `toolOverrides` at world/scenario/drill or `setup.scenario` for declared return/error/original rules with argument/actor matching and optional `times`. Production agent code stays unchanged. Test-only function mappers may translate native signatures into world calls; do not mutate generated SQLite behind the runner or substitute unrecorded behavior closures for canonical Tool source.
 - Never read, copy, move, or commit secrets. Map only explicitly required host environment variables.
 - Keep model/provider credentials owned by the customer's agent process. Firedrill bindings carry only synthetic-world connection material.
 - Do not weaken production behavior, bypass authorization, or add per-action test branches to make a drill pass.

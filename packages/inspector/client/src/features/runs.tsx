@@ -20,7 +20,6 @@ import { inspectorApi } from "../api";
 import { DataViewer } from "../components/data-viewer";
 import { DetailsPanel, DetailsTrigger } from "../components/details-panel";
 import { PageIntro } from "../components/page-intro";
-import { ScrollArea } from "../components/scroll-area";
 import {
   Button,
   ConfirmDialog,
@@ -33,6 +32,7 @@ import {
   Spinner,
   Status,
 } from "../components/primitives";
+import { ScrollArea } from "../components/scroll-area";
 import { compactId, evidenceLabel, plural, titleFromId, virtualTime } from "../format";
 import { evidenceSearchText, matchesSearch, preferredEvidenceSequence, runSearchText } from "../search";
 import type {
@@ -48,6 +48,7 @@ import type {
   StateNamespace,
 } from "../types";
 import "./runs.css";
+import { overrideOutcomeLabel, overrideScopeLabel } from "./tool-overrides";
 
 type RunResult = NonNullable<SimulationRunDetail["result"]>;
 type CheckResult = RunResult["assertionResults"][number];
@@ -234,6 +235,16 @@ function EventInspector({ entry }: { readonly entry: EvidenceEntry | undefined }
             <dl>
               <KeyValue label="Outcome">{titleFromId(entry.outcome.status)}</KeyValue>
               {entry.actorId === undefined ? null : <KeyValue label="Actor">{entry.actorId}</KeyValue>}
+              {entry.toolOverride === undefined ? null : (
+                <>
+                  <KeyValue label="Override rule">{entry.toolOverride.id}</KeyValue>
+                  <KeyValue label="Defined in">{overrideScopeLabel(entry.toolOverride.scope)}</KeyValue>
+                  <KeyValue label="Override behavior">
+                    {overrideOutcomeLabel(entry.toolOverride.outcome)}
+                  </KeyValue>
+                  <KeyValue label="Matching call">{entry.toolOverride.matchIndex}</KeyValue>
+                </>
+              )}
             </dl>
             <div className="fd-result-actions">
               <DataViewer title="Tool arguments" value={entry.invocation.arguments} label="Arguments" />
@@ -975,6 +986,9 @@ function RunWorkspace({
                         <strong>{evidenceLabel(entry)}</strong>
                         <small>
                           {entry.kind === "operation" ? `${titleFromId(entry.outcome.status)} · ` : ""}
+                          {entry.kind === "operation" && entry.toolOverride !== undefined
+                            ? `Override ${entry.toolOverride.id} · `
+                            : ""}
                           {virtualTime(entry.virtualTimeUs)}
                         </small>
                       </span>
