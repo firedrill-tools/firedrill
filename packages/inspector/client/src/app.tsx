@@ -5,8 +5,16 @@ import { Button, IconButton, PageLoader } from "./components/primitives";
 import { AppShell } from "./components/shell";
 import { CatalogView } from "./features/catalog";
 import { DrillsView } from "./features/drills";
-import { RunsView } from "./features/runs";
+import { type RunHistoryControls, RunsView } from "./features/runs";
 import { WorldView } from "./features/world";
+import {
+  navigateInspector,
+  readInspectorLocation,
+  readRunSelection,
+  readScenarioId,
+  runHref,
+  scenarioHref,
+} from "./navigation";
 import type {
   Notice,
   Route,
@@ -134,18 +142,6 @@ export function createRunListGuard() {
   };
 }
 
-function routeFromPath(path: string): Route {
-  return path === "/drills" ||
-    path === "/runs" ||
-    path === "/schema" ||
-    path === "/data" ||
-    path === "/personas" ||
-    path === "/scenarios" ||
-    path === "/tools"
-    ? path
-    : "/world";
-}
-
 function Notices({
   notices,
   onDismiss,
@@ -179,7 +175,8 @@ function Notices({
 }
 
 export function App() {
-  const [route, setRoute] = useState<Route>(() => routeFromPath(window.location.pathname));
+  const [location, setLocation] = useState(() => readInspectorLocation(window.location));
+  const route = location.route;
   const [project, setProject] = useState<SimulationProject>();
   const [history, setHistory] = useState<RunHistory>(emptyRunHistory);
   const [requests, setRequests] = useState<readonly SimulationRunRequest[]>([]);
@@ -278,11 +275,12 @@ export function App() {
   }, [readRuntime, runListGuard]);
 
   useEffect(() => {
-    if (window.location.pathname !== route) window.history.replaceState({}, "", route);
-  }, [route]);
+    if (window.location.pathname !== location.route)
+      window.history.replaceState({}, "", `${location.route}${location.search}`);
+  }, [location]);
 
   useEffect(() => {
-    const onPopState = () => setRoute(routeFromPath(window.location.pathname));
+    const onPopState = () => setLocation(readInspectorLocation(window.location));
     window.addEventListener("popstate", onPopState);
     return () => window.removeEventListener("popstate", onPopState);
   }, []);
@@ -294,10 +292,16 @@ export function App() {
     return () => window.clearInterval(interval);
   }, [readRuntime]);
 
+  const visit = (href: string, replace = false) => {
+    setLocation(navigateInspector(href, window, replace));
+  };
+
   const navigate = (next: Route) => {
-    if (next === route) return;
-    window.history.pushState({}, "", next);
-    setRoute(next);
+    if (next !== route) visit(next);
+  };
+  const openRun = (runId: string) => visit(runHref(runId));
+  const selectScenario = (scenarioId: string | undefined) => {
+    if (route === "/world" || route === "/scenarios") visit(scenarioHref(route, scenarioId), true);
   };
 
   const refresh = async () => {
@@ -407,6 +411,17 @@ export function App() {
     );
   }
 
+  const historyControls: RunHistoryControls = {
+    hasMore: history.nextCursor !== undefined,
+    loadingOlder,
+    refreshing,
+    olderError,
+    latestError,
+    onLoadOlder: () => void loadOlderRuns(),
+    onRetryLatest: () => void readRuntime().catch(() => undefined),
+  };
+  const scenarioId = readScenarioId(location.search);
+
   return (
     <>
       <AppShell
@@ -416,9 +431,29 @@ export function App() {
         onNavigate={navigate}
         onRefresh={() => void refresh()}
       >
-        {route === "/world" ? <WorldView project={project} /> : null}
+        {route === "/world" ? (
+          <WorldView
+            project={project}
+            runs={history.runs}
+            runHistory={historyControls}
+            unavailableRunCount={history.unavailable.length}
+            onOpenRun={openRun}
+            {...(scenarioId === undefined ? {} : { scenarioId })}
+            onSelectScenario={selectScenario}
+          />
+        ) : null}
         {route === "/scenarios" || route === "/tools" ? (
-          <WorldView key={route} project={project} page={route === "/tools" ? "tools" : "scenarios"} />
+          <WorldView
+            key={route}
+            project={project}
+            page={route === "/tools" ? "tools" : "scenarios"}
+            runs={history.runs}
+            runHistory={historyControls}
+            unavailableRunCount={history.unavailable.length}
+            onOpenRun={openRun}
+            {...(scenarioId === undefined ? {} : { scenarioId })}
+            onSelectScenario={selectScenario}
+          />
         ) : null}
         {route === "/schema" || route === "/data" || route === "/personas" ? (
           <CatalogView
@@ -434,15 +469,10 @@ export function App() {
             runs={history.runs}
             requests={requests}
             unavailableReports={history.unavailable}
-            history={{
-              hasMore: history.nextCursor !== undefined,
-              loadingOlder,
-              refreshing,
-              olderError,
-              latestError,
-              onLoadOlder: () => void loadOlderRuns(),
-              onRetryLatest: () => void readRuntime().catch(() => undefined),
-            }}
+            history={historyControls}
+            selection={readRunSelection(location.search)}
+            onSelectRun={openRun}
+            onClearSelection={() => visit("/runs")}
             starting={starting}
             cancelling={cancelling}
             onCancel={(requestId) => void cancel(requestId)}

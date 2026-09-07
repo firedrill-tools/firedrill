@@ -1,5 +1,5 @@
 import { Clock3, Database, FileInput, Radio, TriangleAlert, Wrench } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { ActorIdentity } from "../components/actor-identity";
 import { CodeDocument } from "../components/code-document";
 import { DataViewer } from "../components/data-viewer";
@@ -10,8 +10,16 @@ import { Button, EmptyState, KeyValue, RowButton, SearchField } from "../compone
 import { ScrollArea } from "../components/scroll-area";
 import { SourceViewer } from "../components/source-viewer";
 import { json, plural, titleFromId, virtualTime } from "../format";
-import type { SimulationProject, SimulationScenario, SimulationSetup, SimulationTool } from "../types";
+import type {
+  SimulationProject,
+  SimulationRunSummary,
+  SimulationScenario,
+  SimulationSetup,
+  SimulationTool,
+} from "../types";
 import { startingRecords } from "./catalog-data";
+import type { RunHistoryControls } from "./runs";
+import { ScenarioRuns } from "./scenario-runs";
 import { describeSetupChanges } from "./setup-changes";
 import { ToolImplementation } from "./tool-implementation";
 import { ToolInterfaces } from "./tool-interfaces";
@@ -580,14 +588,17 @@ function SetupMain({
   title,
   setup,
   baseline,
+  scenarioRuns,
 }: {
   readonly title: string;
   readonly setup: SimulationSetup;
   readonly baseline?: SimulationSetup;
+  readonly scenarioRuns?: ReactNode;
 }) {
   const records = startingRecords(setup).map((record) => ({ ...record, action: "upsert" as const }));
   const sections = [
     ...(baseline === undefined ? [] : [{ id: "changes", label: "Changes" }]),
+    ...(scenarioRuns === undefined ? [] : [{ id: "runs", label: "Runs" }]),
     { id: "data", label: "Starting data" },
     { id: "failures", label: "Failures" },
     { id: "events", label: "Events" },
@@ -608,6 +619,7 @@ function SetupMain({
       </div>
       <ScrollArea label="Starting setup" sections={sections}>
         {baseline === undefined ? null : <ScenarioChanges baseline={baseline} setup={setup} />}
+        {scenarioRuns}
         <section className="fd-definition__section" data-scroll-section="data">
           <div className="fd-section-heading">
             <div>
@@ -739,22 +751,70 @@ function selectedTool(project: SimulationProject, selected: WorldSelection): Sim
 export function WorldView({
   project,
   page = "world",
+  runs = [],
+  runHistory,
+  unavailableRunCount = 0,
+  onOpenRun,
+  scenarioId,
+  onSelectScenario,
 }: {
   readonly project: SimulationProject;
   readonly page?: "world" | "scenarios" | "tools";
+  readonly runs?: readonly SimulationRunSummary[];
+  readonly runHistory?: RunHistoryControls | undefined;
+  readonly unavailableRunCount?: number;
+  readonly onOpenRun?: ((runId: string) => void) | undefined;
+  readonly scenarioId?: string | undefined;
+  readonly onSelectScenario?: ((id: string | undefined) => void) | undefined;
 }) {
   const [detailsOpen, setDetailsOpen] = useState(false);
   const detailsId = `${page}-details`;
   const [selected, setSelected] = useState<WorldSelection>(() =>
-    page === "tools" && project.tools[0] !== undefined
-      ? `tool:${project.tools[0].id}`
-      : page === "scenarios" && project.scenarios[0] !== undefined
-        ? `scenario:${project.scenarios[0].id}`
-        : "setup",
+    scenarioId !== undefined
+      ? `scenario:${scenarioId}`
+      : page === "tools" && project.tools[0] !== undefined
+        ? `tool:${project.tools[0].id}`
+        : page === "scenarios" && project.scenarios[0] !== undefined
+          ? `scenario:${project.scenarios[0].id}`
+          : "setup",
   );
+  const firstScenarioId = project.scenarios[0]?.id;
+  useEffect(() => {
+    setSelected((current) =>
+      scenarioId !== undefined
+        ? `scenario:${scenarioId}`
+        : current.startsWith("scenario:")
+          ? page === "scenarios" && firstScenarioId !== undefined
+            ? `scenario:${firstScenarioId}`
+            : "setup"
+          : current,
+    );
+  }, [scenarioId, page, firstScenarioId]);
   const scenario = useMemo(() => selectedScenario(project, selected), [project, selected]);
   const tool = useMemo(() => selectedTool(project, selected), [project, selected]);
   const selection = scenario === undefined && tool === undefined && selected !== "setup" ? "setup" : selected;
+
+  if (scenarioId !== undefined && !project.scenarios.some((item) => item.id === scenarioId)) {
+    return (
+      <section className="fd-page">
+        <header className="fd-page-header">
+          <PageIntro page={page} />
+        </header>
+        <EmptyState
+          title="Scenario unavailable"
+          action={
+            onSelectScenario === undefined ? undefined : (
+              <Button onClick={() => onSelectScenario(undefined)}>
+                {page === "world" ? "View world setup" : "View scenarios"}
+              </Button>
+            )
+          }
+        >
+          This link does not match a scenario in the current source. It may have been removed or renamed.
+        </EmptyState>
+      </section>
+    );
+  }
 
   if (
     (page === "scenarios" && project.scenarios.length === 0) ||
@@ -793,6 +853,7 @@ export function WorldView({
           onSelect={(next) => {
             setSelected(next);
             setDetailsOpen(false);
+            onSelectScenario?.(next.startsWith("scenario:") ? next.slice("scenario:".length) : undefined);
           }}
           page={page}
         />
@@ -802,6 +863,15 @@ export function WorldView({
             title={scenario.title ?? titleFromId(scenario.id)}
             setup={scenario}
             baseline={project.world.baseline}
+            scenarioRuns={
+              <ScenarioRuns
+                scenarioId={scenario.id}
+                runs={runs}
+                history={runHistory}
+                unavailableRunCount={unavailableRunCount}
+                onOpenRun={onOpenRun}
+              />
+            }
           />
         ) : tool !== undefined ? (
           <ToolMain key={tool.id} tool={tool} />

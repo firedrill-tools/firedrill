@@ -35,7 +35,12 @@ Data, Tools, Personas & actors), and the test workflow under **Testing**
   It appears below the identity in this page and in world/scenario setup, and is
   searchable. Omit it when unnecessary; there is no generated description or empty
   placeholder. This is documentation, not a model prompt or permission setting.
-- **Scenarios**: starting situations for the agent to encounter.
+- **Scenarios**: starting situations for the agent to encounter. Each scenario
+  includes its recorded **Runs**, with results and an **Open run** link to the
+  exact execution on Runs. History is matched to the scenario saved with the
+  run, not today's drill definition. Earlier runs may use an older definition.
+  Five runs appear per page; **Load older runs** searches further through saved
+  project history when earlier batches have not loaded yet.
 - **Tools**: choose **Operations** for inputs, responses and declared errors,
   **Implementation** for the executable TypeScript/JavaScript, or **Declaration**
   for the complete compiled contract. Implementation opens in the main workspace,
@@ -78,8 +83,11 @@ Scenarios show their complete starting setup directly: records, failures, events
 and permissions, including inherited world content. A short summary first explains
 what differs from the world baseline; unchanged scenarios say so. There is no
 separate setup toggle, and tables are not repeated in a second differences view.
-Repository source remains available separately. These views describe setup, not
-the agent's execution results.
+Repository source remains available separately. The setup sections describe the
+starting situation; the separate Runs section links to execution results.
+Run links retain the run ID in the URL, supporting refresh and opening in a new
+tab. Browser Back returns to the selected scenario. A missing or unreadable run
+shows an error instead of silently opening a different result.
 
 Long setup, drill and run pages have section shortcuts. Scrollable content has
 keyboard access and a **More below** action; wide tables show **More columns**

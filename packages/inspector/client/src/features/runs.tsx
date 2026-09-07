@@ -38,6 +38,7 @@ import {
 import { ScrollArea } from "../components/scroll-area";
 import { ValueDiff } from "../components/value-diff";
 import { compactId, evidenceLabel, plural, titleFromId, virtualTime } from "../format";
+import { type RunSelection, resolveLinkedRun } from "../navigation";
 import { evidenceSearchText, matchesSearch, preferredEvidenceSequence, runSearchText } from "../search";
 import type {
   EvidenceEntry,
@@ -102,7 +103,7 @@ function UnavailableReports({ reports }: { readonly reports: SimulationRunList["
   );
 }
 
-function resultTone(value?: string): "success" | "warning" | "danger" | "info" | "neutral" {
+export function resultTone(value?: string): "success" | "warning" | "danger" | "info" | "neutral" {
   if (value === "passed") return "success";
   if (value === "failed" || value === "runner_failed") return "danger";
   if (value === "inconclusive" || value === "cancelling") return "warning";
@@ -110,7 +111,7 @@ function resultTone(value?: string): "success" | "warning" | "danger" | "info" |
   return "neutral";
 }
 
-function resultLabel(run: SimulationRunSummary): string {
+export function resultLabel(run: SimulationRunSummary): string {
   if (run.verdict !== undefined) return titleFromId(run.verdict);
   return titleFromId(run.status);
 }
@@ -465,6 +466,8 @@ function RunWorkspace({
   const [entries, setEntries] = useState<readonly EvidenceEntry[]>([]);
   const [nextSequence, setNextSequence] = useState(1);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string>();
+  const [loadAttempt, setLoadAttempt] = useState(0);
   const [loadingMore, setLoadingMore] = useState(false);
   const [selectedSequence, setSelectedSequence] = useState<number>();
   const [query, setQuery] = useState("");
@@ -473,14 +476,20 @@ function RunWorkspace({
   const [detailsOpen, setDetailsOpen] = useState(false);
   const detailsId = "run-event-details";
 
+  // biome-ignore lint/correctness/useExhaustiveDependencies: loadAttempt intentionally retries this run without changing its identity.
   useEffect(() => {
     let current = true;
     setLoading(true);
+    setLoadError(undefined);
+    setDetail(undefined);
     setEntries([]);
     setNextSequence(1);
     setSelectedSequence(undefined);
     setDetailsOpen(false);
-    Promise.all([inspectorApi.run(summary.runId), inspectorApi.evidence(summary.runId, 1, 300)])
+    Promise.all([
+      resolveLinkedRun(summary.runId, inspectorApi.run),
+      inspectorApi.evidence(summary.runId, 1, 300),
+    ])
       .then(([nextDetail, page]) => {
         if (!current) return;
         setDetail(nextDetail);
@@ -489,7 +498,8 @@ function RunWorkspace({
         setSelectedSequence(preferredEvidenceSequence(page.entries));
       })
       .catch((error: unknown) => {
-        if (current) onError(error instanceof Error ? error.message : "Run evidence could not be loaded.");
+        if (current)
+          setLoadError(error instanceof Error ? error.message : "Run evidence could not be loaded.");
       })
       .finally(() => {
         if (current) setLoading(false);
@@ -497,7 +507,7 @@ function RunWorkspace({
     return () => {
       current = false;
     };
-  }, [summary.runId, onError]);
+  }, [summary.runId, loadAttempt]);
 
   useEffect(() => {
     if (loading || nextSequence > summary.evidenceSequence) return;
@@ -646,6 +656,11 @@ function RunWorkspace({
             <div className="fd-subtle-loading fd-subtle-loading--fill">
               <Spinner label="Loading run" /> Loading evidence…
             </div>
+          ) : loadError !== undefined ? (
+            <InlineMessage tone="danger" title="Run could not be opened">
+              <p>{loadError}</p>
+              <Button onClick={() => setLoadAttempt((value) => value + 1)}>Retry run</Button>
+            </InlineMessage>
           ) : (
             <>
               {detail?.result?.status === "runner_failed" ? (
@@ -870,7 +885,7 @@ export interface RunHistoryControls {
   readonly onRetryLatest: () => void;
 }
 
-function OlderRuns({ history }: { readonly history: RunHistoryControls | undefined }) {
+export function OlderRuns({ history }: { readonly history: RunHistoryControls | undefined }) {
   if (history === undefined || !history.hasMore) return null;
   return (
     <>
@@ -897,7 +912,7 @@ function OlderRuns({ history }: { readonly history: RunHistoryControls | undefin
   );
 }
 
-function RunListWarning({ history }: { readonly history: RunHistoryControls | undefined }) {
+export function RunListWarning({ history }: { readonly history: RunHistoryControls | undefined }) {
   if (history?.latestError === undefined) return null;
   return (
     <InlineMessage tone="warning" title="Latest runs could not be refreshed">
@@ -914,6 +929,9 @@ export function RunsView({
   runs,
   unavailableReports = [],
   history,
+  selection = { kind: "automatic" },
+  onSelectRun,
+  onClearSelection,
   requests,
   starting,
   cancelling,
@@ -927,6 +945,9 @@ export function RunsView({
   readonly runs: readonly SimulationRunSummary[];
   readonly unavailableReports?: SimulationRunList["unavailable"];
   readonly history?: RunHistoryControls;
+  readonly selection?: RunSelection;
+  readonly onSelectRun?: (runId: string) => void;
+  readonly onClearSelection?: () => void;
   readonly requests: readonly SimulationRunRequest[];
   readonly starting: boolean;
   readonly cancelling: boolean;
@@ -939,12 +960,66 @@ export function RunsView({
   const [selectedId, setSelectedId] = useState(runs[0]?.runId);
   const [query, setQuery] = useState("");
   const [status, setStatus] = useState("all");
-  const [compareOpen, setCompareOpen] = useState(false);
-  const selected = runs.find((run) => run.runId === selectedId) ?? runs[0];
+  const selectionKey = selection.kind === "explicit" ? selection.runId : selection.kind;
+  const [comparison, setComparison] = useState({ key: selectionKey, open: false });
+  if (comparison.key !== selectionKey) setComparison({ key: selectionKey, open: false });
+  const compareOpen = comparison.key === selectionKey && comparison.open;
+  const setCompareOpen = (open: boolean) => setComparison({ key: selectionKey, open });
+  const [lookupAttempt, setLookupAttempt] = useState(0);
+  const [linked, setLinked] = useState<{
+    readonly key: string;
+    readonly run?: SimulationRunSummary;
+    readonly error?: string;
+  }>();
+  const requestedRunId = selection.kind === "explicit" ? selection.runId : undefined;
+  const knownRequestedRun = runs.find((run) => run.runId === requestedRunId);
+  const lookupKey = `${requestedRunId ?? ""}:${lookupAttempt}`;
+  const missingRequestedRun = requestedRunId !== undefined && knownRequestedRun === undefined;
+  useEffect(() => {
+    if (!missingRequestedRun || requestedRunId === undefined) return;
+    let current = true;
+    void resolveLinkedRun(requestedRunId, inspectorApi.run).then(
+      (detail) => {
+        if (current) setLinked({ key: lookupKey, run: detail.summary });
+      },
+      (error: unknown) => {
+        if (current)
+          setLinked({
+            key: lookupKey,
+            error: error instanceof Error ? error.message : "The requested run could not be opened.",
+          });
+      },
+    );
+    return () => {
+      current = false;
+    };
+  }, [missingRequestedRun, requestedRunId, lookupKey]);
+
+  const linkedRun = linked?.key === lookupKey ? linked.run : undefined;
+  const linkedError = linked?.key === lookupKey ? linked.error : undefined;
+  const selectionError =
+    selection.kind === "invalid"
+      ? selection.message
+      : knownRequestedRun === undefined
+        ? linkedError
+        : undefined;
+  const selected =
+    selection.kind === "automatic"
+      ? (runs.find((run) => run.runId === selectedId) ?? runs[0])
+      : selection.kind === "explicit" && selectionError === undefined
+        ? (knownRequestedRun ?? linkedRun)
+        : undefined;
+  const visibleRuns =
+    linkedRun === undefined || runs.some((run) => run.runId === linkedRun.runId)
+      ? runs
+      : [linkedRun, ...runs];
   const activeRequests = requests.filter((request) =>
     ["starting", "running", "cancelling"].includes(request.status),
   );
-  const indexedRuns = useMemo(() => runs.map((run) => ({ run, searchText: runSearchText(run) })), [runs]);
+  const indexedRuns = useMemo(
+    () => visibleRuns.map((run) => ({ run, searchText: runSearchText(run) })),
+    [visibleRuns],
+  );
   const filtered = indexedRuns
     .filter(({ run, searchText }) => {
       if (status !== "all" && (run.verdict ?? run.status) !== status) return false;
@@ -957,7 +1032,7 @@ export function RunsView({
     if (selectedId === undefined && runs[0] !== undefined) setSelectedId(runs[0].runId);
   }, [runs, selectedId]);
 
-  if (runs.length === 0 && activeRequests.length === 0) {
+  if (runs.length === 0 && activeRequests.length === 0 && selection.kind === "automatic") {
     return (
       <section className="fd-page">
         <header className="fd-page-header">
@@ -996,7 +1071,7 @@ export function RunsView({
           <Button onClick={() => setCompareOpen(false)}>
             <ArrowLeft size={16} /> Back to runs
           </Button>
-        ) : runs.filter((run) => run.reportAvailable).length > 1 ? (
+        ) : visibleRuns.filter((run) => run.reportAvailable).length > 1 ? (
           <Button onClick={() => setCompareOpen(true)}>
             <GitCompareArrows size={16} /> Compare runs
           </Button>
@@ -1016,7 +1091,7 @@ export function RunsView({
               <p>Comparison selectors include only loaded runs.</p>
             </div>
           ) : null}
-          <RunComparison runs={runs} selectedRunId={selected?.runId} />
+          <RunComparison runs={visibleRuns} selectedRunId={selected?.runId} />
           <OlderRuns history={history} />
         </>
       ) : (
@@ -1025,7 +1100,7 @@ export function RunsView({
             <div className="fd-rail-head">
               <strong>Runs</strong>
               <span>
-                {runs.length}
+                {visibleRuns.length}
                 {history?.hasMore ? " loaded" : ""}
               </span>
             </div>
@@ -1057,7 +1132,10 @@ export function RunsView({
                   className="fd-run-list-item"
                   key={run.runId}
                   aria-current={selected?.runId === run.runId ? "true" : undefined}
-                  onClick={() => setSelectedId(run.runId)}
+                  onClick={() => {
+                    setSelectedId(run.runId);
+                    onSelectRun?.(run.runId);
+                  }}
                 >
                   <span className="fd-run-list-item__top">
                     <strong>{titleFromId(run.drillId)}</strong>
@@ -1075,7 +1153,29 @@ export function RunsView({
             ) : null}
             <OlderRuns history={history} />
           </aside>
-          {selected === undefined ? (
+          {selectionError !== undefined ? (
+            <EmptyState
+              title="Run unavailable"
+              action={
+                <>
+                  {selection.kind === "explicit" ? (
+                    <Button onClick={() => setLookupAttempt((value) => value + 1)}>Retry run</Button>
+                  ) : null}
+                  {onClearSelection === undefined ? null : (
+                    <Button onClick={onClearSelection}>View loaded runs</Button>
+                  )}
+                </>
+              }
+            >
+              <span role="alert">{selectionError}</span>
+            </EmptyState>
+          ) : selected === undefined && selection.kind === "explicit" ? (
+            <EmptyState title="Opening requested run">
+              <span role="status">
+                <Spinner label="Loading requested run" /> Looking up {selection.runId}…
+              </span>
+            </EmptyState>
+          ) : selected === undefined ? (
             <EmptyState title="Run is starting">
               The first live attempt will appear here when its world is ready.
             </EmptyState>
