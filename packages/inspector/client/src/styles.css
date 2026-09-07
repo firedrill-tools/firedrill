@@ -291,10 +291,18 @@ summary:focus-visible {
 }
 
 .fd-sidebar nav {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
   padding: 14px 10px;
 }
 
+.fd-nav-group + .fd-nav-group {
+  margin-top: 20px;
+}
+
 .fd-sidebar__label {
+  margin: 0;
   padding: 4px 9px 7px;
   color: var(--text-tertiary);
   font-size: 12px;
@@ -346,6 +354,7 @@ summary:focus-visible {
 
 .fd-sidebar__foot {
   display: flex;
+  flex-shrink: 0;
   align-items: center;
   gap: 7px;
   min-height: 48px;

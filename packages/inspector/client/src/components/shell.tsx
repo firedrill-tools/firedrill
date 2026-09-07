@@ -20,18 +20,34 @@ import type { Route, SimulationProject } from "../types";
 import { IconButton } from "./primitives";
 
 const navigation: ReadonlyArray<{
-  readonly route: Route;
+  readonly id: string;
   readonly label: string;
-  readonly icon: typeof Database;
+  readonly items: ReadonlyArray<{
+    readonly route: Route;
+    readonly label: string;
+    readonly icon: typeof Database;
+  }>;
 }> = [
-  { route: "/world", label: "Synthetic world", icon: Globe },
-  { route: "/schema", label: "Schema", icon: FileStack },
-  { route: "/data", label: "Data", icon: Database },
-  { route: "/personas", label: "Personas & actors", icon: Users },
-  { route: "/scenarios", label: "Scenarios", icon: FlaskConical },
-  { route: "/tools", label: "Tools", icon: Wrench },
-  { route: "/drills", label: "Drills", icon: TestTubeDiagonal },
-  { route: "/runs", label: "Runs", icon: Activity },
+  {
+    id: "world",
+    label: "World",
+    items: [
+      { route: "/world", label: "Synthetic world", icon: Globe },
+      { route: "/schema", label: "Schema", icon: FileStack },
+      { route: "/data", label: "Data", icon: Database },
+      { route: "/tools", label: "Tools", icon: Wrench },
+      { route: "/personas", label: "Personas & actors", icon: Users },
+    ],
+  },
+  {
+    id: "testing",
+    label: "Testing",
+    items: [
+      { route: "/scenarios", label: "Scenarios", icon: FlaskConical },
+      { route: "/drills", label: "Drills", icon: TestTubeDiagonal },
+      { route: "/runs", label: "Runs", icon: Activity },
+    ],
+  },
 ];
 
 function storedTheme(): "light" | "dark" {
@@ -57,6 +73,16 @@ export function AppShell({
 }) {
   const [theme, setTheme] = useState<"light" | "dark">(storedTheme);
   const [mobileOpen, setMobileOpen] = useState(false);
+  const [compact, setCompact] = useState(() => window.matchMedia("(max-width: 1023px)").matches);
+  useEffect(() => {
+    const query = window.matchMedia("(max-width: 1023px)");
+    const update = () => {
+      setCompact(query.matches);
+      if (!query.matches) setMobileOpen(false);
+    };
+    query.addEventListener("change", update);
+    return () => query.removeEventListener("change", update);
+  }, []);
   useEffect(() => {
     document.documentElement.dataset.theme = theme;
     localStorage.setItem("firedrill-inspector-theme", theme);
@@ -71,8 +97,11 @@ export function AppShell({
     <div className="fd-app-shell">
       <header className="fd-appbar">
         <IconButton
+          id="inspector-nav-toggle"
           className="fd-mobile-menu"
           label={mobileOpen ? "Close navigation" : "Open navigation"}
+          aria-expanded={mobileOpen}
+          aria-controls="inspector-sidebar"
           onClick={() => setMobileOpen((value) => !value)}
         >
           {mobileOpen ? <X size={19} /> : <Menu size={19} />}
@@ -108,24 +137,41 @@ export function AppShell({
             onClick={() => setMobileOpen(false)}
           />
         ) : null}
-        <aside className="fd-sidebar" data-open={mobileOpen || undefined}>
+        <aside
+          id="inspector-sidebar"
+          className="fd-sidebar"
+          data-open={mobileOpen || undefined}
+          inert={compact && !mobileOpen}
+          onKeyDown={(event) => {
+            if (event.key === "Escape" && compact && mobileOpen) {
+              setMobileOpen(false);
+              document.getElementById("inspector-nav-toggle")?.focus();
+            }
+          }}
+        >
           <nav aria-label="Local inspector">
-            <div className="fd-sidebar__label">Inspect</div>
-            {navigation.map((item) => {
-              const Icon = item.icon;
-              return (
-                <button
-                  type="button"
-                  key={item.route}
-                  className="fd-nav-item"
-                  aria-current={route === item.route ? "page" : undefined}
-                  onClick={() => navigate(item.route)}
-                >
-                  <Icon size={18} aria-hidden="true" />
-                  <span>{item.label}</span>
-                </button>
-              );
-            })}
+            {navigation.map((group) => (
+              <section className="fd-nav-group" key={group.id} aria-labelledby={`nav-${group.id}`}>
+                <h2 id={`nav-${group.id}`} className="fd-sidebar__label">
+                  {group.label}
+                </h2>
+                {group.items.map((item) => {
+                  const Icon = item.icon;
+                  return (
+                    <button
+                      type="button"
+                      key={item.route}
+                      className="fd-nav-item"
+                      aria-current={route === item.route ? "page" : undefined}
+                      onClick={() => navigate(item.route)}
+                    >
+                      <Icon size={18} aria-hidden="true" />
+                      <span>{item.label}</span>
+                    </button>
+                  );
+                })}
+              </section>
+            ))}
           </nav>
           <div className="fd-sidebar__foot">
             <span>Local</span>

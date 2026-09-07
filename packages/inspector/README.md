@@ -19,6 +19,10 @@ queries then report that the world artifact is missing.
 
 ## What you are looking at
 
+The sidebar groups the environment under **World** (Synthetic world, Schema,
+Data, Tools, Personas & actors), and the test workflow under **Testing**
+(Scenarios, Drills, Runs). These are navigation groups, not separate runtimes.
+
 - **Synthetic world**: the environment defined by the project's source files.
 - **Schema / Data**: declared tool record schemas and starting records. Choose a
   scenario to see its resolved starting data; this is not a running database.
