@@ -50,10 +50,12 @@ links, and selectable list rows have a trailing chevron. Hover and keyboard focu
 identify the active control; an open Details panel or enabled Wrap lines control
 keeps its selected styling. Ordinary table cells and status labels remain static.
 
-Scenarios lead with effective changes from the world baseline instead of repeating
-inherited actors and records. **View complete setup** shows the resulting starting
-records, failures, events and permissions; repository source remains available
-separately. These views describe setup, not the agent's execution results.
+Scenarios show their complete starting setup directly: records, failures, events
+and permissions, including inherited world content. A short summary first explains
+what differs from the world baseline; unchanged scenarios say so. There is no
+separate setup toggle, and tables are not repeated in a second differences view.
+Repository source remains available separately. These views describe setup, not
+the agent's execution results.
 
 Long setup, drill and run pages have section shortcuts. Scrollable content has
 keyboard access and a **More below** action; wide tables show **More columns**

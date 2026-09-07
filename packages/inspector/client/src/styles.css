@@ -974,10 +974,6 @@ summary:focus-visible {
   width: 16%;
 }
 
-.fd-world-state-table--changes th:nth-child(4) {
-  width: 12%;
-}
-
 .fd-inline-code {
   display: inline-block;
   margin: 0 7px 4px 0;

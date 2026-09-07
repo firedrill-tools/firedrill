@@ -320,27 +320,18 @@ function ActorsTable({ setup }: { readonly setup: SimulationSetup }) {
   );
 }
 
-function StateTable({
-  setup,
-  changes = false,
-}: {
-  readonly setup: SimulationSetup;
-  readonly changes?: boolean;
-}) {
+function StateTable({ setup }: { readonly setup: SimulationSetup }) {
   if (setup.state.length === 0) {
     return <p className="fd-muted-copy">No starting records.</p>;
   }
   return (
     <ScrollArea label="Starting records" natural className="fd-world-records">
-      <table
-        className={`fd-world-table fd-world-state-table${changes ? " fd-world-state-table--changes" : ""}`}
-      >
+      <table className="fd-world-table fd-world-state-table">
         <thead>
           <tr>
             <th>Tool</th>
             <th>Table</th>
             <th>Record</th>
-            {changes ? <th>Change</th> : null}
             <th>Starting record</th>
           </tr>
         </thead>
@@ -356,7 +347,6 @@ function StateTable({
               <td>
                 <code>{record.rowId}</code>
               </td>
-              {changes ? <td>{record.action === "delete" ? "Remove record" : "Add or replace"}</td> : null}
               <td>
                 {record.action === "delete" ? (
                   <span className="fd-table-empty">—</span>
@@ -420,6 +410,7 @@ function WorldWork({ setup }: { readonly setup: SimulationSetup }) {
                   <span className="fd-catalog-world-event-meta">
                     {virtualTime(event.atUs)} · actor {event.actorId}
                   </span>
+                  <DataViewer title="Scheduled event" label="View event" value={event} />
                 </span>
               </li>
             ))}
@@ -427,6 +418,67 @@ function WorldWork({ setup }: { readonly setup: SimulationSetup }) {
         )}
       </section>
     </div>
+  );
+}
+
+function ScenarioChanges({
+  baseline,
+  setup,
+}: {
+  readonly baseline: SimulationSetup;
+  readonly setup: SimulationSetup;
+}) {
+  const changes = describeSetupChanges(baseline, setup);
+  const updatedRecords = changes.state.filter((record) => record.action === "upsert").length;
+  const removedRecords = changes.state.length - updatedRecords;
+  return (
+    <section className="fd-definition__section" data-scroll-section="changes">
+      <h3>Changes from world baseline</h3>
+      {!changes.hasChanges ? (
+        <p>Uses the world baseline unchanged.</p>
+      ) : (
+        <ul className="fd-setup-changes">
+          {changes.addedFaults.map((fault) => (
+            <li key={`enable:${fault.packageId}.${fault.faultId}`}>
+              Enables{" "}
+              <code>
+                {fault.packageId}.{fault.faultId}
+              </code>
+              .
+            </li>
+          ))}
+          {changes.removedFaults.map((fault) => (
+            <li key={`disable:${fault.packageId}.${fault.faultId}`}>
+              Disables{" "}
+              <code>
+                {fault.packageId}.{fault.faultId}
+              </code>
+              .
+            </li>
+          ))}
+          {updatedRecords > 0 ? <li>{plural(updatedRecords, "starting record")} added or updated.</li> : null}
+          {removedRecords > 0 ? <li>{plural(removedRecords, "starting record")} removed.</li> : null}
+          {changes.actors.length > 0 ? (
+            <li>{plural(changes.actors.length, "actor")} added or changed.</li>
+          ) : null}
+          {changes.removedActors.length > 0 ? (
+            <li>{plural(changes.removedActors.length, "actor")} removed.</li>
+          ) : null}
+          {changes.addedInitialEvents.length > 0 ? (
+            <li>{plural(changes.addedInitialEvents.length, "event")} scheduled.</li>
+          ) : null}
+          {changes.removedInitialEvents.length > 0 ? (
+            <li>{plural(changes.removedInitialEvents.length, "scheduled event")} removed.</li>
+          ) : null}
+          {changes.eventOrderChanged ? <li>The setup order of inherited scheduled events changes.</li> : null}
+          {changes.clockChanged ? (
+            <li>
+              Starting clock: {virtualTime(baseline.virtualTimeUs)} → {virtualTime(setup.virtualTimeUs)}.
+            </li>
+          ) : null}
+        </ul>
+      )}
+    </section>
   );
 }
 
@@ -439,184 +491,47 @@ function SetupMain({
   readonly setup: SimulationSetup;
   readonly baseline?: SimulationSetup;
 }) {
-  const [complete, setComplete] = useState(false);
-  const changes = baseline === undefined ? undefined : describeSetupChanges(baseline, setup);
-  const showChanges = changes !== undefined && !complete;
   const records = startingRecords(setup).map((record) => ({ ...record, action: "upsert" as const }));
-  const visibleSetup = showChanges
-    ? { ...setup, state: changes.state, actors: changes.actors }
-    : { ...setup, state: records };
-  const sections = showChanges
-    ? [
-        ...(changes.addedFaults.length || changes.removedFaults.length
-          ? [{ id: "failures", label: "Failures" }]
-          : []),
-        ...(changes.state.length ? [{ id: "data", label: "Data changes" }] : []),
-        ...(changes.addedInitialEvents.length ||
-        changes.removedInitialEvents.length ||
-        changes.eventOrderChanged
-          ? [{ id: "events", label: "Events" }]
-          : []),
-        ...(changes.actors.length || changes.removedActors.length
-          ? [{ id: "permissions", label: "Permissions" }]
-          : []),
-        ...(changes.clockChanged ? [{ id: "clock", label: "Clock" }] : []),
-      ]
-    : [
-        { id: "data", label: "Starting data" },
-        { id: "failures", label: "Failures" },
-        { id: "events", label: "Events" },
-        { id: "permissions", label: "Permissions" },
-      ];
+  const sections = [
+    ...(baseline === undefined ? [] : [{ id: "changes", label: "Changes" }]),
+    { id: "data", label: "Starting data" },
+    { id: "failures", label: "Failures" },
+    { id: "events", label: "Events" },
+    { id: "permissions", label: "Permissions" },
+  ];
   return (
     <div className="fd-workspace-main">
       <div className="fd-workspace-titlebar">
         <div>
           <h2>{title}</h2>
           <p>
-            {showChanges
-              ? "What changes from the world baseline"
-              : baseline === undefined
-                ? "World starting setup"
-                : "Complete starting setup, including the world baseline"}
+            {baseline === undefined
+              ? "World starting setup"
+              : "Starting setup, including inherited world data and permissions"}
           </p>
         </div>
-        {baseline === undefined ? null : (
-          <Button size="compact" onClick={() => setComplete(!complete)}>
-            {complete ? "Show scenario changes" : "View complete setup"}
-          </Button>
-        )}
       </div>
-      <ScrollArea label="Starting setup" resetKey={showChanges ? "changes" : "complete"} sections={sections}>
-        {showChanges && !changes.hasChanges ? (
-          <section className="fd-definition__section">
-            <h3>Uses the world baseline unchanged</h3>
-            <p>
-              This scenario adds no different starting data, permissions, failures, events or clock settings.
-            </p>
-          </section>
-        ) : null}
-        {showChanges && (changes.addedFaults.length > 0 || changes.removedFaults.length > 0) ? (
-          <section className="fd-definition__section" data-scroll-section="failures">
-            <h3>Simulated failures</h3>
-            <ul className="fd-world-item-list">
-              {changes.addedFaults.map((fault) => (
-                <li key={`add:${fault.packageId}.${fault.faultId}`}>
-                  <span>
-                    <strong>{titleFromId(fault.faultId)}</strong>
-                    <span>
-                      Enabled for <code>{fault.packageId}</code> when the drill starts.
-                    </span>
-                  </span>
-                </li>
-              ))}
-              {changes.removedFaults.map((fault) => (
-                <li key={`remove:${fault.packageId}.${fault.faultId}`}>
-                  <span>
-                    <code>
-                      {fault.packageId}.{fault.faultId}
-                    </code>{" "}
-                    is no longer enabled at the start.
-                  </span>
-                </li>
-              ))}
-            </ul>
-          </section>
-        ) : null}
-        {!showChanges || changes.state.length > 0 ? (
-          <section className="fd-definition__section" data-scroll-section="data">
-            <div className="fd-section-heading">
-              <div>
-                <h3>{showChanges ? "Data changes" : "Starting data"}</h3>
-                <p>
-                  {showChanges
-                    ? "Records that differ from the world baseline before the agent runs."
-                    : "Records available before the agent runs. These are not execution results."}
-                </p>
-              </div>
+      <ScrollArea label="Starting setup" sections={sections}>
+        {baseline === undefined ? null : <ScenarioChanges baseline={baseline} setup={setup} />}
+        <section className="fd-definition__section" data-scroll-section="data">
+          <div className="fd-section-heading">
+            <div>
+              <h3>Starting data</h3>
+              <p>Records available before the agent runs. These are not execution results.</p>
             </div>
-            <StateTable setup={visibleSetup} changes={showChanges} />
-          </section>
-        ) : null}
-        {!showChanges ? <WorldWork setup={setup} /> : null}
-        {showChanges &&
-        (changes.addedInitialEvents.length > 0 ||
-          changes.removedInitialEvents.length > 0 ||
-          changes.eventOrderChanged) ? (
-          <section className="fd-definition__section" data-scroll-section="events">
-            <h3>Scheduled event changes</h3>
-            <ul className="fd-world-item-list">
-              {uniquelyKeyed(
-                [
-                  ...changes.addedInitialEvents.map((event) => ({ action: "Schedule", event })),
-                  ...changes.removedInitialEvents.map((event) => ({ action: "Remove", event })),
-                ],
-                (item) => json(item),
-              ).map(({ key, value: item }) => (
-                <li key={key}>
-                  <span>
-                    <strong>
-                      {item.action}{" "}
-                      <code>
-                        {item.event.event.packageId}.{item.event.event.eventId}
-                      </code>
-                    </strong>
-                    <span>
-                      At {virtualTime(item.event.atUs)} of world time · as {item.event.actorId}
-                    </span>
-                    <DataViewer title="Scheduled event" label="View event" value={item.event} />
-                  </span>
-                </li>
-              ))}
-            </ul>
-            {changes.eventOrderChanged ? (
-              <div className="fd-event-order-change">
-                <p>The order of inherited scheduled events changes in this scenario.</p>
-                <DataViewer
-                  title="Scheduled events in setup order"
-                  label="View event order"
-                  value={setup.initialEvents}
-                />
-              </div>
-            ) : null}
-          </section>
-        ) : null}
-        {!showChanges || changes.actors.length > 0 || changes.removedActors.length > 0 ? (
-          <section className="fd-definition__section" data-scroll-section="permissions">
-            <div className="fd-section-heading">
-              <div>
-                <h3>{showChanges ? "Permission changes" : "Actors and permissions"}</h3>
-                <p>
-                  {showChanges
-                    ? "New or changed tool-calling identities. Unchanged identities are inherited from the world baseline."
-                    : "Identities used to call tools, and the operations each may perform."}
-                </p>
-              </div>
+          </div>
+          <StateTable setup={{ ...setup, state: records }} />
+        </section>
+        <WorldWork setup={setup} />
+        <section className="fd-definition__section" data-scroll-section="permissions">
+          <div className="fd-section-heading">
+            <div>
+              <h3>Actors and permissions</h3>
+              <p>Identities used to call tools, and the operations each may perform.</p>
             </div>
-            <ActorsTable setup={visibleSetup} />
-            {showChanges
-              ? changes.removedActors.map((actor) => (
-                  <p key={actor.id}>
-                    Removed identity: <code>{actor.id}</code>
-                  </p>
-                ))
-              : null}
-          </section>
-        ) : null}
-        {showChanges && changes.clockChanged && baseline !== undefined ? (
-          <section className="fd-definition__section" data-scroll-section="clock">
-            <h3>Starting clock</h3>
-            <p>
-              {virtualTime(baseline.virtualTimeUs)} → {virtualTime(setup.virtualTimeUs)}
-            </p>
-          </section>
-        ) : null}
-        {showChanges && changes.hasChanges ? (
-          <p className="fd-setup-inherited">
-            Everything else uses the world baseline. View the complete setup to inspect inherited data and
-            permissions.
-          </p>
-        ) : null}
+          </div>
+          <ActorsTable setup={setup} />
+        </section>
       </ScrollArea>
     </div>
   );
