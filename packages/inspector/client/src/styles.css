@@ -2713,6 +2713,22 @@ details[open] > summary > .fd-disclosure-chevron {
   vertical-align: top;
 }
 
+/* Action columns stay reachable while data scrolls, without making cells clickable. */
+.fd-table :is(th, td).fd-table__actions {
+  position: sticky;
+  inset-inline-end: 0;
+  z-index: 1;
+  width: 1%;
+  min-width: 130px;
+  white-space: nowrap;
+  background: var(--surface);
+  border-inline-start: 1px solid var(--border-subtle);
+}
+.fd-table th.fd-table__actions {
+  z-index: 2;
+  background: var(--surface-tonal);
+}
+
 @media (prefers-reduced-motion: reduce) {
   html[data-theme] *,
   html[data-theme] *::before,

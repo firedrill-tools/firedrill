@@ -156,6 +156,11 @@ describe("catalog and drill pagination", () => {
     expect(data).toContain('aria-label="Records pages"');
     expect(data).toContain("record-25");
     expect(data).not.toContain("record-26");
+    expect(data.match(/aria-label="View record: /g)).toHaveLength(25);
+    expect(data).toContain('<th scope="col" class="fd-table__actions">Actions</th>');
+    expect(data).toContain('<td><code class="fd-record-cell" title="record-01">record-01</code></td>');
+    expect(data).toContain('<td class="fd-table__actions"><button');
+    expect(data).not.toContain('aria-label="record-01:');
   });
 
   it("does not add pagination controls to small or empty catalogs", () => {
@@ -167,5 +172,29 @@ describe("catalog and drill pagination", () => {
     const empty = renderToStaticMarkup(<CatalogView project={source} page="data" />);
     expect(empty).not.toContain('class="fd-pagination');
     expect(empty).toContain("No starting records");
+    expect(empty).not.toContain("View record");
+    expect(empty).not.toContain("fd-table__actions");
+  });
+
+  it("keeps an empty object inspectable without requiring a data column", () => {
+    const source = project();
+    source.tools = [
+      {
+        id: "archive",
+        version: "1.0.0",
+        operations: [],
+        stateNamespaces: ["records"],
+        events: [],
+        faults: [],
+        httpRoutes: [],
+      },
+    ];
+    source.world.baseline.state = [
+      { action: "upsert", packageId: "archive", namespace: "records", rowId: "empty", value: {} },
+    ];
+    const markup = renderToStaticMarkup(<CatalogView project={source} page="data" />);
+    expect(markup).toContain('aria-label="View record: records / empty"');
+    expect(markup).toContain('<code class="fd-record-cell" title="empty">empty</code>');
+    expect(markup.match(/<th[ >]/g)).toHaveLength(2);
   });
 });

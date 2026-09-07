@@ -26,6 +26,9 @@ Data, Tools, Personas & actors), and the test workflow under **Testing**
 - **Synthetic world**: the environment defined by the project's source files.
 - **Schema / Data**: declared tool record schemas and starting records. Choose a
   scenario to see its resolved starting data; this is not a running database.
+  Data rows have a **View record** button pinned to the right during horizontal
+  scrolling. Record IDs and cell values remain ordinary selectable text; the
+  button opens the complete record in the existing full-width JSON viewer.
 - **Personas & actors**: source-defined identities, attributes and permissions.
   Customer records stay under Data; an actor is not assumed to be a human persona.
   Actors may include an optional plain-text `description` (1–500 characters).

@@ -238,17 +238,18 @@ export function CatalogView({
                         {columns.map((column) => (
                           <th key={column}>{column}</th>
                         ))}
+                        <th scope="col" className="fd-table__actions">
+                          Actions
+                        </th>
                       </tr>
                     </thead>
                     <tbody>
                       {rowPagination.items.map((row) => (
-                        <tr key={row.rowId}>
+                        <tr key={JSON.stringify([row.packageId, row.namespace, row.rowId])}>
                           <td>
-                            <DataViewer
-                              title={`${row.namespace} / ${row.rowId}`}
-                              value={row.value}
-                              label={row.rowId}
-                            />
+                            <code className="fd-record-cell" title={row.rowId}>
+                              {row.rowId}
+                            </code>
                           </td>
                           {columns.map((column) => (
                             <td key={column}>
@@ -257,6 +258,13 @@ export function CatalogView({
                               </span>
                             </td>
                           ))}
+                          <td className="fd-table__actions">
+                            <DataViewer
+                              title={`${row.namespace} / ${row.rowId}`}
+                              value={row.value}
+                              label="View record"
+                            />
+                          </td>
                         </tr>
                       ))}
                     </tbody>
