@@ -1,11 +1,12 @@
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import { useMemo, useState } from "react";
+import { DataViewer } from "../components/data-viewer";
 import { PageIntro } from "../components/page-intro";
-import { CodeBlock, EmptyState, IconButton, SearchField, Select } from "../components/primitives";
+import { EmptyState, IconButton, SearchField, Select } from "../components/primitives";
 import { SourceViewer } from "../components/source-viewer";
-import { json } from "../format";
 import type { SimulationProject } from "../types";
 import { recordCell, schemaFields, startingRecords } from "./catalog-data";
+import "./catalog-world.css";
 
 function PageControls({
   page,
@@ -47,7 +48,6 @@ export function CatalogView({
   const [tableQuery, setTableQuery] = useState("");
   const [pageIndex, setPageIndex] = useState(0);
   const [tablePage, setTablePage] = useState(0);
-  const [selectedRow, setSelectedRow] = useState<string>();
   const scenario = project.scenarios.find((item) => item.id === scenarioId);
   const setup = scenario ?? project.world.baseline;
   const rows = useMemo(() => startingRecords(setup), [setup]);
@@ -79,12 +79,10 @@ export function CatalogView({
   const count = page === "schema" ? fields.length : page === "data" ? currentRows.length : actors.length;
   const index = Math.min(pageIndex, Math.max(0, Math.ceil(count / 25) - 1));
   const columns = [...new Set(currentRows.flatMap((row) => Object.keys(row.value)))];
-  const selectedRecord = currentRows.find((row) => row.rowId === selectedRow);
   const currentTablePage = Math.min(tablePage, Math.max(0, Math.ceil(tableMatches.length / 25) - 1));
   const chooseTable = (id: string) => {
     setTableId(id);
     setPageIndex(0);
-    setSelectedRow(undefined);
     setQuery("");
   };
   const source = scenario?.source ?? project.world.source;
@@ -138,22 +136,26 @@ export function CatalogView({
           <div className="fd-workspace-titlebar">
             <div>
               <h2>{page === "personas" ? "Identities" : (selected?.namespace ?? "No tables")}</h2>
-              <p>
-                {page === "schema"
-                  ? `${selected?.tool.id ?? ""} · declared schema`
-                  : `${scenario?.title ?? scenario?.id ?? "World baseline"} · starting ${page === "data" ? "records" : "identities"}`}
-              </p>
             </div>
-            {page === "schema" ? (
-              selected?.tool.source?.readable ? (
-                <SourceViewer kind="tool" id={selected.tool.id} />
-              ) : null
-            ) : source?.readable ? (
-              <SourceViewer
-                kind={scenario === undefined ? "world" : "scenario"}
-                id={scenario?.id ?? project.world.id}
-              />
-            ) : null}
+            <div className="fd-catalog-world-actions">
+              {page === "schema" && selected?.definition !== undefined ? (
+                <DataViewer
+                  title={`${selected.tool.id} / ${selected.namespace} schema`}
+                  value={selected.definition.schema}
+                  label="Full schema"
+                />
+              ) : null}
+              {page === "schema" ? (
+                selected?.tool.source?.readable ? (
+                  <SourceViewer kind="tool" id={selected.tool.id} />
+                ) : null
+              ) : source?.readable ? (
+                <SourceViewer
+                  kind={scenario === undefined ? "world" : "scenario"}
+                  id={scenario?.id ?? project.world.id}
+                />
+              ) : null}
+            </div>
           </div>
           <div className="fd-catalog-toolbar">
             <SearchField
@@ -177,7 +179,6 @@ export function CatalogView({
                 onChange={(event) => {
                   setScenarioId(event.target.value);
                   setPageIndex(0);
-                  setSelectedRow(undefined);
                 }}
               >
                 <option value="">World baseline</option>
@@ -219,10 +220,11 @@ export function CatalogView({
                             </td>
                             <td>{field.required ? "Required" : "Optional"}</td>
                             <td>
-                              <details>
-                                <summary>View constraints</summary>
-                                <CodeBlock>{json(field.definition)}</CodeBlock>
-                              </details>
+                              <DataViewer
+                                title={`${selected.namespace}.${field.name}`}
+                                value={field.definition}
+                                label="View definition"
+                              />
                             </td>
                           </tr>
                         ))}
@@ -231,14 +233,9 @@ export function CatalogView({
                   </div>
                   {fields.length === 0 ? (
                     <p className="fd-catalog-note">
-                      No top-level fields match. References, unions, and nested structures remain available in
-                      the full schema.
+                      No top-level fields match. Open the full schema for references and nested structures.
                     </p>
                   ) : null}
-                  <details className="fd-catalog-disclosure">
-                    <summary>Full declared schema</summary>
-                    <CodeBlock>{json(selected.definition.schema)}</CodeBlock>
-                  </details>
                 </>
               )
             ) : null}
@@ -250,54 +247,38 @@ export function CatalogView({
                     : "No records match your search."}
                 </EmptyState>
               ) : (
-                <>
-                  <div className="fd-table-scroll">
-                    <table className="fd-table fd-table--catalog">
-                      <thead>
-                        <tr>
-                          <th>Record</th>
+                <div className="fd-table-scroll">
+                  <table className="fd-table fd-table--catalog">
+                    <thead>
+                      <tr>
+                        <th>Record</th>
+                        {columns.map((column) => (
+                          <th key={column}>{column}</th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {currentRows.slice(index * 25, (index + 1) * 25).map((row) => (
+                        <tr key={row.rowId}>
+                          <td>
+                            <DataViewer
+                              title={`${row.namespace} / ${row.rowId}`}
+                              value={row.value}
+                              label={row.rowId}
+                            />
+                          </td>
                           {columns.map((column) => (
-                            <th key={column}>{column}</th>
+                            <td key={column}>
+                              <span className="fd-record-cell" title={recordCell(row.value[column])}>
+                                {recordCell(row.value[column])}
+                              </span>
+                            </td>
                           ))}
                         </tr>
-                      </thead>
-                      <tbody>
-                        {currentRows.slice(index * 25, (index + 1) * 25).map((row) => (
-                          <tr key={row.rowId} aria-selected={selectedRow === row.rowId}>
-                            <td>
-                              <button
-                                type="button"
-                                className="fd-record-link"
-                                onClick={() =>
-                                  setSelectedRow(selectedRow === row.rowId ? undefined : row.rowId)
-                                }
-                              >
-                                {row.rowId}
-                              </button>
-                            </td>
-                            {columns.map((column) => (
-                              <td key={column}>
-                                <span className="fd-record-cell" title={recordCell(row.value[column])}>
-                                  {recordCell(row.value[column])}
-                                </span>
-                              </td>
-                            ))}
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                  {selectedRecord === undefined ? (
-                    <p className="fd-catalog-note">
-                      Select a record to inspect all fields, including nested objects and lists.
-                    </p>
-                  ) : (
-                    <section className="fd-catalog-record">
-                      <h3>{selectedRecord.rowId}</h3>
-                      <CodeBlock>{json(selectedRecord.value)}</CodeBlock>
-                    </section>
-                  )}
-                </>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
               )
             ) : null}
             {page === "personas" ? (
@@ -326,7 +307,11 @@ export function CatalogView({
                             {Object.keys(actor.attributes).length === 0 ? (
                               "No attributes declared"
                             ) : (
-                              <CodeBlock>{json(actor.attributes)}</CodeBlock>
+                              <DataViewer
+                                title={`${actor.id} attributes`}
+                                value={actor.attributes}
+                                label="View attributes"
+                              />
                             )}
                           </td>
                           <td>

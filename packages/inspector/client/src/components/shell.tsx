@@ -15,7 +15,6 @@ import {
 } from "lucide-react";
 import type { ReactNode } from "react";
 import { useEffect, useState } from "react";
-import { compactId } from "../format";
 import type { Route, SimulationProject } from "../types";
 import { IconButton } from "./primitives";
 
@@ -113,9 +112,6 @@ export function AppShell({
           <Database size={16} aria-hidden="true" />
           <span>{project.world.title ?? project.world.id}</span>
         </div>
-        <div className="fd-appbar__build" title={project.world.buildHash}>
-          Build <code>{compactId(project.world.buildHash, 13)}</code>
-        </div>
         <div className="fd-appbar__actions">
           <IconButton label="Refresh repository source" onClick={onRefresh} disabled={refreshing}>
             <RefreshCw className={refreshing ? "fd-spin" : ""} size={17} />
@@ -173,11 +169,6 @@ export function AppShell({
               </section>
             ))}
           </nav>
-          <div className="fd-sidebar__foot">
-            <span>Local</span>
-            <span className="fd-local-dot" />
-            <span>No account</span>
-          </div>
         </aside>
         <main className="fd-main">{children}</main>
       </div>

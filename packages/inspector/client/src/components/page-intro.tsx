@@ -1,38 +1,34 @@
 const pages = {
   world: {
     title: "Synthetic world",
-    description:
-      "A world is a synthetic environment with the data, tools, and situations your agent encounters during a test.",
+    description: "The synthetic data and tools your agent interacts with during a drill.",
   },
   schema: {
     title: "Schema",
     description:
-      "The record structures your synthetic tools declare: fields, types, and constraints. These describe the fake services, not your agent’s own database.",
+      "Fields, types, and constraints for records in your fake services—not your agent’s own database.",
   },
   data: {
     title: "Data",
-    description:
-      "The synthetic records a drill starts with. Choose the world baseline or a scenario; changes made during execution are shown under Runs.",
+    description: "Starting records for the world or a scenario. Changes made by the agent appear under Runs.",
   },
   personas: {
     title: "Personas & actors",
-    description:
-      "The identities in your synthetic world, their attributes, and the tools each may use. These are the actors declared in your source files.",
+    description: "Identities in your world, their attributes, and the tools they may use.",
   },
   scenarios: {
     title: "Scenarios",
-    description:
-      "A scenario sets the starting situation: data, identities, faults, and scheduled events. A drill adds an agent task and checks to that situation.",
+    description: "Starting situations for your drills: data, identities, faults, and scheduled events.",
   },
   tools: {
     title: "Synthetic tools",
     description:
-      "The fake services your agent can call. Inspect their inputs, responses, and stored data; behavior is defined by your repository’s tool code.",
+      "Fake services your agent can call, with inputs, responses, and behavior defined in your repository.",
   },
   drills: {
     title: "Drills",
     description:
-      "Simulate your agent in a synthetic world. Each drill defines a task, a starting scenario, and checks. Open Runs to see the results.",
+      "A drill simulates an agent task in a starting scenario and checks the outcome. See results under Runs.",
   },
   runs: {
     title: "Runs",

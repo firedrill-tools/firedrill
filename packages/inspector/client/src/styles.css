@@ -255,16 +255,6 @@ summary:focus-visible {
   color: var(--text-tertiary);
 }
 
-.fd-appbar__build {
-  margin-left: 14px;
-  color: var(--text-tertiary);
-  font-size: 12px;
-}
-
-.fd-appbar__build code {
-  margin-left: 4px;
-}
-
 .fd-appbar__actions {
   display: flex;
   align-items: center;
@@ -350,26 +340,6 @@ summary:focus-visible {
 
 [data-theme="dark"] .fd-nav-item[aria-current="page"] svg {
   color: #98abf1;
-}
-
-.fd-sidebar__foot {
-  display: flex;
-  flex-shrink: 0;
-  align-items: center;
-  gap: 7px;
-  min-height: 48px;
-  margin-top: auto;
-  padding: 0 18px;
-  border-top: 1px solid var(--border-subtle);
-  color: var(--text-tertiary);
-  font-size: 12px;
-}
-
-.fd-local-dot {
-  width: 5px;
-  height: 5px;
-  border-radius: 50%;
-  background: var(--success);
 }
 
 .fd-main {
@@ -493,27 +463,10 @@ summary:focus-visible {
   display: flex;
   gap: 4px;
 }
-.fd-catalog-disclosure,
-.fd-catalog-record {
-  margin: 16px;
-}
 .fd-catalog-note {
   margin: 16px;
   color: var(--text-secondary);
   font-size: 13px;
-}
-.fd-record-link {
-  appearance: none;
-  border: 0;
-  background: none;
-  color: var(--info);
-  padding: 0;
-  font: inherit;
-  cursor: pointer;
-  text-align: left;
-}
-.fd-record-link:hover {
-  text-decoration: underline;
 }
 .fd-record-cell {
   display: block;
@@ -533,36 +486,6 @@ summary:focus-visible {
 
 .fd-drill-workspace {
   grid-template-columns: 232px minmax(500px, 1fr) 292px;
-}
-
-.fd-run-checks {
-  padding: 0 16px 16px;
-}
-.fd-run-checks > details {
-  padding: 12px 0;
-  border-bottom: 1px solid var(--border-subtle);
-}
-.fd-run-checks summary {
-  display: flex;
-  justify-content: space-between;
-  gap: 12px;
-  cursor: pointer;
-}
-.fd-check-comparison {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-  gap: 16px;
-}
-.fd-check-comparison h4 {
-  color: var(--text-secondary);
-  font-size: 12px;
-  font-weight: 500;
-  margin: 8px 0;
-}
-@media (max-width: 680px) {
-  .fd-check-comparison {
-    grid-template-columns: minmax(0, 1fr);
-  }
 }
 
 .fd-run-workspace {
@@ -740,22 +663,6 @@ summary:focus-visible {
   margin: 2px 0 0;
   color: var(--text-tertiary);
   font-size: 12px;
-}
-
-.fd-compact-facts {
-  display: flex;
-  align-items: center;
-  gap: 16px;
-  margin-left: auto;
-  color: var(--text-secondary);
-  font-size: 12px;
-}
-
-.fd-compact-facts span {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  white-space: nowrap;
 }
 
 .fd-selection-inspector {
@@ -1063,16 +970,6 @@ summary:focus-visible {
   margin: 0 7px 4px 0;
 }
 
-.fd-json-cell {
-  max-height: 120px;
-  margin: 0;
-  overflow: auto;
-  color: var(--code);
-  font: 11px / 16px var(--font-mono);
-  white-space: pre-wrap;
-  overflow-wrap: anywhere;
-}
-
 .fd-table-empty {
   color: var(--text-tertiary);
 }
@@ -1304,28 +1201,20 @@ summary:focus-visible {
   white-space: nowrap;
 }
 
-.fd-status__dot {
-  width: 6px;
-  height: 6px;
-  flex: none;
-  border-radius: 50%;
-  background: var(--text-tertiary);
+.fd-status[data-tone="success"] {
+  color: var(--success);
 }
 
-.fd-status[data-tone="success"] .fd-status__dot {
-  background: var(--success);
+.fd-status[data-tone="warning"] {
+  color: var(--warning);
 }
 
-.fd-status[data-tone="warning"] .fd-status__dot {
-  background: var(--warning);
+.fd-status[data-tone="danger"] {
+  color: var(--danger);
 }
 
-.fd-status[data-tone="danger"] .fd-status__dot {
-  background: var(--danger);
-}
-
-.fd-status[data-tone="info"] .fd-status__dot {
-  background: var(--info);
+.fd-status[data-tone="info"] {
+  color: var(--info);
 }
 
 .fd-inline-message {
@@ -1517,7 +1406,7 @@ summary:focus-visible {
 .fd-drill-task__timing {
   margin: 6px 0 0;
   color: var(--text-secondary);
-  font-size: 12px;
+  font-size: 13px;
 }
 
 .fd-drill-disclosure {
@@ -1568,6 +1457,14 @@ summary:focus-visible {
   font-weight: 600;
 }
 
+.fd-drill-check__heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
 .fd-drill-checks p {
   margin: 3px 0;
 }
@@ -1575,7 +1472,7 @@ summary:focus-visible {
 .fd-drill-check__subject,
 .fd-drill-checks small {
   color: var(--text-secondary);
-  font-size: 12px;
+  font-size: 13px;
 }
 
 .fd-drill-suite-list {
@@ -1844,62 +1741,6 @@ summary:focus-visible {
   flex-direction: column;
 }
 
-.fd-source-toolbar {
-  display: flex;
-  flex: none;
-  align-items: center;
-  justify-content: space-between;
-  min-height: 38px;
-  gap: 16px;
-  padding: 0 14px;
-  border-bottom: 1px solid var(--border-subtle);
-  background: var(--surface-tonal);
-  color: var(--text-tertiary);
-  font-size: 11px;
-}
-
-.fd-source-toolbar code {
-  overflow: hidden;
-  max-width: 50%;
-  color: var(--text-tertiary);
-  font-size: 10px;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.fd-source-code {
-  min-height: 0;
-  flex: 1;
-  margin: 0;
-  overflow: auto;
-  padding: 9px 0 18px;
-  counter-reset: source-line;
-  background: var(--surface-sunken);
-  color: var(--code);
-  font: 12px / 19px var(--font-mono);
-  tab-size: 2;
-}
-
-.fd-source-line {
-  display: grid;
-  min-width: max-content;
-  grid-template-columns: 52px minmax(0, 1fr);
-  padding-right: 18px;
-  counter-increment: source-line;
-  white-space: pre;
-}
-
-.fd-source-line::before {
-  position: sticky;
-  left: 0;
-  padding-right: 12px;
-  background: var(--surface-sunken);
-  color: var(--text-disabled);
-  content: counter(source-line);
-  text-align: right;
-  user-select: none;
-}
-
 .fd-source-loading,
 .fd-source-error {
   display: flex;
@@ -1969,30 +1810,6 @@ summary:focus-visible {
 
 .fd-run-actions {
   flex: none;
-}
-
-.fd-run-trust-row {
-  display: flex;
-  flex: none;
-  align-items: center;
-  gap: 20px;
-  min-height: 39px;
-  padding: 0 14px;
-  border-bottom: 1px solid var(--border);
-  background: var(--surface-tonal);
-  color: var(--text-tertiary);
-  font-size: 11px;
-  overflow-x: auto;
-}
-
-.fd-run-trust-row span {
-  white-space: nowrap;
-}
-
-.fd-run-trust-row strong {
-  margin-left: 4px;
-  color: var(--text-secondary);
-  font-weight: 600;
 }
 
 .fd-runtime-work {
@@ -2569,10 +2386,6 @@ summary:focus-visible {
   .fd-run-workspace {
     grid-template-columns: 222px minmax(500px, 1fr) 288px;
   }
-
-  .fd-compact-facts span:nth-child(2) {
-    display: none;
-  }
 }
 
 @media (max-width: 1023px) {
@@ -2582,10 +2395,6 @@ summary:focus-visible {
 
   .fd-appbar {
     padding-left: 8px;
-  }
-
-  .fd-appbar__build {
-    display: none;
   }
 
   .fd-sidebar {
@@ -2729,11 +2538,6 @@ summary:focus-visible {
     flex: none;
   }
 
-  .fd-compact-facts {
-    width: 100%;
-    margin-left: 0;
-  }
-
   .fd-run-actions {
     width: 100%;
   }
@@ -2806,10 +2610,6 @@ summary:focus-visible {
   .fd-timeline-toolbar .fd-search,
   .fd-timeline-toolbar .fd-select {
     width: calc(50% - 4px);
-  }
-
-  .fd-run-trust-row {
-    gap: 14px;
   }
 
   .fd-definition__intro,

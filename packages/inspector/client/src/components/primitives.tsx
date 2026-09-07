@@ -84,7 +84,6 @@ export function Status({
 }) {
   return (
     <span className="fd-status" data-tone={tone}>
-      <span className="fd-status__dot" aria-hidden="true" />
       {children}
     </span>
   );

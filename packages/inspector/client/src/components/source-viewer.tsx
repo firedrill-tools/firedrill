@@ -1,20 +1,9 @@
 import { FileCode2, X } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import { inspectorApi } from "../api";
-import { compactId, titleFromId } from "../format";
 import type { SimulationSourceDocument, SimulationSourceKind } from "../types";
+import { CodeDocument } from "./code-document";
 import { Button, IconButton, InlineMessage, Spinner } from "./primitives";
-
-function sourceLines(content: string) {
-  const occurrences = new Map<string, number>();
-  const lines: Array<{ readonly key: string; readonly value: string }> = [];
-  for (const value of content.split("\n")) {
-    const occurrence = (occurrences.get(value) ?? 0) + 1;
-    occurrences.set(value, occurrence);
-    lines.push({ key: `${value}\u0000${occurrence}`, value });
-  }
-  return lines;
-}
 
 export function SourceViewer({
   kind,
@@ -26,6 +15,7 @@ export function SourceViewer({
   readonly label?: string;
 }) {
   const dialog = useRef<HTMLDialogElement>(null);
+  const headingId = useId();
   const requestSequence = useRef(0);
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -71,20 +61,20 @@ export function SourceViewer({
       <dialog
         ref={dialog}
         className="fd-dialog fd-source-dialog"
+        aria-labelledby={headingId}
         onCancel={(event) => {
           event.preventDefault();
+          event.stopPropagation();
           close();
         }}
-        onClose={() => {
+        onClose={(event) => {
+          event.stopPropagation();
           if (open) close();
         }}
       >
         <div className="fd-dialog__head">
           <div>
-            <h2>{document?.path ?? "Repository source"}</h2>
-            <code>
-              {kind} · {id}
-            </code>
+            <h2 id={headingId}>{document?.path ?? "Repository source"}</h2>
           </div>
           <IconButton label="Close" onClick={close}>
             <X size={17} />
@@ -102,21 +92,12 @@ export function SourceViewer({
             </InlineMessage>
           </div>
         ) : document !== undefined ? (
-          <>
-            <div className="fd-source-toolbar">
-              <span>Current file · {titleFromId(document.language)}</span>
-              <code title={`Compiled identity ${document.contentHash}`}>
-                {compactId(document.contentHash, 22)}
-              </code>
-            </div>
-            <pre className="fd-source-code">
-              {sourceLines(document.content).map((line) => (
-                <span className="fd-source-line" key={line.key}>
-                  {line.value.length === 0 ? " " : line.value}
-                </span>
-              ))}
-            </pre>
-          </>
+          <CodeDocument
+            key={document.contentHash}
+            content={document.content}
+            language={document.language}
+            context="Current repository file"
+          />
         ) : null}
       </dialog>
     </>

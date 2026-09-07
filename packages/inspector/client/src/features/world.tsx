@@ -1,22 +1,13 @@
-import {
-  Braces,
-  Cable,
-  Clock3,
-  Database,
-  FileInput,
-  Radio,
-  Route as RouteIcon,
-  TriangleAlert,
-  UserRound,
-  Wrench,
-} from "lucide-react";
+import { Clock3, Database, FileInput, Radio, TriangleAlert, Wrench } from "lucide-react";
 import { useMemo, useState } from "react";
+import { DataViewer } from "../components/data-viewer";
 import { DetailsPanel, DetailsTrigger } from "../components/details-panel";
 import { PageIntro } from "../components/page-intro";
-import { CodeBlock, EmptyState, KeyValue, SearchField } from "../components/primitives";
+import { EmptyState, KeyValue, SearchField } from "../components/primitives";
 import { SourceViewer } from "../components/source-viewer";
-import { compactId, json, plural, titleFromId, virtualTime } from "../format";
+import { json, plural, titleFromId, virtualTime } from "../format";
 import type { SimulationProject, SimulationScenario, SimulationSetup, SimulationTool } from "../types";
+import "./catalog-world.css";
 
 type WorldSelection = "setup" | `scenario:${string}` | `tool:${string}`;
 
@@ -83,13 +74,14 @@ function WorldRail({
               <FileInput size={16} aria-hidden="true" />
               <span>
                 <strong>World setup</strong>
-                <small>Starting state</small>
               </span>
             </button>
           </>
         ) : null}
 
-        {scenarios.length > 0 ? <div className="fd-rail-section-label">Scenarios</div> : null}
+        {page === "world" && scenarios.length > 0 ? (
+          <div className="fd-rail-section-label">Scenarios</div>
+        ) : null}
         {scenarios.map((scenario) => (
           <button
             type="button"
@@ -101,13 +93,11 @@ function WorldRail({
             <Clock3 size={16} aria-hidden="true" />
             <span>
               <strong>{scenario.title ?? titleFromId(scenario.id)}</strong>
-              <small>{scenario.id}</small>
             </span>
-            <em>{scenario.state.length}</em>
           </button>
         ))}
 
-        {tools.length > 0 ? <div className="fd-rail-section-label">Tools</div> : null}
+        {page === "world" && tools.length > 0 ? <div className="fd-rail-section-label">Tools</div> : null}
         {tools.map((tool) => (
           <button
             type="button"
@@ -119,9 +109,7 @@ function WorldRail({
             <Wrench size={16} aria-hidden="true" />
             <span>
               <strong>{titleFromId(tool.id)}</strong>
-              <small>{tool.id}</small>
             </span>
-            <em>{tool.operations.length}</em>
           </button>
         ))}
       </div>
@@ -133,35 +121,45 @@ function WorldRail({
 }
 
 function OperationTable({ tool }: { readonly tool: SimulationTool }) {
+  const hasDescriptions = tool.operations.some((operation) => operation.description !== undefined);
   return (
     <div className="fd-table-scroll">
       <table className="fd-table">
         <thead>
           <tr>
             <th>Operation</th>
-            <th>Fidelity</th>
-            <th>Idempotency</th>
-            <th>Description</th>
-            <th>Contract</th>
+            {hasDescriptions ? <th>Description</th> : null}
+            <th>Request & response</th>
           </tr>
         </thead>
         <tbody>
           {tool.operations.map((operation) => (
             <tr key={operation.id}>
-              <td>
-                <code>{operation.id}</code>
+              <td className="fd-operation-name">
+                <DataViewer title={`${tool.id}.${operation.id}`} value={operation} label={operation.id} />
               </td>
-              <td>{titleFromId(operation.fidelity)}</td>
-              <td>{titleFromId(operation.idempotency)}</td>
-              <td className="fd-table__muted">{operation.description ?? "—"}</td>
+              {hasDescriptions ? <td className="fd-table__muted">{operation.description ?? "—"}</td> : null}
               <td>
-                <details>
-                  <summary>Inputs & responses</summary>
-                  <h3>Input schema</h3>
-                  <CodeBlock>{json(operation.inputSchema ?? "Not available in this catalog")}</CodeBlock>
-                  <h3>Response schema</h3>
-                  <CodeBlock>{json(operation.outputSchema ?? "Not available in this catalog")}</CodeBlock>
-                </details>
+                <div className="fd-catalog-world-actions">
+                  {operation.inputSchema === undefined ? (
+                    <span>Input schema unavailable</span>
+                  ) : (
+                    <DataViewer
+                      title={`${tool.id}.${operation.id} input schema`}
+                      value={operation.inputSchema}
+                      label="Inputs"
+                    />
+                  )}
+                  {operation.outputSchema === undefined ? (
+                    <span>Response schema unavailable</span>
+                  ) : (
+                    <DataViewer
+                      title={`${tool.id}.${operation.id} response schema`}
+                      value={operation.outputSchema}
+                      label="Responses"
+                    />
+                  )}
+                </div>
               </td>
             </tr>
           ))}
@@ -176,20 +174,14 @@ function ToolInspector({ tool }: { readonly tool: SimulationTool }) {
     <div className="fd-details-content">
       <div className="fd-inspector-head">
         <div>
-          <strong>{titleFromId(tool.id)}</strong>
-          <code>
-            {tool.id}@{tool.version}
-          </code>
+          <strong>{tool.id}</strong>
         </div>
       </div>
       <div className="fd-inspector-scroll">
         <section className="fd-inspector-section">
-          <h3>Contract</h3>
+          <h3>Package</h3>
           <dl>
-            <KeyValue label="Operations">{tool.operations.length}</KeyValue>
-            <KeyValue label="State">{tool.stateNamespaces.length}</KeyValue>
-            <KeyValue label="Events">{tool.events.length}</KeyValue>
-            <KeyValue label="Faults">{tool.faults.length}</KeyValue>
+            <KeyValue label="Version">{tool.version}</KeyValue>
           </dl>
         </section>
         <section className="fd-inspector-section">
@@ -208,22 +200,24 @@ function ToolInspector({ tool }: { readonly tool: SimulationTool }) {
           )}
         </section>
         <section className="fd-inspector-section">
-          <h3>Events and faults</h3>
+          <h3>Events</h3>
           {tool.events.map((event) => (
             <div className="fd-definition-line" key={event}>
               <Radio size={14} />
               <code>{event}</code>
             </div>
           ))}
+          {tool.events.length === 0 ? <p className="fd-muted-copy">No events declared.</p> : null}
+        </section>
+        <section className="fd-inspector-section">
+          <h3>Faults</h3>
           {tool.faults.map((fault) => (
             <div className="fd-definition-line" key={fault}>
               <TriangleAlert size={14} />
               <code>{fault}</code>
             </div>
           ))}
-          {tool.events.length === 0 && tool.faults.length === 0 ? (
-            <p className="fd-muted-copy">No events or faults are declared.</p>
-          ) : null}
+          {tool.faults.length === 0 ? <p className="fd-muted-copy">No faults declared.</p> : null}
         </section>
         <section className="fd-inspector-section">
           <h3>HTTP bindings</h3>
@@ -258,17 +252,14 @@ function SourceSection({
   return (
     <section className="fd-inspector-section">
       <h3>Repository source</h3>
-      <CodeBlock>{source.path}</CodeBlock>
-      <p className="fd-hash" title={source.contentHash}>
-        {compactId(source.contentHash, 22)}
+      <p className="fd-catalog-world-source-path">
+        <code>{source.path}</code>
       </p>
-      {source.readable ? (
-        <div className="fd-inspector-actions">
-          <SourceViewer kind={kind} id={id} />
-        </div>
-      ) : (
-        <p className="fd-inspector-copy">This definition belongs to an installed package.</p>
-      )}
+      <div className="fd-catalog-world-actions">
+        {source.readable ? <SourceViewer kind={kind} id={id} /> : null}
+        <DataViewer title={`${id} source provenance`} value={{ id, kind, ...source }} label="Provenance" />
+      </div>
+      {source.readable ? null : <p className="fd-inspector-copy">Installed package definition.</p>}
     </section>
   );
 }
@@ -306,7 +297,11 @@ function ActorsTable({ setup }: { readonly setup: SimulationSetup }) {
                 {Object.keys(actor.attributes).length === 0 ? (
                   <span className="fd-table-empty">None</span>
                 ) : (
-                  <pre className="fd-json-cell">{json(actor.attributes)}</pre>
+                  <DataViewer
+                    title={`${actor.id} attributes`}
+                    value={actor.attributes}
+                    label="View attributes"
+                  />
                 )}
               </td>
             </tr>
@@ -350,7 +345,11 @@ function StateTable({ setup }: { readonly setup: SimulationSetup }) {
                 {record.action === "delete" ? (
                   <span className="fd-table-empty">—</span>
                 ) : (
-                  <pre className="fd-json-cell">{json(record.value)}</pre>
+                  <DataViewer
+                    title={`${record.namespace} / ${record.rowId}`}
+                    value={record.value}
+                    label="View record"
+                  />
                 )}
               </td>
             </tr>
@@ -367,8 +366,7 @@ function WorldWork({ setup }: { readonly setup: SimulationSetup }) {
       <section>
         <div className="fd-section-heading">
           <div>
-            <h3>Active faults</h3>
-            <p>Faults enabled when this world starts.</p>
+            <h3>Starting faults</h3>
           </div>
         </div>
         {setup.faults.length === 0 ? (
@@ -389,8 +387,7 @@ function WorldWork({ setup }: { readonly setup: SimulationSetup }) {
       <section>
         <div className="fd-section-heading">
           <div>
-            <h3>Initial events</h3>
-            <p>Events scheduled by the setup before the agent acts.</p>
+            <h3>Scheduled events</h3>
           </div>
         </div>
         {setup.initialEvents.length === 0 ? (
@@ -404,9 +401,9 @@ function WorldWork({ setup }: { readonly setup: SimulationSetup }) {
                   <code>
                     {event.event.packageId}.{event.event.eventId}
                   </code>
-                  <small>
+                  <span className="fd-catalog-world-event-meta">
                     {virtualTime(event.atUs)} · actor {event.actorId}
-                  </small>
+                  </span>
                 </span>
               </li>
             ))}
@@ -419,12 +416,10 @@ function WorldWork({ setup }: { readonly setup: SimulationSetup }) {
 
 function SetupMain({
   title,
-  id,
   setup,
   resolved,
 }: {
   readonly title: string;
-  readonly id: string;
   readonly setup: SimulationSetup;
   readonly resolved: boolean;
 }) {
@@ -433,20 +428,7 @@ function SetupMain({
       <div className="fd-workspace-titlebar">
         <div>
           <h2>{title}</h2>
-          <p>
-            <code>{id}</code> · {resolved ? "resolved starting conditions" : "baseline starting conditions"}
-          </p>
-        </div>
-        <div className="fd-compact-facts">
-          <span>
-            <UserRound size={14} /> {plural(setup.actors.length, "actor")}
-          </span>
-          <span>
-            <Database size={14} /> {plural(setup.state.length, "setup change")}
-          </span>
-          <span>
-            <Clock3 size={14} /> {virtualTime(setup.virtualTimeUs)}
-          </span>
+          <p>{resolved ? "World baseline with scenario changes" : "World baseline"}</p>
         </div>
       </div>
       <div className="fd-world-definition">
@@ -454,7 +436,6 @@ function SetupMain({
           <div className="fd-section-heading">
             <div>
               <h3>Actors and permissions</h3>
-              <p>Identities available to the agent and the operations each identity may call.</p>
             </div>
           </div>
           <ActorsTable setup={setup} />
@@ -462,8 +443,8 @@ function SetupMain({
         <section className="fd-definition__section">
           <div className="fd-section-heading">
             <div>
-              <h3>Starting state</h3>
-              <p>Records applied before the drill begins.</p>
+              <h3>Starting data changes</h3>
+              <p>Applied in order before a drill starts. Data shows the resulting records.</p>
             </div>
           </div>
           <StateTable setup={setup} />
@@ -480,41 +461,33 @@ function SetupInspector({
   source,
   sourceKind,
   sourceId,
-  resolved,
 }: {
   readonly title: string;
   readonly setup: SimulationSetup;
   readonly source?: SourceReference;
   readonly sourceKind: "world" | "scenario";
   readonly sourceId: string;
-  readonly resolved: boolean;
 }) {
   return (
     <div className="fd-details-content">
       <div className="fd-inspector-head">
         <div>
           <strong>{title}</strong>
-          <code>{resolved ? "resolved scenario" : "world baseline"}</code>
         </div>
       </div>
       <div className="fd-inspector-scroll">
         <section className="fd-inspector-section">
           <h3>Starting conditions</h3>
           <dl>
+            <KeyValue label="ID">
+              <code>{sourceId}</code>
+            </KeyValue>
             <KeyValue label="Clock">{virtualTime(setup.virtualTimeUs)}</KeyValue>
             <KeyValue label="Actors">{setup.actors.length}</KeyValue>
-            <KeyValue label="State">{setup.state.length}</KeyValue>
+            <KeyValue label="Data changes">{setup.state.length}</KeyValue>
             <KeyValue label="Faults">{setup.faults.length}</KeyValue>
             <KeyValue label="Events">{setup.initialEvents.length}</KeyValue>
           </dl>
-        </section>
-        <section className="fd-inspector-section">
-          <h3>{resolved ? "Resolved view" : "Compiled view"}</h3>
-          <p className="fd-inspector-copy">
-            {resolved
-              ? "This view includes the world baseline plus this scenario's overrides. Repository source remains authoritative."
-              : "This is the compiled world baseline. Repository source remains authoritative."}
-          </p>
         </section>
         {source === undefined ? null : <SourceSection source={source} kind={sourceKind} id={sourceId} />}
       </div>
@@ -528,20 +501,6 @@ function ToolMain({ tool }: { readonly tool: SimulationTool }) {
       <div className="fd-workspace-titlebar">
         <div>
           <h2>{titleFromId(tool.id)}</h2>
-          <p>
-            <code>{tool.id}</code> · version {tool.version}
-          </p>
-        </div>
-        <div className="fd-compact-facts">
-          <span>
-            <Cable size={14} /> {plural(tool.operations.length, "operation")}
-          </span>
-          <span>
-            <Braces size={14} /> {plural(tool.stateNamespaces.length, "namespace")}
-          </span>
-          <span>
-            <RouteIcon size={14} /> {plural(tool.httpRoutes.length, "HTTP route")}
-          </span>
         </div>
       </div>
       <OperationTable tool={tool} />
@@ -625,18 +584,12 @@ export function WorldView({
           page={page}
         />
         {scenario !== undefined ? (
-          <SetupMain
-            title={scenario.title ?? titleFromId(scenario.id)}
-            id={scenario.id}
-            setup={scenario}
-            resolved
-          />
+          <SetupMain title={scenario.title ?? titleFromId(scenario.id)} setup={scenario} resolved />
         ) : tool !== undefined ? (
           <ToolMain tool={tool} />
         ) : (
           <SetupMain
             title={project.world.title ?? titleFromId(project.world.id)}
-            id={project.world.id}
             setup={project.world.baseline}
             resolved={false}
           />
@@ -649,7 +602,6 @@ export function WorldView({
               {...(scenario.source === undefined ? {} : { source: scenario.source })}
               sourceKind="scenario"
               sourceId={scenario.id}
-              resolved
             />
           ) : tool !== undefined ? (
             <ToolInspector tool={tool} />
@@ -660,7 +612,6 @@ export function WorldView({
               {...(project.world.source === undefined ? {} : { source: project.world.source })}
               sourceKind="world"
               sourceId={project.world.id}
-              resolved={false}
             />
           )}
         </DetailsPanel>

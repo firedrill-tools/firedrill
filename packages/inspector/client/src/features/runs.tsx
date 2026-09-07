@@ -2,6 +2,7 @@ import {
   Activity,
   Ban,
   Braces,
+  ChevronRight,
   Clock3,
   Database,
   FileText,
@@ -16,11 +17,11 @@ import {
 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { inspectorApi } from "../api";
+import { DataViewer } from "../components/data-viewer";
 import { DetailsPanel, DetailsTrigger } from "../components/details-panel";
 import { PageIntro } from "../components/page-intro";
 import {
   Button,
-  CodeBlock,
   ConfirmDialog,
   EmptyState,
   InlineMessage,
@@ -30,19 +31,118 @@ import {
   Spinner,
   Status,
 } from "../components/primitives";
-import { compactId, evidenceLabel, json, plural, titleFromId, virtualTime } from "../format";
+import { compactId, evidenceLabel, plural, titleFromId, virtualTime } from "../format";
 import { evidenceSearchText, matchesSearch, preferredEvidenceSequence, runSearchText } from "../search";
 import type {
   EvidenceEntry,
   SimulationProject,
   SimulationRunComparison,
   SimulationRunDetail,
+  SimulationRunList,
   SimulationRunRequest,
   SimulationRunSummary,
   SimulationStatePage,
   StartSimulationRun,
   StateNamespace,
 } from "../types";
+import "./runs.css";
+
+type RunResult = NonNullable<SimulationRunDetail["result"]>;
+type CheckResult = RunResult["assertionResults"][number];
+
+function ResultValue({ title, value }: { readonly title: string; readonly value: unknown }) {
+  if (value !== null && typeof value === "object") {
+    return <DataViewer title={title} value={value} label="View value" />;
+  }
+  return (
+    <span className="fd-result-value">{value === undefined ? "Not recorded" : JSON.stringify(value)}</span>
+  );
+}
+
+function ExpectedValue({ value, kind }: { readonly value: unknown; readonly kind: CheckResult["kind"] }) {
+  const usesComparison = [
+    "state.value",
+    "state.count",
+    "operation.count",
+    "event.count",
+    "callback.count",
+  ].includes(kind);
+  if (usesComparison && value !== null && typeof value === "object" && !Array.isArray(value)) {
+    const comparison = value as Record<string, unknown>;
+    const labels: Readonly<Record<string, string>> = {
+      equals: "Equals",
+      not_equals: "Does not equal",
+      greater_than_or_equal: "At least",
+      less_than_or_equal: "At most",
+      one_of: "One of",
+    };
+    const label = typeof comparison.operator === "string" ? labels[comparison.operator] : undefined;
+    if (label !== undefined && Object.hasOwn(comparison, "value") && Object.keys(comparison).length === 2) {
+      return (
+        <div className="fd-result-expectation">
+          <span>{label}</span>
+          <ResultValue title="Expected value" value={comparison.value} />
+        </div>
+      );
+    }
+  }
+  return <ResultValue title="Expected value" value={value} />;
+}
+
+function CheckComparison({ assertion }: { readonly assertion: CheckResult }) {
+  return (
+    <dl className="fd-result-comparison">
+      <div>
+        <dt>Expected</dt>
+        <dd>
+          <ExpectedValue value={assertion.expected} kind={assertion.kind} />
+        </dd>
+      </div>
+      <div>
+        <dt>Actual</dt>
+        <dd>
+          <ResultValue title="Actual value" value={assertion.actual} />
+        </dd>
+      </div>
+    </dl>
+  );
+}
+
+function CheckItem({ assertion }: { readonly assertion: CheckResult }) {
+  return (
+    <details className="fd-result-check" open={assertion.status === "failed"}>
+      <summary>
+        <span className="fd-result-check__label">
+          <ChevronRight size={15} aria-hidden="true" />
+          <strong>{titleFromId(assertion.assertionId)}</strong>
+        </span>
+        <Status tone={resultTone(assertion.status)}>{titleFromId(assertion.status)}</Status>
+      </summary>
+      <p>{assertion.message}</p>
+      <CheckComparison assertion={assertion} />
+      <div className="fd-result-actions">
+        <DataViewer title={`Check: ${assertion.assertionId}`} value={assertion} label="Check details" />
+        {assertion.gate ? null : <span>This check does not determine the run’s verdict.</span>}
+      </div>
+    </details>
+  );
+}
+
+function UnavailableReports({ reports }: { readonly reports: SimulationRunList["unavailable"] }) {
+  if (reports.length === 0) return null;
+  const unsupported = reports.every((report) => report.code === "reporter.VERSION_UNSUPPORTED");
+  return (
+    <div className="fd-unavailable-reports">
+      <p>
+        {plural(reports.length, "saved report")}{" "}
+        {unsupported
+          ? `${reports.length === 1 ? "uses" : "use"} an unsupported format.`
+          : "could not be opened."}
+      </p>
+      <DataViewer title="Reports that could not be opened" value={reports} label="View details" />
+    </div>
+  );
+}
 
 function resultTone(value?: string): "success" | "warning" | "danger" | "info" | "neutral" {
   if (value === "passed") return "success";
@@ -93,8 +193,8 @@ function EventInspector({ entry }: { readonly entry: EvidenceEntry | undefined }
   if (entry === undefined) {
     return (
       <div className="fd-details-content">
-        <EmptyState title="Select an evidence entry">
-          Choose an item in the causal timeline to inspect it.
+        <EmptyState title="Select an activity">
+          Choose a tool call or event to inspect its details.
         </EmptyState>
       </div>
     );
@@ -104,84 +204,57 @@ function EventInspector({ entry }: { readonly entry: EvidenceEntry | undefined }
       <div className="fd-inspector-head">
         <div>
           <strong>{evidenceLabel(entry)}</strong>
-          <code>event {entry.sequence}</code>
         </div>
-        <Status tone={eventTone(entry)}>{titleFromId(entry.kind)}</Status>
       </div>
       <div className="fd-inspector-scroll">
-        <section className="fd-inspector-section">
-          <h3>Causality</h3>
-          <dl>
-            <KeyValue label="Sequence" mono>
-              {entry.sequence}
-            </KeyValue>
-            <KeyValue label="Cause" mono>
-              {entry.causeSequence ?? "Root"}
-            </KeyValue>
-            <KeyValue label="Transaction" mono>
-              {compactId(entry.transactionId, 18)}
-            </KeyValue>
-            <KeyValue label="Virtual time" mono>
-              {virtualTime(entry.virtualTimeUs)}
-            </KeyValue>
-            <KeyValue label="Correlation" mono>
-              {compactId(entry.correlationId, 18)}
-            </KeyValue>
-          </dl>
-        </section>
         {entry.kind === "state_change" ? (
           <section className="fd-inspector-section">
-            <h3>State consequence</h3>
-            <div className="fd-diff-stack">
-              <div data-diff="removed">
-                <span>Before</span>
-                <CodeBlock>{json(entry.before)}</CodeBlock>
+            <h3>Data changed</h3>
+            <dl className="fd-result-comparison">
+              <div>
+                <dt>Before</dt>
+                <dd>
+                  <ResultValue title="Record before this change" value={entry.before} />
+                </dd>
               </div>
-              <div data-diff="added">
-                <span>After</span>
-                <CodeBlock>{json(entry.after)}</CodeBlock>
+              <div>
+                <dt>After</dt>
+                <dd>
+                  <ResultValue title="Record after this change" value={entry.after} />
+                </dd>
               </div>
-            </div>
+            </dl>
           </section>
         ) : null}
         {entry.kind === "operation" ? (
           <section className="fd-inspector-section">
-            <h3>Tool exchange</h3>
+            <h3>Tool call</h3>
             <dl>
               <KeyValue label="Outcome">{titleFromId(entry.outcome.status)}</KeyValue>
-              <KeyValue label="Idempotency">{titleFromId(entry.idempotency)}</KeyValue>
-              <KeyValue label="Actor" mono>
-                {entry.actorId ?? "Unbound"}
-              </KeyValue>
+              {entry.actorId === undefined ? null : <KeyValue label="Actor">{entry.actorId}</KeyValue>}
             </dl>
-            <details className="fd-disclosure">
-              <summary>Arguments and result</summary>
-              <CodeBlock>{json({ invocation: entry.invocation, outcome: entry.outcome })}</CodeBlock>
-            </details>
+            <div className="fd-result-actions">
+              <DataViewer title="Tool arguments" value={entry.invocation.arguments} label="Arguments" />
+              <DataViewer title="Tool response" value={entry.outcome} label="Response" />
+            </div>
           </section>
         ) : null}
         {entry.kind === "verification" ? (
           <section className="fd-inspector-section">
-            <h3>Assertion result</h3>
+            <h3>Check result</h3>
             <Status tone={resultTone(entry.result.status)}>{titleFromId(entry.result.status)}</Status>
             <p className="fd-inspector-copy">{entry.result.message}</p>
-            <div className="fd-diff-stack">
-              <div data-diff="removed">
-                <span>Expected</span>
-                <CodeBlock>{json(entry.result.expected)}</CodeBlock>
-              </div>
-              <div data-diff="added">
-                <span>Actual</span>
-                <CodeBlock>{json(entry.result.actual)}</CodeBlock>
-              </div>
-            </div>
+            <CheckComparison assertion={entry.result} />
           </section>
         ) : null}
         <section className="fd-inspector-section">
-          <details className="fd-disclosure">
-            <summary>Raw evidence</summary>
-            <CodeBlock>{json(entry)}</CodeBlock>
-          </details>
+          <dl>
+            <KeyValue label="World time">{virtualTime(entry.virtualTimeUs)}</KeyValue>
+            {entry.causeSequence === undefined ? null : (
+              <KeyValue label="Caused by">Event {entry.causeSequence}</KeyValue>
+            )}
+          </dl>
+          <DataViewer title={`Event ${entry.sequence}`} value={entry} label="Full event" />
         </section>
       </div>
     </div>
@@ -228,10 +301,6 @@ function StateBrowser({
       <div className="fd-section-heading fd-state-heading">
         <div>
           <h3>Data after this run</h3>
-          <p>
-            Retained records from this run’s synthetic world, separate from the starting data defined in
-            source.
-          </p>
         </div>
         <Select
           label="State namespace"
@@ -278,14 +347,14 @@ function StateBrowser({
                     <code>{record.rowId}</code>
                   </td>
                   <td>
-                    <pre>{json(record.value)}</pre>
+                    <ResultValue title={`Record: ${record.rowId}`} value={record.value} />
                   </td>
                 </tr>
               ))}
             </tbody>
           </table>
           {page.records.length === 0 ? (
-            <div className="fd-table-empty">This namespace has no rows.</div>
+            <div className="fd-table-empty">This table has no records.</div>
           ) : null}
           {page.nextRowId === undefined || selected === undefined ? null : (
             <div className="fd-load-more">
@@ -378,12 +447,10 @@ function ComparisonDialog({
   runs,
   selectedRunId,
   onClose,
-  onError,
 }: {
   readonly runs: readonly SimulationRunSummary[];
   readonly selectedRunId: string | undefined;
   readonly onClose: () => void;
-  readonly onError: (message: string) => void;
 }) {
   const dialog = useRef<HTMLDialogElement>(null);
   const eligible = runs.filter((run) => run.reportAvailable);
@@ -393,6 +460,7 @@ function ComparisonDialog({
   const [candidateRunId, setCandidateRunId] = useState(candidateDefault?.runId ?? "");
   const [comparison, setComparison] = useState<SimulationRunComparison>();
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string>();
 
   useEffect(() => {
     if (!dialog.current?.open) dialog.current?.showModal();
@@ -400,10 +468,11 @@ function ComparisonDialog({
 
   const compare = async () => {
     setLoading(true);
+    setError(undefined);
     try {
       setComparison(await inspectorApi.compareRuns(baselineRunId, candidateRunId));
     } catch (error) {
-      onError(error instanceof Error ? error.message : "The runs could not be compared.");
+      setError(error instanceof Error ? error.message : "The runs could not be compared.");
     } finally {
       setLoading(false);
     }
@@ -422,6 +491,7 @@ function ComparisonDialog({
     <dialog
       ref={dialog}
       className="fd-dialog fd-compare-dialog"
+      aria-labelledby="compare-runs-title"
       onCancel={(event) => {
         event.preventDefault();
         if (!loading) onClose();
@@ -432,8 +502,7 @@ function ComparisonDialog({
     >
       <div className="fd-dialog__head">
         <div>
-          <h2>Compare drill runs</h2>
-          <code>Verified local reports</code>
+          <h2 id="compare-runs-title">Compare runs</h2>
         </div>
         <Button variant="quiet" size="compact" onClick={onClose} disabled={loading}>
           Close
@@ -444,10 +513,12 @@ function ComparisonDialog({
           <span>Baseline</span>
           <Select
             label="Baseline run"
+            disabled={loading}
             value={baselineRunId}
             onChange={(event) => {
               setBaselineRunId(event.target.value);
               setComparison(undefined);
+              setError(undefined);
             }}
           >
             {eligible.map((run) => (
@@ -461,10 +532,12 @@ function ComparisonDialog({
           <span>Candidate</span>
           <Select
             label="Candidate run"
+            disabled={loading}
             value={candidateRunId}
             onChange={(event) => {
               setCandidateRunId(event.target.value);
               setComparison(undefined);
+              setError(undefined);
             }}
           >
             {eligible.map((run) => (
@@ -485,10 +558,10 @@ function ComparisonDialog({
           Compare
         </Button>
       </div>
+      {error === undefined ? null : <InlineMessage tone="danger">{error}</InlineMessage>}
       {comparison === undefined ? (
         <div className="fd-compare-empty">
-          Choose two sealed runs. Firedrill reports factual differences and whether their inputs are
-          compatible.
+          Choose two completed runs to compare their actions, data and results.
         </div>
       ) : (
         <div className="fd-compare-result">
@@ -541,7 +614,7 @@ function ComparisonDialog({
           )}
           {comparison.changes.assertions.length === 0 ? null : (
             <section>
-              <h3>Assertion differences</h3>
+              <h3>Check differences</h3>
               <ul className="fd-compare-list">
                 {comparison.changes.assertions.map((assertion) => (
                   <li key={`${assertion.checkpointId}:${assertion.assertionId}`}>
@@ -682,6 +755,10 @@ function RunWorkspace({
     .map(({ entry }) => entry);
   const selected = entries.find((entry) => entry.sequence === selectedSequence);
   const assertions = detail?.result?.assertionResults ?? [];
+  const checkpoints = detail?.result?.checkpoints.filter((checkpoint) => checkpoint.kind !== "final") ?? [];
+  const failedCheckpoints = checkpoints.filter((checkpoint) =>
+    checkpoint.assertionResults.some((assertion) => assertion.status === "failed"),
+  );
 
   return (
     <>
@@ -692,12 +769,23 @@ function RunWorkspace({
               <h2>{titleFromId(summary.drillId)}</h2>
               <Status tone={resultTone(summary.verdict ?? summary.status)}>{resultLabel(summary)}</Status>
             </div>
-            <p>
-              <code>{summary.runId}</code> · seed <code>{summary.seed}</code> · trial {summary.trial}/
-              {summary.trialCount}
-            </p>
           </div>
           <div className="fd-run-actions">
+            <DataViewer
+              title="Run details"
+              label="Run details"
+              value={{
+                summary,
+                ...(detail?.result === undefined
+                  ? {}
+                  : {
+                      identity: detail.result.identity,
+                      bindingEvidence: detail.result.bindingEvidence,
+                      worldConsistency: detail.result.worldConsistency,
+                      budgetUsage: detail.result.budgetUsage,
+                    }),
+              }}
+            />
             {summary.reportAvailable ? (
               <>
                 {canRerun ? (
@@ -733,103 +821,94 @@ function RunWorkspace({
           </div>
         ) : (
           <>
-            <div className="fd-run-trust-row">
-              <span>
-                Binding <strong>{titleFromId(detail?.result?.bindingEvidence ?? "not_checked")}</strong>
-              </span>
-              <span>
-                Consistency <strong>{titleFromId(detail?.result?.worldConsistency ?? "unknown")}</strong>
-              </span>
-              <span>
-                Virtual time <strong>{virtualTime(summary.virtualTimeUs)}</strong>
-              </span>
-              <span>
-                Evidence <strong>{summary.evidenceSequence.toLocaleString()}</strong>
-              </span>
-            </div>
-            {detail === undefined ? null : <RuntimeWork detail={detail} />}
+            {detail?.result?.status === "runner_failed" ? (
+              <InlineMessage tone="danger" title="The run could not finish">
+                {detail.result.error.message}
+              </InlineMessage>
+            ) : null}
+            {detail?.result?.status === "cancelled" ? (
+              <InlineMessage tone="warning">{detail.result.reason}</InlineMessage>
+            ) : null}
+            {detail?.result?.worldConsistency === "degraded" ? (
+              <InlineMessage tone="warning">
+                This run has degraded world consistency. Review its details before relying on the result.
+              </InlineMessage>
+            ) : null}
             {detail?.result === undefined ? null : (
               <section className="fd-run-section">
                 <div className="fd-section-heading">
-                  <div>
-                    <h3>Task</h3>
-                    <p>What the agent was asked to do in this run.</p>
-                  </div>
+                  <h3>Task</h3>
                 </div>
                 {detail.result.interactions.length === 0 ? (
                   <p className="fd-muted-copy">The run ended before an interaction started.</p>
                 ) : (
                   detail.result.interactions.map((interaction) => (
-                    <div className="fd-catalog-disclosure" key={interaction.interactionId}>
-                      <strong>{interaction.task.instruction}</strong>
-                      <p className="fd-muted-copy">
-                        Agent result: {titleFromId(interaction.targetResult.status)}
-                      </p>
-                      <details>
-                        <summary>Task input and agent output</summary>
-                        <CodeBlock>
-                          {json({
-                            input: interaction.task.input,
-                            output: interaction.targetResult.output,
-                            error: interaction.targetResult.error,
-                          })}
-                        </CodeBlock>
-                      </details>
+                    <div className="fd-result-task" key={interaction.interactionId}>
+                      <p>{interaction.task.instruction}</p>
+                      {interaction.targetResult.status === "completed" ? null : (
+                        <p className="fd-result-task__error">
+                          Agent {titleFromId(interaction.targetResult.status).toLowerCase()}
+                          {interaction.targetResult.error === undefined
+                            ? "."
+                            : `: ${interaction.targetResult.error.message}`}
+                        </p>
+                      )}
+                      <div className="fd-result-actions">
+                        <DataViewer
+                          title={`Task input & agent response: ${interaction.interactionId}`}
+                          value={interaction}
+                          label="Input & response"
+                        />
+                      </div>
                     </div>
                   ))
                 )}
               </section>
             )}
-            {assertions.length > 0 ? (
+            {assertions.length > 0 || checkpoints.length > 0 ? (
               <section className="fd-run-section">
                 <div className="fd-section-heading">
-                  <div>
-                    <h3>Checks</h3>
-                    <p>
-                      Your expectations compared with observed actions and data. Expand a check to see
-                      expected and actual.
-                    </p>
-                  </div>
+                  <h3>Checks</h3>
                 </div>
-                <div className="fd-run-checks">
+                <div className="fd-result-checks">
                   {assertions.map((assertion) => (
-                    <details key={assertion.assertionId} open={assertion.status === "failed"}>
-                      <summary>
-                        <strong>{titleFromId(assertion.assertionId)}</strong>
-                        <Status tone={resultTone(assertion.status)}>{titleFromId(assertion.status)}</Status>
-                      </summary>
-                      <p>{assertion.message}</p>
-                      <div className="fd-check-comparison">
-                        <div>
-                          <h4>Expected</h4>
-                          <CodeBlock>{json(assertion.expected)}</CodeBlock>
-                        </div>
-                        <div>
-                          <h4>Actual</h4>
-                          <CodeBlock>{json(assertion.actual)}</CodeBlock>
-                        </div>
-                      </div>
-                    </details>
+                    <CheckItem key={assertion.assertionId} assertion={assertion} />
                   ))}
                 </div>
+                {failedCheckpoints.map((checkpoint) => (
+                  <div className="fd-result-checkpoint" key={checkpoint.checkpointId}>
+                    <h4>Checks failed at {virtualTime(checkpoint.virtualTimeUs)} of world time</h4>
+                    {checkpoint.assertionResults
+                      .filter((assertion) => assertion.status === "failed")
+                      .map((assertion) => (
+                        <CheckItem key={assertion.assertionId} assertion={assertion} />
+                      ))}
+                  </div>
+                ))}
+                {checkpoints.length === 0 ? null : (
+                  <DataViewer
+                    title="Checks during the run"
+                    value={checkpoints}
+                    label="All checkpoint checks"
+                  />
+                )}
               </section>
             ) : null}
             <section className="fd-timeline-section">
               <div className="fd-timeline-toolbar">
                 <div>
-                  <h3>Event log</h3>
-                  <span>{plural(entries.length, "loaded entry", "loaded entries")}</span>
+                  <h3>Activity</h3>
                 </div>
                 <SearchField
                   value={query}
                   onChange={(event) => setQuery(event.target.value)}
-                  placeholder="Actor, Tool, assertion, fault…"
+                  placeholder="Find a tool call or event"
                 />
                 <Select label="Evidence kind" value={kind} onChange={(event) => setKind(event.target.value)}>
-                  <option value="all">All evidence</option>
-                  <option value="operation">Operations</option>
+                  <option value="all">All activity</option>
+                  <option value="operation">Tool calls</option>
                   <option value="state_change">State changes</option>
-                  <option value="verification">Assertions</option>
+                  <option value="verification">Checks</option>
                   <option value="event">Events</option>
                   <option value="callback">Callbacks</option>
                   <option value="fault">Faults</option>
@@ -866,7 +945,8 @@ function RunWorkspace({
                     <span className="fd-timeline-entry__body">
                       <strong>{evidenceLabel(entry)}</strong>
                       <small>
-                        {titleFromId(entry.kind)} · {virtualTime(entry.virtualTimeUs)}
+                        {entry.kind === "operation" ? `${titleFromId(entry.outcome.status)} · ` : ""}
+                        {virtualTime(entry.virtualTimeUs)}
                       </small>
                     </span>
                     {entry.causeSequence === undefined ? null : (
@@ -875,14 +955,14 @@ function RunWorkspace({
                   </button>
                 ))}
                 {filtered.length === 0 ? (
-                  <div className="fd-table-empty">No evidence matches these filters.</div>
+                  <div className="fd-table-empty">No activity matches these filters.</div>
                 ) : null}
               </div>
               {nextSequence <= summary.evidenceSequence ? (
                 <div className="fd-load-more">
                   <Button size="compact" onClick={() => void loadMore()} disabled={loadingMore}>
                     {loadingMore ? <Spinner label="Loading more evidence" /> : null}
-                    Load more evidence
+                    Load more activity
                   </Button>
                 </div>
               ) : null}
@@ -895,6 +975,7 @@ function RunWorkspace({
                 onError={onError}
               />
             )}
+            {detail === undefined ? null : <RuntimeWork detail={detail} />}
           </>
         )}
       </div>
@@ -924,6 +1005,7 @@ function RunWorkspace({
 export function RunsView({
   project,
   runs,
+  unavailableReports = [],
   requests,
   starting,
   cancelling,
@@ -935,6 +1017,7 @@ export function RunsView({
 }: {
   readonly project: SimulationProject;
   readonly runs: readonly SimulationRunSummary[];
+  readonly unavailableReports?: SimulationRunList["unavailable"];
   readonly requests: readonly SimulationRunRequest[];
   readonly starting: boolean;
   readonly cancelling: boolean;
@@ -970,15 +1053,16 @@ export function RunsView({
         <header className="fd-page-header">
           <PageIntro page="runs" />
         </header>
+        <UnavailableReports reports={unavailableReports} />
         <EmptyState
-          title="No drill runs yet"
+          title={unavailableReports.length > 0 ? "No readable runs" : "No drill runs yet"}
           action={
             <Button variant="primary" onClick={onNavigateDrills}>
               <Play size={16} /> Choose a drill
             </Button>
           }
         >
-          Run a drill to inspect the target's Tool calls, world-state changes, assertions, and report.
+          Run a drill to see what your agent did and whether its checks passed.
         </EmptyState>
       </section>
     );
@@ -994,6 +1078,7 @@ export function RunsView({
           </Button>
         ) : null}
       </header>
+      <UnavailableReports reports={unavailableReports} />
       {activeRequests.some((request) => request.runIds.length === 0) ? (
         <InlineMessage tone="info">
           Firedrill is preparing an isolated world for the selected drill.
@@ -1035,9 +1120,6 @@ export function RunsView({
                   <Status tone={resultTone(run.verdict ?? run.status)}>{resultLabel(run)}</Status>
                 </span>
                 <code>{compactId(run.runId, 19)}</code>
-                <span className="fd-run-list-item__meta">
-                  Seed {run.seed} · trial {run.trial}/{run.trialCount}
-                </span>
               </button>
             ))}
           </div>
@@ -1068,12 +1150,7 @@ export function RunsView({
         )}
       </div>
       {compareOpen ? (
-        <ComparisonDialog
-          runs={runs}
-          selectedRunId={selected?.runId}
-          onClose={() => setCompareOpen(false)}
-          onError={onError}
-        />
+        <ComparisonDialog runs={runs} selectedRunId={selected?.runId} onClose={() => setCompareOpen(false)} />
       ) : null}
     </section>
   );

@@ -1,0 +1,114 @@
+.fd-dialog.fd-document-dialog,
+.fd-dialog.fd-source-dialog {
+  width: min(1200px, calc(100vw - 48px));
+  height: min(880px, calc(100dvh - 64px));
+  max-height: calc(100dvh - 64px);
+  overflow: hidden;
+  text-align: left;
+}
+.fd-document-dialog[open],
+.fd-source-dialog[open] {
+  display: flex;
+  flex-direction: column;
+}
+.fd-document-dialog .fd-dialog__head,
+.fd-source-dialog .fd-dialog__head {
+  flex: none;
+}
+.fd-document-dialog h2,
+.fd-source-dialog h2 {
+  overflow-wrap: anywhere;
+}
+.fd-document-toolbar {
+  display: flex;
+  flex: none;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 4px;
+  padding: 6px 12px;
+  border-bottom: 1px solid var(--border-subtle);
+  color: var(--text-secondary);
+  font: 13px / 1.5 var(--font-sans);
+}
+.fd-document-toolbar [aria-pressed="true"] {
+  background: var(--hover);
+  color: var(--text);
+}
+.fd-document-context {
+  margin-right: auto;
+}
+.fd-document-code {
+  flex: 1;
+  min-height: 0;
+  max-height: none;
+  min-width: 0;
+  margin: 0;
+  padding: 16px 0;
+  overflow: auto;
+  background: var(--surface);
+  color: var(--code);
+  font: 13px / 22px var(--font-mono);
+  tab-size: 2;
+  text-align: left;
+}
+.fd-document-code > pre,
+.fd-document-code > pre > code {
+  display: block;
+  margin: 0;
+  color: inherit;
+  font: inherit;
+}
+.fd-document-line {
+  display: flex;
+  min-width: max-content;
+  min-height: 22px;
+}
+.fd-document-line__number {
+  position: sticky;
+  left: 0;
+  flex: 0 0 60px;
+  padding-right: 16px;
+  background: var(--surface);
+  color: var(--text-tertiary);
+  text-align: right;
+  user-select: none;
+}
+.fd-document-line__text {
+  flex: 1;
+  min-width: 0;
+  padding-right: 20px;
+  white-space: pre;
+}
+.fd-document-code[data-wrap] .fd-document-line {
+  min-width: 0;
+}
+.fd-document-code[data-wrap] .fd-document-line__text {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.fd-document-code [data-token="key"] {
+  color: var(--text);
+}
+.fd-document-code [data-token="string"] {
+  color: var(--code);
+}
+.fd-document-code [data-token="literal"] {
+  color: var(--cobalt-600);
+}
+[data-theme="dark"] .fd-document-code [data-token="literal"] {
+  color: var(--cobalt-200);
+}
+@media (max-width: 639px) {
+  .fd-dialog.fd-document-dialog,
+  .fd-dialog.fd-source-dialog {
+    width: calc(100vw - 16px);
+    height: calc(100dvh - 24px);
+    max-height: calc(100dvh - 24px);
+    border-radius: 10px;
+  }
+  .fd-document-line__number {
+    flex-basis: 44px;
+    padding-right: 12px;
+  }
+}

@@ -1,5 +1,6 @@
 import { ChevronLeft, ChevronRight, Play, X } from "lucide-react";
 import { useEffect, useId, useMemo, useRef, useState } from "react";
+import { DataViewer } from "../components/data-viewer";
 import { PageIntro } from "../components/page-intro";
 import {
   Button,
@@ -13,7 +14,7 @@ import {
   Spinner,
 } from "../components/primitives";
 import { SourceViewer } from "../components/source-viewer";
-import { json, plural, titleFromId, virtualTime } from "../format";
+import { plural, titleFromId, virtualTime } from "../format";
 import type { SimulationDrill, SimulationProject, SimulationSuite, StartSimulationRun } from "../types";
 import { describeExpectation } from "./drill-expectations";
 
@@ -241,10 +242,7 @@ function DrillDetails({
                     : `After ${virtualTime(interaction.afterStartUs)} of world time`}
                 </p>
                 {interaction.task.input === undefined ? null : (
-                  <details className="fd-drill-disclosure">
-                    <summary>Task input</summary>
-                    <CodeBlock>{json(interaction.task.input)}</CodeBlock>
-                  </details>
+                  <DataViewer title="Task input" label="View input" value={interaction.task.input} />
                 )}
               </article>
             ))}
@@ -257,10 +255,7 @@ function DrillDetails({
                 </p>
                 <p className="fd-drill-task__timing">Actors: {workload.actorIds.join(", ")}</p>
                 {workload.task.input === undefined ? null : (
-                  <details className="fd-drill-disclosure">
-                    <summary>Task input</summary>
-                    <CodeBlock>{json(workload.task.input)}</CodeBlock>
-                  </details>
+                  <DataViewer title="Task input" label="View input" value={workload.task.input} />
                 )}
               </article>
             ))}
@@ -271,7 +266,7 @@ function DrillDetails({
         <div className="fd-section-heading">
           <div>
             <h3>Checks</h3>
-            <p>What Firedrill checks in the synthetic world, not just the agent’s answer.</p>
+            <p>Checks must pass at the end of the run unless noted otherwise.</p>
           </div>
         </div>
         {drill.expectations.length === 0 ? (
@@ -283,7 +278,21 @@ function DrillDetails({
                 check.definition === undefined ? undefined : describeExpectation(check.definition);
               return (
                 <li key={`${check.checkpoint}:${check.id}`}>
-                  <strong>{titleFromId(check.id)}</strong>
+                  <div className="fd-drill-check__heading">
+                    <strong>{titleFromId(check.id)}</strong>
+                    {check.definition === undefined ? null : (
+                      <DataViewer
+                        title={titleFromId(check.id)}
+                        label="View definition"
+                        value={{
+                          checkpoint: check.checkpoint,
+                          gate: check.gate,
+                          definition: check.definition,
+                          ...(description?.filters.length ? { matchingRules: description.filters } : {}),
+                        }}
+                      />
+                    )}
+                  </div>
                   {description === undefined ? (
                     <p>View the source to read this check.</p>
                   ) : (
@@ -297,19 +306,16 @@ function DrillDetails({
                       ))}
                     </>
                   )}
-                  <small>
-                    {check.checkpoint === "invariant" ? "During the run" : "At the end"} ·{" "}
-                    {check.gate ? "Failure fails the run" : "Reported without failing the run"}
-                  </small>
-                  {check.definition === undefined ? null : (
-                    <details className="fd-drill-disclosure">
-                      <summary>Check definition</summary>
-                      {description?.filters.map((filter) => (
-                        <p key={filter}>{filter}</p>
-                      ))}
-                      <CodeBlock>{json(check.definition)}</CodeBlock>
-                    </details>
-                  )}
+                  {check.checkpoint === "invariant" || !check.gate ? (
+                    <p className="fd-drill-check__subject">
+                      {[
+                        check.checkpoint === "invariant" ? "Checked throughout the run" : null,
+                        !check.gate ? "Informational; does not affect the result" : null,
+                      ]
+                        .filter(Boolean)
+                        .join(" · ")}
+                    </p>
+                  ) : null}
                 </li>
               );
             })}
@@ -341,13 +347,6 @@ function DrillDetails({
           {target?.source?.readable ? (
             <SourceViewer kind="target" id={target.id} label="View agent connection" />
           ) : null}
-          {drill.source === undefined ? null : (
-            <p className="fd-muted-copy">
-              Source: <code>{drill.source.path}</code>
-              <br />
-              Hash: <code>{drill.source.contentHash}</code>
-            </p>
-          )}
         </details>
       </section>
     </div>
@@ -393,13 +392,6 @@ function SuiteDetails({
             <KeyValue label="Retries">{suite.retries}</KeyValue>
             <KeyValue label="Parallel runs">{suite.concurrency}</KeyValue>
           </dl>
-          {suite.source === undefined ? null : (
-            <p className="fd-muted-copy">
-              Source: <code>{suite.source.path}</code>
-              <br />
-              Hash: <code>{suite.source.contentHash}</code>
-            </p>
-          )}
         </details>
       </section>
     </div>

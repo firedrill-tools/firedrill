@@ -1,0 +1,32 @@
+.fd-catalog-world-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+.fd-operation-name .fd-button {
+  font: 13px / 1.5 var(--font-mono);
+  color: var(--text);
+}
+
+.fd-workspace-titlebar > .fd-catalog-world-actions {
+  justify-content: flex-end;
+  margin-left: auto;
+}
+
+.fd-catalog-world-source-path {
+  margin: 0 0 12px;
+  overflow-wrap: anywhere;
+  color: var(--text-secondary);
+}
+
+.fd-catalog-world-source-path code {
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.fd-catalog-world-event-meta {
+  margin-top: 4px;
+  color: var(--text-secondary);
+  font-size: 13px;
+}

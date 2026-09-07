@@ -12,6 +12,7 @@ import type {
   Route,
   SimulationProject,
   SimulationRunRequest,
+  SimulationRunList,
   SimulationRunSummary,
   StartSimulationRun,
 } from "./types";
@@ -72,7 +73,7 @@ export function App() {
   const [cancelling, setCancelling] = useState(false);
   const [notices, setNotices] = useState<readonly Notice[]>([]);
   const noticeId = useRef(0);
-  const unavailableReports = useRef("");
+  const [unavailableReports, setUnavailableReports] = useState<SimulationRunList["unavailable"]>([]);
 
   const notify = useCallback((tone: Notice["tone"], message: string) => {
     noticeId.current += 1;
@@ -83,25 +84,10 @@ export function App() {
 
   const showError = useCallback((message: string) => notify("danger", message), [notify]);
 
-  const applyRunList = useCallback(
-    (runList: Awaited<ReturnType<typeof inspectorApi.runs>>) => {
-      setRuns(runList.runs);
-      const nextUnavailable = runList.unavailable.map((report) => report.runId).join("\n");
-      if (nextUnavailable !== "" && nextUnavailable !== unavailableReports.current) {
-        const unsupported = runList.unavailable.every(
-          (report) => report.code === "reporter.VERSION_UNSUPPORTED",
-        );
-        notify(
-          "warning",
-          unsupported
-            ? `${runList.unavailable.length} saved report${runList.unavailable.length === 1 ? " uses an" : "s use an"} unsupported format. Original files are unchanged.`
-            : `${runList.unavailable.length} local report${runList.unavailable.length === 1 ? "" : "s"} could not be verified. Saved files have not been changed.`,
-        );
-      }
-      unavailableReports.current = nextUnavailable;
-    },
-    [notify],
-  );
+  const applyRunList = useCallback((runList: SimulationRunList) => {
+    setRuns(runList.runs);
+    setUnavailableReports(runList.unavailable);
+  }, []);
 
   const readRuntime = useCallback(async () => {
     const [runList, requestList] = await Promise.all([inspectorApi.runs(), inspectorApi.runRequests()]);
@@ -272,6 +258,7 @@ export function App() {
             project={project}
             runs={runs}
             requests={requests}
+            unavailableReports={unavailableReports}
             starting={starting}
             cancelling={cancelling}
             onCancel={(requestId) => void cancel(requestId)}
