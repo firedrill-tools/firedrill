@@ -38,6 +38,13 @@ Data, Tools, Personas & actors), and the test workflow under **Testing**
   for the complete compiled contract. Implementation opens in the main workspace,
   not a narrow detail panel. It starts at the actual entry module and lets you
   select imported helper files, with line numbers, syntax coloring, wrapping and copy.
+  **Available interfaces** stays visible in every Tool view: MCP, HTTP API,
+  Firedrill CLI and direct function. These are adapters for declared operations,
+  not a single exclusive Tool type or a live-connection indicator. The target's
+  bindings and actor permissions determine access. HTTP includes generic operation
+  calls even without custom routes; separately displayed route counts are declared
+  routes, not observed traffic. CLI means `firedrill world`, not arbitrary native
+  command interception; direct function uses the supplied binding/test adapter.
 - **Drills**: read the agent's task, starting scenario and checks, then run the
   drill. Repeated workloads and task inputs come from the same source files.
   Execution limits stay under settings; raw check definitions open in a wide viewer.

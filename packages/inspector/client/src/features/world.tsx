@@ -14,6 +14,7 @@ import type { SimulationProject, SimulationScenario, SimulationSetup, Simulation
 import { startingRecords } from "./catalog-data";
 import { describeSetupChanges } from "./setup-changes";
 import { ToolImplementation } from "./tool-implementation";
+import { ToolInterfaces } from "./tool-interfaces";
 import { ToolOverrides } from "./tool-overrides";
 import "./catalog-world.css";
 import "./tool-implementation.css";
@@ -696,6 +697,7 @@ export function ToolMain({ tool }: { readonly tool: SimulationTool }) {
           </Button>
         </nav>
       </div>
+      <ToolInterfaces tool={tool} />
       {view === "operations" ? (
         <OperationTable tool={tool} />
       ) : view === "implementation" ? (
