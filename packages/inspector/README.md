@@ -66,6 +66,17 @@ keyboard access and a **More below** action; wide tables show **More columns**
 above the table. These controls appear only for actual overflow and become return
 actions at the end. Selecting a different definition resets its content position.
 
+Content lists use shared Previous/Next controls: up to 25 entries in navigation,
+catalogs and activity, and 10 in definition/detail lists. Controls appear only
+when another page is needed. Search filters the complete loaded collection before
+paging; changing a filter or definition resets its page, and refreshed shorter
+lists cannot leave an empty trailing page. Check numbering continues across pages.
+Retained state reads fetch the next cursor batch through the same Next control;
+Previous reuses already loaded rows. Fixed navigation, metadata fields and native
+select options are not paginated. Saved-run discovery currently considers the
+500 most recently modified report directories; UI pagination does not remove
+that existing server limit.
+
 Use **View record**, **View definition**, or the input/response actions to open
 structured data in a wide, line-numbered viewer. Copy and line wrapping work the
 same way for data and source files. JSON never expands inside a narrow table cell

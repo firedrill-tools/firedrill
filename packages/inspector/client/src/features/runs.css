@@ -209,6 +209,14 @@
   color: var(--text-secondary);
 }
 
+.fd-run-main .fd-timeline-section > .fd-pagination {
+  padding-inline: 12px;
+}
+
+.fd-run-rail .fd-run-list-item__top strong {
+  font-weight: 500;
+}
+
 .fd-compare-dialog > .fd-inline-message {
   margin: 0 18px 16px;
 }

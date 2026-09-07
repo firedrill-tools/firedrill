@@ -20,6 +20,7 @@ import { inspectorApi } from "../api";
 import { DataViewer } from "../components/data-viewer";
 import { DetailsPanel, DetailsTrigger } from "../components/details-panel";
 import { PageIntro } from "../components/page-intro";
+import { PaginatedContent, Pagination, pageBounds, usePagination } from "../components/pagination";
 import {
   Button,
   ConfirmDialog,
@@ -285,11 +286,19 @@ function StateBrowser({
 }) {
   const [selectedKey, setSelectedKey] = useState<string>();
   const [page, setPage] = useState<SimulationStatePage>();
+  const [rowPage, setRowPage] = useState(0);
   const [loading, setLoading] = useState(false);
   const stateRequest = useRef(0);
   const selected = namespaces.find((item) => `${item.packageId}:${item.namespace}` === selectedKey);
+  const rowCount =
+    page === undefined
+      ? 0
+      : page.nextRowId === undefined
+        ? page.records.length
+        : Math.max(selected?.records ?? 0, page.records.length);
+  const rows = pageBounds(rowCount, rowPage, 25);
 
-  const load = async (namespace: StateNamespace, after?: string) => {
+  const load = async (namespace: StateNamespace, after?: string, nextPage = 0) => {
     const request = ++stateRequest.current;
     setLoading(true);
     try {
@@ -300,11 +309,21 @@ function StateBrowser({
           ? result
           : { ...result, records: [...current.records, ...result.records] },
       );
+      setRowPage(nextPage);
     } catch (error) {
       if (request === stateRequest.current)
         onError(error instanceof Error ? error.message : "State could not be loaded.");
     } finally {
       if (request === stateRequest.current) setLoading(false);
+    }
+  };
+
+  const changeRowPage = (nextPage: number) => {
+    if (loading || page === undefined || selected === undefined) return;
+    if (nextPage * rows.pageSize < page.records.length) {
+      setRowPage(nextPage);
+    } else if (page.nextRowId !== undefined) {
+      void load(selected, page.nextRowId, nextPage);
     }
   };
 
@@ -324,6 +343,7 @@ function StateBrowser({
             setLoading(false);
             setSelectedKey(next || undefined);
             setPage(undefined);
+            setRowPage(0);
             const namespace = namespaces.find((item) => `${item.packageId}:${item.namespace}` === next);
             if (namespace !== undefined) void load(namespace);
           }}
@@ -346,37 +366,43 @@ function StateBrowser({
       ) : null}
       {page !== undefined ? (
         <div className="fd-state-table-wrap">
-          <table className="fd-table fd-state-table">
-            <thead>
-              <tr>
-                <th>Row</th>
-                <th>Value</th>
-              </tr>
-            </thead>
-            <tbody>
-              {page.records.map((record) => (
-                <tr key={record.rowId}>
-                  <td>
-                    <code>{record.rowId}</code>
-                  </td>
-                  <td>
-                    <ResultValue title={`Record: ${record.rowId}`} value={record.value} />
-                  </td>
+          <ScrollArea label="Run state records" resetKey={`${selectedKey}:${rows.page}`} natural>
+            <table className="fd-table fd-state-table">
+              <thead>
+                <tr>
+                  <th>Row</th>
+                  <th>Value</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {page.records.slice(rows.start, rows.end).map((record) => (
+                  <tr key={record.rowId}>
+                    <td>
+                      <code>{record.rowId}</code>
+                    </td>
+                    <td>
+                      <ResultValue title={`Record: ${record.rowId}`} value={record.value} />
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </ScrollArea>
+          <Pagination
+            label="State rows"
+            {...rows}
+            total={rowCount}
+            onPageChange={changeRowPage}
+            disabled={loading}
+          />
+          {loading ? (
+            <div className="fd-subtle-loading">
+              <Spinner label="Loading state page" /> Loading rows…
+            </div>
+          ) : null}
           {page.records.length === 0 ? (
             <div className="fd-table-empty">This table has no records.</div>
           ) : null}
-          {page.nextRowId === undefined || selected === undefined ? null : (
-            <div className="fd-load-more">
-              <Button size="compact" onClick={() => void load(selected, page.nextRowId)} disabled={loading}>
-                {loading ? <Spinner label="Loading more state" /> : null}
-                Load more rows
-              </Button>
-            </div>
-          )}
         </div>
       ) : null}
     </section>
@@ -409,47 +435,59 @@ function RuntimeWork({ detail }: { readonly detail: SimulationRunDetail }) {
         {detail.faults.length === 0 ? null : (
           <section>
             <h4>Active faults</h4>
-            <ul>
-              {detail.faults.map((fault) => (
-                <li key={`${fault.packageId}:${fault.faultId}`}>
-                  <code>
-                    {fault.packageId}.{fault.faultId}
-                  </code>
-                </li>
-              ))}
-            </ul>
+            <PaginatedContent items={detail.faults} label="Active faults">
+              {(faults) => (
+                <ul>
+                  {faults.map((fault) => (
+                    <li key={`${fault.packageId}:${fault.faultId}`}>
+                      <code>
+                        {fault.packageId}.{fault.faultId}
+                      </code>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </PaginatedContent>
           </section>
         )}
         {pendingEvents.length === 0 ? null : (
           <section>
             <h4>Pending events</h4>
-            <ul>
-              {pendingEvents.map((event) => (
-                <li key={event.id}>
-                  <code>
-                    {event.event.packageId}.{event.event.eventId}
-                  </code>
-                  <span>due {virtualTime(event.dueUs)}</span>
-                </li>
-              ))}
-            </ul>
+            <PaginatedContent items={pendingEvents} label="Pending events">
+              {(events) => (
+                <ul>
+                  {events.map((event) => (
+                    <li key={event.id}>
+                      <code>
+                        {event.event.packageId}.{event.event.eventId}
+                      </code>
+                      <span>due {virtualTime(event.dueUs)}</span>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </PaginatedContent>
           </section>
         )}
         {unresolvedCallbacks.length === 0 ? null : (
           <section>
             <h4>Callback deliveries</h4>
-            <ul>
-              {unresolvedCallbacks.map((delivery) => (
-                <li key={delivery.id}>
-                  <code>
-                    {delivery.callback.packageId}.{delivery.callback.callbackId}
-                  </code>
-                  <span>
-                    {titleFromId(delivery.status)} · {plural(delivery.attemptCount, "attempt")}
-                  </span>
-                </li>
-              ))}
-            </ul>
+            <PaginatedContent items={unresolvedCallbacks} label="Callback deliveries">
+              {(deliveries) => (
+                <ul>
+                  {deliveries.map((delivery) => (
+                    <li key={delivery.id}>
+                      <code>
+                        {delivery.callback.packageId}.{delivery.callback.callbackId}
+                      </code>
+                      <span>
+                        {titleFromId(delivery.status)} · {plural(delivery.attemptCount, "attempt")}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </PaginatedContent>
           </section>
         )}
       </div>
@@ -605,47 +643,63 @@ function ComparisonDialog({
           {deltas.length === 0 ? null : (
             <section>
               <h3>Count differences</h3>
-              <table className="fd-table fd-compare-table">
-                <thead>
-                  <tr>
-                    <th>Kind</th>
-                    <th>Subject</th>
-                    <th>Baseline</th>
-                    <th>Candidate</th>
-                    <th>Delta</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {deltas.map((delta) => (
-                    <tr key={`${delta.kind}:${delta.subject}`}>
-                      <td>{delta.kind}</td>
-                      <td>
-                        <code>{delta.subject}</code>
-                      </td>
-                      <td>{delta.baseline}</td>
-                      <td>{delta.candidate}</td>
-                      <td>{delta.delta > 0 ? `+${delta.delta}` : delta.delta}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+              <PaginatedContent
+                items={deltas}
+                label="Count differences"
+                resetKey={`${baselineRunId}:${candidateRunId}`}
+              >
+                {(pageDeltas) => (
+                  <table className="fd-table fd-compare-table">
+                    <thead>
+                      <tr>
+                        <th>Kind</th>
+                        <th>Subject</th>
+                        <th>Baseline</th>
+                        <th>Candidate</th>
+                        <th>Delta</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {pageDeltas.map((delta) => (
+                        <tr key={`${delta.kind}:${delta.subject}`}>
+                          <td>{delta.kind}</td>
+                          <td>
+                            <code>{delta.subject}</code>
+                          </td>
+                          <td>{delta.baseline}</td>
+                          <td>{delta.candidate}</td>
+                          <td>{delta.delta > 0 ? `+${delta.delta}` : delta.delta}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                )}
+              </PaginatedContent>
             </section>
           )}
           {comparison.changes.assertions.length === 0 ? null : (
             <section>
               <h3>Check differences</h3>
-              <ul className="fd-compare-list">
-                {comparison.changes.assertions.map((assertion) => (
-                  <li key={`${assertion.checkpointId}:${assertion.assertionId}`}>
-                    <code>{assertion.assertionId}</code>
-                    <span>
-                      {titleFromId(assertion.baseline ?? "missing")} →{" "}
-                      {titleFromId(assertion.candidate ?? "missing")}
-                      {assertion.actualChanged ? " · actual value changed" : ""}
-                    </span>
-                  </li>
-                ))}
-              </ul>
+              <PaginatedContent
+                items={comparison.changes.assertions}
+                label="Check differences"
+                resetKey={`${baselineRunId}:${candidateRunId}`}
+              >
+                {(pageAssertions) => (
+                  <ul className="fd-compare-list">
+                    {pageAssertions.map((assertion) => (
+                      <li key={`${assertion.checkpointId}:${assertion.assertionId}`}>
+                        <code>{assertion.assertionId}</code>
+                        <span>
+                          {titleFromId(assertion.baseline ?? "missing")} →{" "}
+                          {titleFromId(assertion.candidate ?? "missing")}
+                          {assertion.actualChanged ? " · actual value changed" : ""}
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </PaginatedContent>
             </section>
           )}
         </div>
@@ -772,11 +826,14 @@ function RunWorkspace({
       return matchesSearch(searchText, query);
     })
     .map(({ entry }) => entry);
+  const activity = usePagination(filtered, `${summary.runId}:${kind}:${query}`);
   const selected = entries.find((entry) => entry.sequence === selectedSequence);
   const assertions = detail?.result?.assertionResults ?? [];
   const checkpoints = detail?.result?.checkpoints.filter((checkpoint) => checkpoint.kind !== "final") ?? [];
-  const failedCheckpoints = checkpoints.filter((checkpoint) =>
-    checkpoint.assertionResults.some((assertion) => assertion.status === "failed"),
+  const failedCheckpointChecks = checkpoints.flatMap((checkpoint) =>
+    checkpoint.assertionResults
+      .filter((assertion) => assertion.status === "failed")
+      .map((assertion) => ({ checkpoint, assertion })),
   );
 
   return (
@@ -878,26 +935,34 @@ function RunWorkspace({
                   {detail.result.interactions.length === 0 ? (
                     <p className="fd-muted-copy">The run ended before an interaction started.</p>
                   ) : (
-                    detail.result.interactions.map((interaction) => (
-                      <div className="fd-result-task" key={interaction.interactionId}>
-                        <p>{interaction.task.instruction}</p>
-                        {interaction.targetResult.status === "completed" ? null : (
-                          <p className="fd-result-task__error">
-                            Agent {titleFromId(interaction.targetResult.status).toLowerCase()}
-                            {interaction.targetResult.error === undefined
-                              ? "."
-                              : `: ${interaction.targetResult.error.message}`}
-                          </p>
-                        )}
-                        <div className="fd-result-actions">
-                          <DataViewer
-                            title={`Task input & agent response: ${interaction.interactionId}`}
-                            value={interaction}
-                            label="Input & response"
-                          />
-                        </div>
-                      </div>
-                    ))
+                    <PaginatedContent
+                      items={detail.result.interactions}
+                      label="Task interactions"
+                      resetKey={summary.runId}
+                    >
+                      {(interactions) =>
+                        interactions.map((interaction) => (
+                          <div className="fd-result-task" key={interaction.interactionId}>
+                            <p>{interaction.task.instruction}</p>
+                            {interaction.targetResult.status === "completed" ? null : (
+                              <p className="fd-result-task__error">
+                                Agent {titleFromId(interaction.targetResult.status).toLowerCase()}
+                                {interaction.targetResult.error === undefined
+                                  ? "."
+                                  : `: ${interaction.targetResult.error.message}`}
+                              </p>
+                            )}
+                            <div className="fd-result-actions">
+                              <DataViewer
+                                title={`Task input & agent response: ${interaction.interactionId}`}
+                                value={interaction}
+                                label="Input & response"
+                              />
+                            </div>
+                          </div>
+                        ))
+                      }
+                    </PaginatedContent>
                   )}
                 </section>
               )}
@@ -906,21 +971,35 @@ function RunWorkspace({
                   <div className="fd-section-heading">
                     <h3>Checks</h3>
                   </div>
-                  <div className="fd-result-checks">
-                    {assertions.map((assertion) => (
-                      <CheckItem key={assertion.assertionId} assertion={assertion} />
-                    ))}
-                  </div>
-                  {failedCheckpoints.map((checkpoint) => (
-                    <div className="fd-result-checkpoint" key={checkpoint.checkpointId}>
-                      <h4>Checks failed at {virtualTime(checkpoint.virtualTimeUs)} of world time</h4>
-                      {checkpoint.assertionResults
-                        .filter((assertion) => assertion.status === "failed")
-                        .map((assertion) => (
+                  <PaginatedContent items={assertions} label="Final checks" resetKey={summary.runId}>
+                    {(pageAssertions) => (
+                      <div className="fd-result-checks">
+                        {pageAssertions.map((assertion) => (
                           <CheckItem key={assertion.assertionId} assertion={assertion} />
                         ))}
-                    </div>
-                  ))}
+                      </div>
+                    )}
+                  </PaginatedContent>
+                  <PaginatedContent
+                    items={failedCheckpointChecks}
+                    label="Failed checkpoint checks"
+                    resetKey={summary.runId}
+                  >
+                    {(checks) =>
+                      checks.map(({ checkpoint, assertion }, index) => (
+                        <div
+                          className="fd-result-checkpoint"
+                          key={`${checkpoint.checkpointId}:${assertion.assertionId}`}
+                        >
+                          {index === 0 ||
+                          checks[index - 1]?.checkpoint.checkpointId !== checkpoint.checkpointId ? (
+                            <h4>Checks failed at {virtualTime(checkpoint.virtualTimeUs)} of world time</h4>
+                          ) : null}
+                          <CheckItem assertion={assertion} />
+                        </div>
+                      ))
+                    }
+                  </PaginatedContent>
                   {checkpoints.length === 0 ? null : (
                     <DataViewer
                       title="Checks during the run"
@@ -965,7 +1044,7 @@ function RunWorkspace({
                   </DetailsTrigger>
                 </div>
                 <div className="fd-timeline">
-                  {filtered.map((entry) => (
+                  {activity.items.map((entry) => (
                     <RowButton
                       type="button"
                       className="fd-timeline-entry"
@@ -1001,6 +1080,7 @@ function RunWorkspace({
                     <div className="fd-table-empty">No activity matches these filters.</div>
                   ) : null}
                 </div>
+                <Pagination label="Loaded activity" {...activity} />
                 {nextSequence <= summary.evidenceSequence ? (
                   <div className="fd-load-more">
                     <Button size="compact" onClick={() => void loadMore()} disabled={loadingMore}>
@@ -1086,6 +1166,7 @@ export function RunsView({
       return matchesSearch(searchText, query);
     })
     .map(({ run }) => run);
+  const runPage = usePagination(filtered, `${status}:${query}`);
 
   useEffect(() => {
     if (selectedId === undefined && runs[0] !== undefined) setSelectedId(runs[0].runId);
@@ -1151,7 +1232,7 @@ export function RunsView({
             </Select>
           </div>
           <div className="fd-rail-list">
-            {filtered.map((run) => (
+            {runPage.items.map((run) => (
               <RowButton
                 type="button"
                 className="fd-run-list-item"
@@ -1167,6 +1248,7 @@ export function RunsView({
               </RowButton>
             ))}
           </div>
+          <Pagination label="Runs" {...runPage} variant="rail" />
           {filtered.length === 0 ? <div className="fd-rail-empty">No runs match these filters.</div> : null}
         </aside>
         {selected === undefined ? (
