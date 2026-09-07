@@ -29,3 +29,35 @@
   color: var(--text-secondary);
   font-size: 13px;
 }
+
+.fd-world-records {
+  margin-top: 12px;
+  border: 1px solid var(--border-subtle);
+  border-radius: 8px;
+}
+
+.fd-setup-inherited {
+  margin: 0;
+  padding: 20px 24px;
+  color: var(--text-secondary);
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.fd-world-item-list strong {
+  color: var(--text);
+}
+
+.fd-world-item-list .fd-button {
+  align-self: flex-start;
+  margin-top: 8px;
+}
+
+.fd-world-workspace .fd-workspace-titlebar {
+  flex: none;
+  flex-wrap: wrap;
+}
+
+.fd-world-workspace .fd-workspace-titlebar > .fd-button {
+  margin-left: auto;
+}

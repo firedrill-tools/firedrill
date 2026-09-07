@@ -4,7 +4,7 @@ export interface StartingRecord {
   readonly packageId: string;
   readonly namespace: string;
   readonly rowId: string;
-  readonly value: Record<string, unknown>;
+  readonly value: Extract<SimulationSetup["state"][number], { action: "upsert" }>["value"];
 }
 
 /** A resolved scenario already includes baseline patches. Later upserts replace complete rows. */

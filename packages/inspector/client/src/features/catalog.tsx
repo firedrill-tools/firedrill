@@ -3,6 +3,7 @@ import { useMemo, useState } from "react";
 import { DataViewer } from "../components/data-viewer";
 import { PageIntro } from "../components/page-intro";
 import { EmptyState, IconButton, RowButton, SearchField, Select } from "../components/primitives";
+import { ScrollArea } from "../components/scroll-area";
 import { SourceViewer } from "../components/source-viewer";
 import type { SimulationProject } from "../types";
 import { recordCell, schemaFields, startingRecords } from "./catalog-data";
@@ -190,7 +191,16 @@ export function CatalogView({
               </Select>
             )}
           </div>
-          <div className="fd-catalog-content">
+          <ScrollArea
+            label={
+              page === "schema"
+                ? "Schema fields"
+                : page === "data"
+                  ? "Starting data"
+                  : "Actors and permissions"
+            }
+            resetKey={`${scenarioId}:${selected?.id ?? ""}:${index}:${query}`}
+          >
             {page === "schema" ? (
               selected?.definition === undefined ? (
                 <EmptyState title="No schema available">
@@ -199,7 +209,7 @@ export function CatalogView({
                 </EmptyState>
               ) : (
                 <>
-                  <div className="fd-table-scroll">
+                  <div>
                     <table className="fd-table fd-table--catalog">
                       <thead>
                         <tr>
@@ -247,7 +257,7 @@ export function CatalogView({
                     : "No records match your search."}
                 </EmptyState>
               ) : (
-                <div className="fd-table-scroll">
+                <div>
                   <table className="fd-table fd-table--catalog">
                     <thead>
                       <tr>
@@ -288,7 +298,7 @@ export function CatalogView({
                   belong under Data.
                 </EmptyState>
               ) : (
-                <div className="fd-table-scroll">
+                <div>
                   <table className="fd-table fd-table--catalog">
                     <thead>
                       <tr>
@@ -336,7 +346,7 @@ export function CatalogView({
                 </div>
               )
             ) : null}
-          </div>
+          </ScrollArea>
           <PageControls page={index} total={count} onPage={setPageIndex} />
         </div>
       </div>

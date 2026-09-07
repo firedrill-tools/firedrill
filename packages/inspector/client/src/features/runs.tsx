@@ -20,6 +20,7 @@ import { inspectorApi } from "../api";
 import { DataViewer } from "../components/data-viewer";
 import { DetailsPanel, DetailsTrigger } from "../components/details-panel";
 import { PageIntro } from "../components/page-intro";
+import { ScrollArea } from "../components/scroll-area";
 import {
   Button,
   ConfirmDialog,
@@ -207,7 +208,7 @@ function EventInspector({ entry }: { readonly entry: EvidenceEntry | undefined }
           <strong>{evidenceLabel(entry)}</strong>
         </div>
       </div>
-      <div className="fd-inspector-scroll">
+      <ScrollArea label="Event details" resetKey={String(entry.sequence)}>
         {entry.kind === "state_change" ? (
           <section className="fd-inspector-section">
             <h3>Data changed</h3>
@@ -257,7 +258,7 @@ function EventInspector({ entry }: { readonly entry: EvidenceEntry | undefined }
           </dl>
           <DataViewer title={`Event ${entry.sequence}`} value={entry} label="Full event" />
         </section>
-      </div>
+      </ScrollArea>
     </div>
   );
 }
@@ -298,7 +299,7 @@ function StateBrowser({
 
   if (namespaces.length === 0) return null;
   return (
-    <section className="fd-run-section">
+    <section className="fd-run-section" data-scroll-section="data">
       <div className="fd-section-heading fd-state-heading">
         <div>
           <h3>Data after this run</h3>
@@ -371,15 +372,20 @@ function StateBrowser({
   );
 }
 
-function RuntimeWork({ detail }: { readonly detail: SimulationRunDetail }) {
+function pendingRuntimeWork(detail: SimulationRunDetail) {
   const pendingEvents = detail.scheduledEvents.filter((event) => event.status === "pending");
   const unresolvedCallbacks = detail.callbackDeliveries.filter((delivery) =>
     ["pending", "in_flight", "failed"].includes(delivery.status),
   );
   const total = detail.faults.length + pendingEvents.length + unresolvedCallbacks.length;
+  return { pendingEvents, unresolvedCallbacks, total };
+}
+
+function RuntimeWork({ detail }: { readonly detail: SimulationRunDetail }) {
+  const { pendingEvents, unresolvedCallbacks, total } = pendingRuntimeWork(detail);
   if (total === 0) return null;
   return (
-    <details className="fd-runtime-work">
+    <details className="fd-runtime-work" data-scroll-section="runtime">
       <summary>
         <ChevronRight className="fd-disclosure-chevron" size={15} aria-hidden="true" />
         World runtime
@@ -817,169 +823,191 @@ function RunWorkspace({
             ) : null}
           </div>
         </div>
-        {loading ? (
-          <div className="fd-subtle-loading fd-subtle-loading--fill">
-            <Spinner label="Loading run" /> Loading evidence…
-          </div>
-        ) : (
-          <>
-            {detail?.result?.status === "runner_failed" ? (
-              <InlineMessage tone="danger" title="The run could not finish">
-                {detail.result.error.message}
-              </InlineMessage>
-            ) : null}
-            {detail?.result?.status === "cancelled" ? (
-              <InlineMessage tone="warning">{detail.result.reason}</InlineMessage>
-            ) : null}
-            {detail?.result?.worldConsistency === "degraded" ? (
-              <InlineMessage tone="warning">
-                This run has degraded world consistency. Review its details before relying on the result.
-              </InlineMessage>
-            ) : null}
-            {detail?.result === undefined ? null : (
-              <section className="fd-run-section">
-                <div className="fd-section-heading">
-                  <h3>Task</h3>
-                </div>
-                {detail.result.interactions.length === 0 ? (
-                  <p className="fd-muted-copy">The run ended before an interaction started.</p>
-                ) : (
-                  detail.result.interactions.map((interaction) => (
-                    <div className="fd-result-task" key={interaction.interactionId}>
-                      <p>{interaction.task.instruction}</p>
-                      {interaction.targetResult.status === "completed" ? null : (
-                        <p className="fd-result-task__error">
-                          Agent {titleFromId(interaction.targetResult.status).toLowerCase()}
-                          {interaction.targetResult.error === undefined
-                            ? "."
-                            : `: ${interaction.targetResult.error.message}`}
-                        </p>
-                      )}
-                      <div className="fd-result-actions">
-                        <DataViewer
-                          title={`Task input & agent response: ${interaction.interactionId}`}
-                          value={interaction}
-                          label="Input & response"
-                        />
-                      </div>
-                    </div>
-                  ))
-                )}
-              </section>
-            )}
-            {assertions.length > 0 || checkpoints.length > 0 ? (
-              <section className="fd-run-section">
-                <div className="fd-section-heading">
-                  <h3>Checks</h3>
-                </div>
-                <div className="fd-result-checks">
-                  {assertions.map((assertion) => (
-                    <CheckItem key={assertion.assertionId} assertion={assertion} />
-                  ))}
-                </div>
-                {failedCheckpoints.map((checkpoint) => (
-                  <div className="fd-result-checkpoint" key={checkpoint.checkpointId}>
-                    <h4>Checks failed at {virtualTime(checkpoint.virtualTimeUs)} of world time</h4>
-                    {checkpoint.assertionResults
-                      .filter((assertion) => assertion.status === "failed")
-                      .map((assertion) => (
-                        <CheckItem key={assertion.assertionId} assertion={assertion} />
-                      ))}
-                  </div>
-                ))}
-                {checkpoints.length === 0 ? null : (
-                  <DataViewer
-                    title="Checks during the run"
-                    value={checkpoints}
-                    label="All checkpoint checks"
-                  />
-                )}
-              </section>
-            ) : null}
-            <section className="fd-timeline-section">
-              <div className="fd-timeline-toolbar">
-                <div>
-                  <h3>Activity</h3>
-                </div>
-                <SearchField
-                  value={query}
-                  onChange={(event) => setQuery(event.target.value)}
-                  placeholder="Find a tool call or event"
-                />
-                <Select label="Evidence kind" value={kind} onChange={(event) => setKind(event.target.value)}>
-                  <option value="all">All activity</option>
-                  <option value="operation">Tool calls</option>
-                  <option value="state_change">State changes</option>
-                  <option value="verification">Checks</option>
-                  <option value="event">Events</option>
-                  <option value="callback">Callbacks</option>
-                  <option value="fault">Faults</option>
-                  <option value="clock">Clock</option>
-                  <option value="lifecycle">Lifecycle</option>
-                </Select>
-                <DetailsTrigger
-                  id={detailsId}
-                  open={detailsOpen}
-                  onClick={() => setDetailsOpen(!detailsOpen)}
-                  disabled={selected === undefined}
-                >
-                  Event details
-                </DetailsTrigger>
-              </div>
-              <div className="fd-timeline">
-                {filtered.map((entry) => (
-                  <RowButton
-                    type="button"
-                    className="fd-timeline-entry"
-                    key={entry.sequence}
-                    aria-current={selectedSequence === entry.sequence ? "true" : undefined}
-                    aria-expanded={detailsOpen && selectedSequence === entry.sequence}
-                    aria-controls={detailsId}
-                    onClick={() => {
-                      setSelectedSequence(entry.sequence);
-                      setDetailsOpen(true);
-                    }}
-                  >
-                    <span className="fd-timeline-entry__sequence">{entry.sequence}</span>
-                    <span className="fd-timeline-entry__mark" data-tone={eventTone(entry)}>
-                      <EventIcon kind={entry.kind} />
-                    </span>
-                    <span className="fd-timeline-entry__body">
-                      <strong>{evidenceLabel(entry)}</strong>
-                      <small>
-                        {entry.kind === "operation" ? `${titleFromId(entry.outcome.status)} · ` : ""}
-                        {virtualTime(entry.virtualTimeUs)}
-                      </small>
-                    </span>
-                    {entry.causeSequence === undefined ? null : (
-                      <span className="fd-timeline-entry__cause">← {entry.causeSequence}</span>
-                    )}
-                  </RowButton>
-                ))}
-                {filtered.length === 0 ? (
-                  <div className="fd-table-empty">No activity matches these filters.</div>
-                ) : null}
-              </div>
-              {nextSequence <= summary.evidenceSequence ? (
-                <div className="fd-load-more">
-                  <Button size="compact" onClick={() => void loadMore()} disabled={loadingMore}>
-                    {loadingMore ? <Spinner label="Loading more evidence" /> : null}
-                    Load more activity
-                  </Button>
-                </div>
+        <ScrollArea
+          label="Run results"
+          resetKey={summary.runId}
+          sections={
+            loading
+              ? []
+              : [
+                  ...(detail?.result === undefined ? [] : [{ id: "task", label: "Task" }]),
+                  ...(assertions.length || checkpoints.length ? [{ id: "checks", label: "Checks" }] : []),
+                  { id: "activity", label: "Activity" },
+                  ...(detail?.stateNamespaces.length ? [{ id: "data", label: "Data after run" }] : []),
+                  ...(detail !== undefined && pendingRuntimeWork(detail).total > 0
+                    ? [{ id: "runtime", label: "World runtime" }]
+                    : []),
+                ]
+          }
+        >
+          {loading ? (
+            <div className="fd-subtle-loading fd-subtle-loading--fill">
+              <Spinner label="Loading run" /> Loading evidence…
+            </div>
+          ) : (
+            <>
+              {detail?.result?.status === "runner_failed" ? (
+                <InlineMessage tone="danger" title="The run could not finish">
+                  {detail.result.error.message}
+                </InlineMessage>
               ) : null}
-            </section>
-            {detail === undefined ? null : (
-              <StateBrowser
-                key={summary.runId}
-                runId={summary.runId}
-                namespaces={detail.stateNamespaces}
-                onError={onError}
-              />
-            )}
-            {detail === undefined ? null : <RuntimeWork detail={detail} />}
-          </>
-        )}
+              {detail?.result?.status === "cancelled" ? (
+                <InlineMessage tone="warning">{detail.result.reason}</InlineMessage>
+              ) : null}
+              {detail?.result?.worldConsistency === "degraded" ? (
+                <InlineMessage tone="warning">
+                  This run has degraded world consistency. Review its details before relying on the result.
+                </InlineMessage>
+              ) : null}
+              {detail?.result === undefined ? null : (
+                <section className="fd-run-section" data-scroll-section="task">
+                  <div className="fd-section-heading">
+                    <h3>Task</h3>
+                  </div>
+                  {detail.result.interactions.length === 0 ? (
+                    <p className="fd-muted-copy">The run ended before an interaction started.</p>
+                  ) : (
+                    detail.result.interactions.map((interaction) => (
+                      <div className="fd-result-task" key={interaction.interactionId}>
+                        <p>{interaction.task.instruction}</p>
+                        {interaction.targetResult.status === "completed" ? null : (
+                          <p className="fd-result-task__error">
+                            Agent {titleFromId(interaction.targetResult.status).toLowerCase()}
+                            {interaction.targetResult.error === undefined
+                              ? "."
+                              : `: ${interaction.targetResult.error.message}`}
+                          </p>
+                        )}
+                        <div className="fd-result-actions">
+                          <DataViewer
+                            title={`Task input & agent response: ${interaction.interactionId}`}
+                            value={interaction}
+                            label="Input & response"
+                          />
+                        </div>
+                      </div>
+                    ))
+                  )}
+                </section>
+              )}
+              {assertions.length > 0 || checkpoints.length > 0 ? (
+                <section className="fd-run-section" data-scroll-section="checks">
+                  <div className="fd-section-heading">
+                    <h3>Checks</h3>
+                  </div>
+                  <div className="fd-result-checks">
+                    {assertions.map((assertion) => (
+                      <CheckItem key={assertion.assertionId} assertion={assertion} />
+                    ))}
+                  </div>
+                  {failedCheckpoints.map((checkpoint) => (
+                    <div className="fd-result-checkpoint" key={checkpoint.checkpointId}>
+                      <h4>Checks failed at {virtualTime(checkpoint.virtualTimeUs)} of world time</h4>
+                      {checkpoint.assertionResults
+                        .filter((assertion) => assertion.status === "failed")
+                        .map((assertion) => (
+                          <CheckItem key={assertion.assertionId} assertion={assertion} />
+                        ))}
+                    </div>
+                  ))}
+                  {checkpoints.length === 0 ? null : (
+                    <DataViewer
+                      title="Checks during the run"
+                      value={checkpoints}
+                      label="All checkpoint checks"
+                    />
+                  )}
+                </section>
+              ) : null}
+              <section className="fd-timeline-section" data-scroll-section="activity">
+                <div className="fd-timeline-toolbar">
+                  <div>
+                    <h3>Activity</h3>
+                  </div>
+                  <SearchField
+                    value={query}
+                    onChange={(event) => setQuery(event.target.value)}
+                    placeholder="Find a tool call or event"
+                  />
+                  <Select
+                    label="Evidence kind"
+                    value={kind}
+                    onChange={(event) => setKind(event.target.value)}
+                  >
+                    <option value="all">All activity</option>
+                    <option value="operation">Tool calls</option>
+                    <option value="state_change">State changes</option>
+                    <option value="verification">Checks</option>
+                    <option value="event">Events</option>
+                    <option value="callback">Callbacks</option>
+                    <option value="fault">Faults</option>
+                    <option value="clock">Clock</option>
+                    <option value="lifecycle">Lifecycle</option>
+                  </Select>
+                  <DetailsTrigger
+                    id={detailsId}
+                    open={detailsOpen}
+                    onClick={() => setDetailsOpen(!detailsOpen)}
+                    disabled={selected === undefined}
+                  >
+                    Event details
+                  </DetailsTrigger>
+                </div>
+                <div className="fd-timeline">
+                  {filtered.map((entry) => (
+                    <RowButton
+                      type="button"
+                      className="fd-timeline-entry"
+                      key={entry.sequence}
+                      aria-current={selectedSequence === entry.sequence ? "true" : undefined}
+                      aria-expanded={detailsOpen && selectedSequence === entry.sequence}
+                      aria-controls={detailsId}
+                      onClick={() => {
+                        setSelectedSequence(entry.sequence);
+                        setDetailsOpen(true);
+                      }}
+                    >
+                      <span className="fd-timeline-entry__sequence">{entry.sequence}</span>
+                      <span className="fd-timeline-entry__mark" data-tone={eventTone(entry)}>
+                        <EventIcon kind={entry.kind} />
+                      </span>
+                      <span className="fd-timeline-entry__body">
+                        <strong>{evidenceLabel(entry)}</strong>
+                        <small>
+                          {entry.kind === "operation" ? `${titleFromId(entry.outcome.status)} · ` : ""}
+                          {virtualTime(entry.virtualTimeUs)}
+                        </small>
+                      </span>
+                      {entry.causeSequence === undefined ? null : (
+                        <span className="fd-timeline-entry__cause">← {entry.causeSequence}</span>
+                      )}
+                    </RowButton>
+                  ))}
+                  {filtered.length === 0 ? (
+                    <div className="fd-table-empty">No activity matches these filters.</div>
+                  ) : null}
+                </div>
+                {nextSequence <= summary.evidenceSequence ? (
+                  <div className="fd-load-more">
+                    <Button size="compact" onClick={() => void loadMore()} disabled={loadingMore}>
+                      {loadingMore ? <Spinner label="Loading more evidence" /> : null}
+                      Load more activity
+                    </Button>
+                  </div>
+                ) : null}
+              </section>
+              {detail === undefined ? null : (
+                <StateBrowser
+                  key={summary.runId}
+                  runId={summary.runId}
+                  namespaces={detail.stateNamespaces}
+                  onError={onError}
+                />
+              )}
+              {detail === undefined ? null : <RuntimeWork detail={detail} />}
+            </>
+          )}
+        </ScrollArea>
       </div>
       <DetailsPanel
         id={detailsId}

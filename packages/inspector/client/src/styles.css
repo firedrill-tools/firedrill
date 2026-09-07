@@ -693,6 +693,7 @@ summary:focus-visible {
 
 .fd-inspector-head {
   display: flex;
+  flex: none;
   align-items: center;
   min-height: 64px;
   gap: 10px;
@@ -973,7 +974,7 @@ summary:focus-visible {
   width: 16%;
 }
 
-.fd-world-state-table th:nth-child(4) {
+.fd-world-state-table--changes th:nth-child(4) {
   width: 12%;
 }
 

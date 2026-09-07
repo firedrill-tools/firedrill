@@ -50,6 +50,16 @@ links, and selectable list rows have a trailing chevron. Hover and keyboard focu
 identify the active control; an open Details panel or enabled Wrap lines control
 keeps its selected styling. Ordinary table cells and status labels remain static.
 
+Scenarios lead with effective changes from the world baseline instead of repeating
+inherited actors and records. **View complete setup** shows the resulting starting
+records, failures, events and permissions; repository source remains available
+separately. These views describe setup, not the agent's execution results.
+
+Long setup, drill and run pages have section shortcuts. Scrollable content has
+keyboard access and a **More below** action; wide tables show **More columns**
+above the table. These controls appear only for actual overflow and become return
+actions at the end. Selecting a different definition resets its content position.
+
 Use **View record**, **View definition**, or the input/response actions to open
 structured data in a wide, line-numbered viewer. Copy and line wrapping work the
 same way for data and source files. JSON never expands inside a narrow table cell

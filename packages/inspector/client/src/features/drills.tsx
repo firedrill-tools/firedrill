@@ -15,6 +15,7 @@ import {
   Spinner,
 } from "../components/primitives";
 import { SourceViewer } from "../components/source-viewer";
+import { ScrollArea } from "../components/scroll-area";
 import { plural, titleFromId, virtualTime } from "../format";
 import type { SimulationDrill, SimulationProject, SimulationSuite, StartSimulationRun } from "../types";
 import { describeExpectation } from "./drill-expectations";
@@ -224,7 +225,7 @@ function DrillDetails({
           </KeyValue>
         </dl>
       </section>
-      <section className="fd-definition__section">
+      <section className="fd-definition__section" data-scroll-section="task">
         <h3>Task</h3>
         {execution === undefined ? (
           <p>
@@ -263,7 +264,7 @@ function DrillDetails({
           </div>
         )}
       </section>
-      <section className="fd-definition__section">
+      <section className="fd-definition__section" data-scroll-section="checks">
         <div className="fd-section-heading">
           <div>
             <h3>Checks</h3>
@@ -323,7 +324,7 @@ function DrillDetails({
           </ol>
         )}
       </section>
-      <section className="fd-definition__section">
+      <section className="fd-definition__section" data-scroll-section="settings">
         <details className="fd-drill-disclosure">
           <summary>Execution settings</summary>
           <dl className="fd-definition-grid">
@@ -368,7 +369,7 @@ function SuiteDetails({
       <section className="fd-definition__intro">
         <p>A suite runs a group of drills together. Select a drill below to read its task and checks.</p>
       </section>
-      <section className="fd-definition__section">
+      <section className="fd-definition__section" data-scroll-section="drills">
         <h3>{plural(drills.length, "drill")}</h3>
         {drills.length === 0 ? (
           <p>This suite does not match any drills. Update its IDs or tags in your source files.</p>
@@ -383,7 +384,7 @@ function SuiteDetails({
           </div>
         )}
       </section>
-      <section className="fd-definition__section">
+      <section className="fd-definition__section" data-scroll-section="settings">
         <details className="fd-drill-disclosure">
           <summary>Execution settings</summary>
           <dl>
@@ -549,7 +550,23 @@ export function DrillsView({
               )}
             </div>
           </div>
-          <div className="fd-definition-scroll fd-drill-body">
+          <ScrollArea
+            label="Drill definition"
+            resetKey={`${selected?.kind}:${selected?.value.id}`}
+            sections={
+              selected?.kind === "suite"
+                ? [
+                    { id: "drills", label: "Drills" },
+                    { id: "settings", label: "Execution settings" },
+                  ]
+                : [
+                    { id: "task", label: "Task" },
+                    { id: "checks", label: "Checks" },
+                    { id: "settings", label: "Execution settings" },
+                  ]
+            }
+            contentClassName="fd-drill-body"
+          >
             {!canRun ? (
               <div className="fd-drill-connection">
                 <p>
@@ -604,7 +621,7 @@ export function DrillsView({
                 onSelect={(drill) => choose(`drill:${drill.id}`)}
               />
             ) : null}
-          </div>
+          </ScrollArea>
         </div>
       </div>
       <RunDialog

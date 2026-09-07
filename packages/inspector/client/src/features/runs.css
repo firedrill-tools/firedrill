@@ -1,6 +1,17 @@
 .fd-run-main .fd-run-titlebar {
+  flex: none;
   align-items: flex-start;
   gap: 16px;
+}
+
+.fd-workspace-main.fd-run-main {
+  overflow: hidden;
+}
+
+@media (max-width: 760px) {
+  .fd-workspace-main.fd-run-main {
+    overflow: visible;
+  }
 }
 
 .fd-run-main .fd-run-actions {
