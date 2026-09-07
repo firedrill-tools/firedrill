@@ -11,6 +11,7 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
+import { AssertionDefinitionSchema, DrillTimelineSchema } from "@firedrill/contracts";
 import { afterEach, describe, expect, it } from "vitest";
 import { SimulationProjectSchema, SimulationReportAttachmentsSchema } from "../src/contracts.js";
 import type { LocalSimulationServer } from "../src/index.js";
@@ -411,6 +412,225 @@ describe("local simulation server", () => {
       SimulationProjectSchema.safeParse({
         ...project,
         tools: [{ ...tool, stateDefinitions: [{ namespace: "records", schema: "guessed" }] }],
+      }).success,
+    ).toBe(false);
+  });
+
+  it("exposes exact drill tasks, workload timing, and invariant and final assertion definitions", async () => {
+    const root = repository();
+    const invariant = {
+      id: "value-stays-valid",
+      kind: "state.value",
+      packageId: "workspace",
+      namespace: "records",
+      rowId: "primary",
+      path: ["value"],
+      comparison: { operator: "greater_than_or_equal", value: 0 },
+    };
+    const assertions = [
+      {
+        id: "requested-arguments",
+        kind: "operation.arguments",
+        gate: false,
+        operation: { packageId: "workspace", operationId: "records.set" },
+        actorId: "agent",
+        outcomes: ["ok"],
+        idempotency: ["recorded"],
+        occurrence: 2,
+        contains: { value: 7 },
+      },
+      {
+        id: "one-requested-record",
+        kind: "state.count",
+        packageId: "workspace",
+        namespace: "records",
+        where: { value: 7 },
+        comparison: { operator: "equals", value: 1 },
+      },
+    ];
+    const timeline = {
+      horizonUs: 5000,
+      maxToolCalls: 100,
+      maxEvents: 20,
+      stopOnInvariantFailure: false,
+      stopOnTargetFailure: false,
+      interactions: [
+        {
+          id: "kick-off",
+          afterStartUs: 0,
+          actorId: "agent",
+          task: {
+            instruction: "Perform the requested record update.",
+            input: { value: 7, context: { labels: ["urgent", "review"], optional: null } },
+          },
+        },
+      ],
+      workloads: [
+        {
+          id: "recheck",
+          actorIds: ["agent"],
+          task: { instruction: "Repeat the same request.", input: { value: 7, retry: true } },
+          startAfterUs: 1000,
+          everyUs: 1000,
+          occurrences: 3,
+        },
+      ],
+      invariants: [invariant],
+    };
+    writeFileSync(
+      join(root, "firedrill", "inspect-workload.drill.json"),
+      JSON.stringify({
+        schemaVersion: 1,
+        id: "inspect-workload",
+        targetId: "local-agent",
+        scenarioId: "empty",
+        timeline,
+        assertions,
+      }),
+    );
+    const server = await startLocalSimulationServer({ root });
+    servers.push(server);
+    const response = await api(server, "/api/v1/project");
+    expect(response.response.status).toBe(200);
+    const project = SimulationProjectSchema.parse(response.value);
+    const drill = project.drills.find((entry) => entry.id === "inspect-workload");
+    expect(drill?.title).toBeUndefined();
+    expect(drill?.execution).toEqual(DrillTimelineSchema.parse(timeline));
+    expect(drill?.timeline).toEqual({
+      interactions: 1,
+      workloads: 1,
+      horizonUs: 5000,
+      maxToolCalls: 100,
+      maxEvents: 20,
+    });
+    expect(drill?.expectations).toEqual(
+      [invariant, ...assertions].map((definition, index) => {
+        const parsed = AssertionDefinitionSchema.parse(definition);
+        return {
+          id: parsed.id,
+          kind: parsed.kind,
+          gate: parsed.gate,
+          checkpoint: index === 0 ? "invariant" : "final",
+          definition: parsed,
+        };
+      }),
+    );
+
+    // Catalogs created before execution details remain readable.
+    const legacy = {
+      ...project,
+      drills: project.drills.map(({ execution: _execution, ...entry }) => ({
+        ...entry,
+        expectations: entry.expectations.map(({ definition: _definition, ...expectation }) => expectation),
+      })),
+    };
+    expect(SimulationProjectSchema.safeParse(legacy).success).toBe(true);
+  });
+
+  it("preserves each supported assertion payload in the additive catalog contract", async () => {
+    const server = await startLocalSimulationServer({ root: repository() });
+    servers.push(server);
+    const response = await api(server, "/api/v1/project");
+    const project = SimulationProjectSchema.parse(response.value);
+    const operation = { packageId: "workspace", operationId: "records.set" };
+    const definitions = [
+      {
+        id: "state-value",
+        kind: "state.value",
+        packageId: "workspace",
+        namespace: "records",
+        rowId: "primary",
+        path: ["nested", 0, "value"],
+        comparison: { operator: "one_of", value: [7, null, { status: "ready" }] },
+      },
+      {
+        id: "state-count",
+        kind: "state.count",
+        packageId: "workspace",
+        namespace: "records",
+        where: { value: 7 },
+        comparison: { operator: "less_than_or_equal", value: 2 },
+      },
+      {
+        id: "operation-count",
+        kind: "operation.count",
+        operation,
+        actorId: "agent",
+        outcomes: ["ok", "tool_error"],
+        idempotency: ["recorded", "replayed"],
+        comparison: { operator: "equals", value: 2 },
+      },
+      {
+        id: "operation-order",
+        kind: "operation.order",
+        sequence: [
+          { anyOf: [operation], outcomes: ["ok"], actorId: "agent" },
+          { anyOf: [operation], outcomes: ["denied"], idempotency: ["not_recorded"] },
+        ],
+      },
+      {
+        id: "operation-arguments",
+        kind: "operation.arguments",
+        operation,
+        occurrence: 2,
+        contains: { value: 7, details: { labels: ["a", "b"] } },
+      },
+      {
+        id: "operation-denied",
+        kind: "operation.denied",
+        operation,
+        errorCode: "tool.ACCESS_DENIED",
+        outcomes: ["denied"],
+        attemptRequired: false,
+      },
+      {
+        id: "event-count",
+        kind: "event.count",
+        event: { packageId: "workspace", eventId: "record.changed" },
+        phase: "scheduled",
+        comparison: { operator: "greater_than_or_equal", value: 1 },
+      },
+      {
+        id: "callback-count",
+        kind: "callback.count",
+        gate: false,
+        callback: { packageId: "workspace", callbackId: "record-notice" },
+        phase: "retry_scheduled",
+        comparison: { operator: "equals", value: 1 },
+      },
+    ].map((definition) => AssertionDefinitionSchema.parse(definition));
+    const base = project.drills[0];
+    if (base === undefined) throw new Error("fixture has no drill");
+    const withDefinitions = {
+      ...project,
+      drills: [
+        {
+          ...base,
+          assertions: definitions.length,
+          expectations: definitions.map((definition) => ({
+            id: definition.id,
+            kind: definition.kind,
+            gate: definition.gate,
+            checkpoint: "final",
+            definition,
+          })),
+        },
+      ],
+    };
+    expect(
+      SimulationProjectSchema.parse(withDefinitions).drills[0]?.expectations.map((entry) => entry.definition),
+    ).toEqual(definitions);
+    expect(
+      SimulationProjectSchema.safeParse({
+        ...withDefinitions,
+        drills: [
+          {
+            ...withDefinitions.drills[0],
+            expectations: [
+              { ...withDefinitions.drills[0]?.expectations[0], definition: { kind: "state.value" } },
+            ],
+          },
+        ],
       }).success,
     ).toBe(false);
   });

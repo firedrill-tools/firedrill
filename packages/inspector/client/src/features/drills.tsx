@@ -1,21 +1,9 @@
-import {
-  Braces,
-  Clock3,
-  FileCode2,
-  Play,
-  RotateCcw,
-  ShieldCheck,
-  Target,
-  TestTubeDiagonal,
-  Users,
-  X,
-} from "lucide-react";
+import { ChevronLeft, ChevronRight, Play, X } from "lucide-react";
 import { useEffect, useId, useMemo, useRef, useState } from "react";
 import { PageIntro } from "../components/page-intro";
-import { plural, titleFromId, virtualTime } from "../format";
-import type { SimulationDrill, SimulationProject, SimulationSuite, StartSimulationRun } from "../types";
 import {
   Button,
+  CodeBlock,
   EmptyState,
   IconButton,
   InlineMessage,
@@ -23,9 +11,11 @@ import {
   KeyValue,
   SearchField,
   Spinner,
-  Status,
 } from "../components/primitives";
 import { SourceViewer } from "../components/source-viewer";
+import { json, plural, titleFromId, virtualTime } from "../format";
+import type { SimulationDrill, SimulationProject, SimulationSuite, StartSimulationRun } from "../types";
+import { describeExpectation } from "./drill-expectations";
 
 type Selection =
   | { readonly kind: "drill"; readonly value: SimulationDrill }
@@ -39,13 +29,6 @@ function selectedSuiteDrills(project: SimulationProject, suite: SimulationSuite)
   );
 }
 
-function targetUnavailable(project: SimulationProject, drills: readonly SimulationDrill[]): boolean {
-  return drills.some((drill) => {
-    const target = project.targets.find((candidate) => candidate.id === drill.targetId);
-    return target?.runAvailability === "agent_callback_required";
-  });
-}
-
 function RunDialog({
   selection,
   open,
@@ -57,7 +40,7 @@ function RunDialog({
   readonly open: boolean;
   readonly busy: boolean;
   readonly onClose: () => void;
-  readonly onRun: (input: StartSimulationRun) => void;
+  readonly onRun: (input: StartSimulationRun) => Promise<string | undefined>;
 }) {
   const dialog = useRef<HTMLDialogElement>(null);
   const [seed, setSeed] = useState("");
@@ -65,11 +48,8 @@ function RunDialog({
   const [retries, setRetries] = useState("");
   const [concurrency, setConcurrency] = useState("");
   const [error, setError] = useState<string>();
-  const seedId = useId();
-  const trialsId = useId();
-  const retriesId = useId();
-  const concurrencyId = useId();
-
+  const [advanced, setAdvanced] = useState(false);
+  const id = useId();
   useEffect(() => {
     if (open && !dialog.current?.open) {
       setSeed("");
@@ -77,19 +57,19 @@ function RunDialog({
       setRetries("");
       setConcurrency("");
       setError(undefined);
+      setAdvanced(false);
       dialog.current?.showModal();
     }
     if (!open && dialog.current?.open) dialog.current.close();
   }, [open]);
-
-  const submit = () => {
+  const submit = async () => {
     if (selection === undefined) return;
-    const parsed = [
-      { label: "Trials", value: trials, minimum: 1, maximum: 10_000 },
+    const fields = [
+      { label: "Repeats", value: trials, minimum: 1, maximum: 10_000 },
       { label: "Retries", value: retries, minimum: 0, maximum: 10 },
-      { label: "Concurrency", value: concurrency, minimum: 1, maximum: 64 },
+      { label: "Parallel runs", value: concurrency, minimum: 1, maximum: 64 },
     ].map((field) => ({ ...field, parsed: field.value === "" ? undefined : Number(field.value) }));
-    const invalid = parsed.find(
+    const invalid = fields.find(
       (field) =>
         field.parsed !== undefined &&
         (!Number.isSafeInteger(field.parsed) || field.parsed < field.minimum || field.parsed > field.maximum),
@@ -98,27 +78,33 @@ function RunDialog({
       setError(`${invalid.label} must be an integer from ${invalid.minimum} through ${invalid.maximum}.`);
       return;
     }
-    if (seed !== "" && !/^(0|[1-9]\d{0,19})$/.test(seed)) {
-      setError("Seed must be an unsigned 64-bit integer.");
+    if (seed !== "" && (!/^(0|[1-9]\d{0,19})$/.test(seed) || BigInt(seed) > 18_446_744_073_709_551_615n)) {
+      setError("Seed must be a whole number from 0 to 18446744073709551615.");
       return;
     }
     const common = {
       ...(seed === "" ? {} : { seed }),
-      ...(parsed[0]?.parsed === undefined ? {} : { trials: parsed[0].parsed }),
-      ...(parsed[1]?.parsed === undefined ? {} : { retries: parsed[1].parsed }),
-      ...(parsed[2]?.parsed === undefined ? {} : { concurrency: parsed[2].parsed }),
+      ...(fields[0]?.parsed === undefined ? {} : { trials: fields[0].parsed }),
+      ...(fields[1]?.parsed === undefined ? {} : { retries: fields[1].parsed }),
+      ...(fields[2]?.parsed === undefined ? {} : { concurrency: fields[2].parsed }),
     };
-    onRun(
-      selection.kind === "drill"
-        ? { drillId: selection.value.id, ...common }
-        : { suiteId: selection.value.id, ...common },
-    );
+    try {
+      setError(
+        await onRun(
+          selection.kind === "drill"
+            ? { drillId: selection.value.id, ...common }
+            : { suiteId: selection.value.id, ...common },
+        ),
+      );
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "The drill could not be started.");
+    }
   };
-
   return (
     <dialog
       ref={dialog}
       className="fd-dialog fd-run-dialog"
+      aria-labelledby={`${id}-title`}
       onCancel={(event) => {
         event.preventDefault();
         if (!busy) onClose();
@@ -129,73 +115,87 @@ function RunDialog({
     >
       <div className="fd-dialog__head">
         <div>
-          <h2>Run {selection?.kind ?? "drill"}</h2>
-          <code>{selection?.value.id}</code>
+          <h2 id={`${id}-title`}>Run {selection?.kind ?? "drill"}</h2>
+          <span>{selection?.value.title ?? selection?.value.id}</span>
         </div>
         <IconButton label="Close" onClick={onClose} disabled={busy}>
           <X size={17} />
         </IconButton>
       </div>
       <p className="fd-dialog__lead">
-        Firedrill creates an isolated world for every trial and keeps the source-defined defaults when a field
-        is empty.
+        Start the agent with the task and synthetic data defined in your files. Results appear under Runs.
+        Your agent’s model usage may incur costs.
       </p>
-      <div className="fd-run-fields">
-        <label className="fd-field" htmlFor={seedId}>
-          <span>Seed</span>
-          <small>Leave empty to use the world seed.</small>
-          <Input
-            id={seedId}
-            inputMode="numeric"
-            value={seed}
-            onChange={(event) => setSeed(event.target.value)}
-          />
-        </label>
-        <label className="fd-field" htmlFor={trialsId}>
-          <span>Trials</span>
-          <small>Override the declared trial count.</small>
-          <Input
-            id={trialsId}
-            type="number"
-            min="1"
-            max="10000"
-            value={trials}
-            onChange={(event) => setTrials(event.target.value)}
-          />
-        </label>
-        <label className="fd-field" htmlFor={retriesId}>
-          <span>Retries</span>
-          <small>Retain each attempt for evidence.</small>
-          <Input
-            id={retriesId}
-            type="number"
-            min="0"
-            max="10"
-            value={retries}
-            onChange={(event) => setRetries(event.target.value)}
-          />
-        </label>
-        <label className="fd-field" htmlFor={concurrencyId}>
-          <span>Concurrency</span>
-          <small>Maximum local trials at once.</small>
-          <Input
-            id={concurrencyId}
-            type="number"
-            min="1"
-            max="64"
-            value={concurrency}
-            onChange={(event) => setConcurrency(event.target.value)}
-          />
-        </label>
-      </div>
+      <details
+        className="fd-run-advanced"
+        open={advanced}
+        onToggle={(event) => setAdvanced(event.currentTarget.open)}
+      >
+        <summary>Advanced options</summary>
+        <p>
+          Leave fields empty to keep your source-defined defaults. Each repeat starts with a fresh synthetic
+          world.
+        </p>
+        <div className="fd-run-fields">
+          <label className="fd-field" htmlFor={`${id}-seed`}>
+            <span>Seed</span>
+            <small>Controls the world’s starting randomness, not the model.</small>
+            <Input
+              id={`${id}-seed`}
+              aria-label="Seed"
+              inputMode="numeric"
+              value={seed}
+              onChange={(event) => setSeed(event.target.value)}
+            />
+          </label>
+          <label className="fd-field" htmlFor={`${id}-trials`}>
+            <span>Repeats</span>
+            <small>How many times to run each drill.</small>
+            <Input
+              id={`${id}-trials`}
+              aria-label="Repeats"
+              type="number"
+              min="1"
+              max="10000"
+              value={trials}
+              onChange={(event) => setTrials(event.target.value)}
+            />
+          </label>
+          <label className="fd-field" htmlFor={`${id}-retries`}>
+            <span>Retries</span>
+            <small>Keep every attempt in the results.</small>
+            <Input
+              id={`${id}-retries`}
+              aria-label="Retries"
+              type="number"
+              min="0"
+              max="10"
+              value={retries}
+              onChange={(event) => setRetries(event.target.value)}
+            />
+          </label>
+          <label className="fd-field" htmlFor={`${id}-concurrency`}>
+            <span>Parallel runs</span>
+            <small>Maximum repeats running at once.</small>
+            <Input
+              id={`${id}-concurrency`}
+              aria-label="Parallel runs"
+              type="number"
+              min="1"
+              max="64"
+              value={concurrency}
+              onChange={(event) => setConcurrency(event.target.value)}
+            />
+          </label>
+        </div>
+      </details>
       {error === undefined ? null : <InlineMessage tone="danger">{error}</InlineMessage>}
       <div className="fd-dialog__actions">
         <Button onClick={onClose} disabled={busy}>
           Cancel
         </Button>
-        <Button variant="primary" onClick={submit} disabled={busy}>
-          {busy ? <Spinner label="Starting drill" /> : <Play size={16} />}
-          Run
+        <Button variant="primary" onClick={() => void submit()} disabled={busy}>
+          {busy ? <Spinner label="Starting drill" /> : <Play size={16} />}Run
         </Button>
       </div>
     </dialog>
@@ -210,79 +210,145 @@ function DrillDetails({
   readonly project: SimulationProject;
 }) {
   const target = project.targets.find((candidate) => candidate.id === drill.targetId);
+  const scenario = project.scenarios.find((candidate) => candidate.id === drill.scenarioId);
+  const execution = drill.execution;
   return (
-    <div className="fd-definition">
-      <section className="fd-definition__intro">
-        <h2>{drill.title ?? titleFromId(drill.id)}</h2>
-        <p>
-          Run the customer-owned target against an isolated copy of{" "}
-          <code>{project.world.title ?? project.world.id}</code>, then verify the consequences below.
-        </p>
-      </section>
-      <div className="fd-fact-row">
-        <div>
-          <Target size={15} />
-          <span>Target</span>
-          <strong>{drill.targetId}</strong>
-        </div>
-        <div>
-          <Users size={15} />
-          <span>Scenario</span>
-          <strong>{drill.scenarioId ?? "Inline scenario"}</strong>
-        </div>
-        <div>
-          <Clock3 size={15} />
-          <span>Horizon</span>
-          <strong>{virtualTime(drill.timeline.horizonUs)}</strong>
-        </div>
-        <div>
-          <RotateCcw size={15} />
-          <span>Trials</span>
-          <strong>{drill.trials.count}</strong>
-        </div>
-      </div>
-      <section className="fd-definition__section">
-        <div className="fd-section-heading">
-          <div>
-            <h3>Expected consequences</h3>
-            <p>Assertions evaluate world state and causal evidence, not the target's self-report.</p>
-          </div>
-          <Status tone={drill.trials.classification === "safety" ? "warning" : "neutral"}>
-            {titleFromId(drill.trials.classification)}
-          </Status>
-        </div>
-        <div className="fd-expectation-list">
-          {drill.expectations.map((expectation) => (
-            <div className="fd-expectation" key={expectation.id}>
-              <ShieldCheck size={16} aria-hidden="true" />
-              <div>
-                <strong>{titleFromId(expectation.id)}</strong>
-                <span>
-                  <code>{expectation.kind}</code> · {expectation.checkpoint}
-                  {expectation.gate ? " · gating" : ""}
-                </span>
-              </div>
-            </div>
-          ))}
-        </div>
-      </section>
-      <section className="fd-definition__section">
-        <div className="fd-section-heading">
-          <div>
-            <h3>Execution limits</h3>
-          </div>
-          {target?.source?.readable ? (
-            <SourceViewer kind="target" id={target.id} label="View target source" />
-          ) : null}
-        </div>
-        <dl className="fd-definition-grid">
-          <KeyValue label="Interactions">{drill.timeline.interactions}</KeyValue>
-          <KeyValue label="Workloads">{drill.timeline.workloads}</KeyValue>
-          <KeyValue label="Tool calls">{drill.timeline.maxToolCalls}</KeyValue>
-          <KeyValue label="Events">{drill.timeline.maxEvents}</KeyValue>
-          <KeyValue label="Bindings">{target?.bindings.join(", ") ?? "Unavailable"}</KeyValue>
-          <KeyValue label="Target kind">{target?.kind ?? "Unavailable"}</KeyValue>
+    <div className="fd-definition fd-drill-definition">
+      <section className="fd-definition__intro fd-drill-context">
+        <dl>
+          <KeyValue label="Agent">{titleFromId(drill.targetId)}</KeyValue>
+          <KeyValue label="Starting scenario">
+            {scenario?.title ?? drill.scenarioId ?? "Defined in this drill"}
+          </KeyValue>
         </dl>
+      </section>
+      <section className="fd-definition__section">
+        <h3>Task</h3>
+        {execution === undefined ? (
+          <p>
+            Task details are not available in this saved catalog. View the source file to read the
+            instructions.
+          </p>
+        ) : (
+          <div className="fd-drill-tasks">
+            {execution.interactions.map((interaction) => (
+              <article className="fd-drill-task" key={interaction.id}>
+                <p className="fd-drill-task__instruction">{interaction.task.instruction}</p>
+                <p className="fd-drill-task__timing">
+                  As {interaction.actorId} ·{" "}
+                  {interaction.afterStartUs === 0
+                    ? "At the start"
+                    : `After ${virtualTime(interaction.afterStartUs)} of world time`}
+                </p>
+                {interaction.task.input === undefined ? null : (
+                  <details className="fd-drill-disclosure">
+                    <summary>Task input</summary>
+                    <CodeBlock>{json(interaction.task.input)}</CodeBlock>
+                  </details>
+                )}
+              </article>
+            ))}
+            {execution.workloads.map((workload) => (
+              <article className="fd-drill-task" key={workload.id}>
+                <p className="fd-drill-task__instruction">{workload.task.instruction}</p>
+                <p className="fd-drill-task__timing">
+                  {workload.occurrences} occurrences per actor · every {virtualTime(workload.everyUs)} ·
+                  starting after {virtualTime(workload.startAfterUs)} of world time
+                </p>
+                <p className="fd-drill-task__timing">Actors: {workload.actorIds.join(", ")}</p>
+                {workload.task.input === undefined ? null : (
+                  <details className="fd-drill-disclosure">
+                    <summary>Task input</summary>
+                    <CodeBlock>{json(workload.task.input)}</CodeBlock>
+                  </details>
+                )}
+              </article>
+            ))}
+          </div>
+        )}
+      </section>
+      <section className="fd-definition__section">
+        <div className="fd-section-heading">
+          <div>
+            <h3>Checks</h3>
+            <p>What Firedrill checks in the synthetic world, not just the agent’s answer.</p>
+          </div>
+        </div>
+        {drill.expectations.length === 0 ? (
+          <p>No checks are defined. A completed run alone does not prove the agent behaved correctly.</p>
+        ) : (
+          <ol className="fd-drill-checks">
+            {drill.expectations.map((check) => {
+              const description =
+                check.definition === undefined ? undefined : describeExpectation(check.definition);
+              return (
+                <li key={`${check.checkpoint}:${check.id}`}>
+                  <strong>{titleFromId(check.id)}</strong>
+                  {description === undefined ? (
+                    <p>View the source to read this check.</p>
+                  ) : (
+                    <>
+                      <p className="fd-drill-check__subject">{description.subject}</p>
+                      <p>{description.expectation}</p>
+                      {description.scope.map((scope) => (
+                        <p className="fd-drill-check__subject" key={scope}>
+                          {scope}
+                        </p>
+                      ))}
+                    </>
+                  )}
+                  <small>
+                    {check.checkpoint === "invariant" ? "During the run" : "At the end"} ·{" "}
+                    {check.gate ? "Failure fails the run" : "Reported without failing the run"}
+                  </small>
+                  {check.definition === undefined ? null : (
+                    <details className="fd-drill-disclosure">
+                      <summary>Check definition</summary>
+                      {description?.filters.map((filter) => (
+                        <p key={filter}>{filter}</p>
+                      ))}
+                      <CodeBlock>{json(check.definition)}</CodeBlock>
+                    </details>
+                  )}
+                </li>
+              );
+            })}
+          </ol>
+        )}
+      </section>
+      <section className="fd-definition__section">
+        <details className="fd-drill-disclosure">
+          <summary>Execution settings</summary>
+          <dl className="fd-definition-grid">
+            <KeyValue label="Repeats">{drill.trials.count}</KeyValue>
+            <KeyValue label="Check category">{drill.trials.classification}</KeyValue>
+            <KeyValue label="World time limit">{virtualTime(drill.timeline.horizonUs)}</KeyValue>
+            <KeyValue label="Maximum tool calls">{drill.timeline.maxToolCalls}</KeyValue>
+            <KeyValue label="Maximum events">{drill.timeline.maxEvents}</KeyValue>
+            <KeyValue label="Connection">{target?.bindings.join(", ") ?? "Unavailable"}</KeyValue>
+            <KeyValue label="Agent launch method">{target?.kind ?? "Unavailable"}</KeyValue>
+            {execution === undefined ? null : (
+              <>
+                <KeyValue label="Stop on invariant failure">
+                  {execution.stopOnInvariantFailure ? "Yes" : "No"}
+                </KeyValue>
+                <KeyValue label="Stop on agent failure">
+                  {execution.stopOnTargetFailure ? "Yes" : "No"}
+                </KeyValue>
+              </>
+            )}
+          </dl>
+          {target?.source?.readable ? (
+            <SourceViewer kind="target" id={target.id} label="View agent connection" />
+          ) : null}
+          {drill.source === undefined ? null : (
+            <p className="fd-muted-copy">
+              Source: <code>{drill.source.path}</code>
+              <br />
+              Hash: <code>{drill.source.contentHash}</code>
+            </p>
+          )}
+        </details>
       </section>
     </div>
   );
@@ -291,49 +357,50 @@ function DrillDetails({
 function SuiteDetails({
   suite,
   drills,
+  onSelect,
 }: {
   readonly suite: SimulationSuite;
   readonly drills: readonly SimulationDrill[];
+  readonly onSelect: (drill: SimulationDrill) => void;
 }) {
   return (
-    <div className="fd-definition">
+    <div className="fd-definition fd-drill-definition">
       <section className="fd-definition__intro">
-        <h2>{suite.title ?? titleFromId(suite.id)}</h2>
-        <p>
-          A repository-owned selection that runs the same drill definitions without creating another runtime.
-        </p>
+        <p>A suite runs a group of drills together. Select a drill below to read its task and checks.</p>
       </section>
-      <div className="fd-fact-row fd-fact-row--three">
-        <div>
-          <TestTubeDiagonal size={15} />
-          <span>Selected</span>
-          <strong>{plural(drills.length, "drill")}</strong>
-        </div>
-        <div>
-          <RotateCcw size={15} />
-          <span>Retries</span>
-          <strong>{suite.retries}</strong>
-        </div>
-        <div>
-          <Braces size={15} />
-          <span>Concurrency</span>
-          <strong>{suite.concurrency}</strong>
-        </div>
-      </div>
       <section className="fd-definition__section">
-        <h3>Drills in this suite</h3>
-        <div className="fd-suite-list">
-          {drills.map((drill) => (
-            <div key={drill.id}>
-              <FileCode2 size={16} />
-              <span>
+        <h3>{plural(drills.length, "drill")}</h3>
+        {drills.length === 0 ? (
+          <p>This suite does not match any drills. Update its IDs or tags in your source files.</p>
+        ) : (
+          <div className="fd-drill-suite-list">
+            {drills.map((drill) => (
+              <button type="button" key={drill.id} onClick={() => onSelect(drill)}>
                 <strong>{drill.title ?? titleFromId(drill.id)}</strong>
-                <code>{drill.id}</code>
-              </span>
-              <em>{titleFromId(drill.trials.classification)}</em>
-            </div>
-          ))}
-        </div>
+                <span>{plural(drill.assertions, "check")}</span>
+              </button>
+            ))}
+          </div>
+        )}
+      </section>
+      <section className="fd-definition__section">
+        <details className="fd-drill-disclosure">
+          <summary>Execution settings</summary>
+          <dl>
+            {suite.trials === undefined ? null : (
+              <KeyValue label="Repeats per drill">{suite.trials}</KeyValue>
+            )}
+            <KeyValue label="Retries">{suite.retries}</KeyValue>
+            <KeyValue label="Parallel runs">{suite.concurrency}</KeyValue>
+          </dl>
+          {suite.source === undefined ? null : (
+            <p className="fd-muted-copy">
+              Source: <code>{suite.source.path}</code>
+              <br />
+              Hash: <code>{suite.source.contentHash}</code>
+            </p>
+          )}
+        </details>
       </section>
     </div>
   );
@@ -346,7 +413,7 @@ export function DrillsView({
 }: {
   readonly project: SimulationProject;
   readonly starting: boolean;
-  readonly onStart: (input: StartSimulationRun) => void;
+  readonly onStart: (input: StartSimulationRun) => Promise<string | undefined>;
 }) {
   const all: readonly Selection[] = useMemo(
     () => [
@@ -355,11 +422,12 @@ export function DrillsView({
     ],
     [project.drills, project.suites],
   );
-  const [selectedKey, setSelectedKey] = useState(
-    all[0] === undefined ? undefined : `${all[0].kind}:${all[0].value.id}`,
-  );
+  const [selectedKey, setSelectedKey] = useState<string>();
   const [query, setQuery] = useState("");
+  const [page, setPage] = useState(0);
   const [dialogOpen, setDialogOpen] = useState(false);
+  const [helpOpen, setHelpOpen] = useState(false);
+  const helpId = useId();
   const selected = all.find((item) => `${item.kind}:${item.value.id}` === selectedKey) ?? all[0];
   const selectedDrills =
     selected?.kind === "drill"
@@ -367,126 +435,184 @@ export function DrillsView({
       : selected?.kind === "suite"
         ? selectedSuiteDrills(project, selected.value)
         : [];
-  const unavailable = targetUnavailable(project, selectedDrills);
-  const filtered = all.filter((item) => {
-    const value = `${item.value.id} ${item.value.title ?? ""}`.toLowerCase();
-    return value.includes(query.toLowerCase());
-  });
-
-  if (all.length === 0) {
+  const missingTargets = selectedDrills.filter(
+    (drill) => !project.targets.some((target) => target.id === drill.targetId),
+  );
+  const unavailableTargets = project.targets.filter(
+    (target) =>
+      target.runAvailability === "agent_callback_required" &&
+      selectedDrills.some((drill) => drill.targetId === target.id),
+  );
+  const canRun = selectedDrills.length > 0 && missingTargets.length === 0 && unavailableTargets.length === 0;
+  const filtered = all.filter((item) =>
+    `${item.value.id} ${item.value.title ?? ""} ${item.kind === "drill" ? `${item.value.targetId} ${item.value.scenarioId ?? ""}` : "suite"}`
+      .toLowerCase()
+      .includes(query.trim().toLowerCase()),
+  );
+  const pageIndex = Math.min(page, Math.max(0, Math.ceil(filtered.length / 25) - 1));
+  const choose = (key: string) => {
+    setSelectedKey(key);
+    setHelpOpen(false);
+  };
+  if (all.length === 0)
     return (
       <section className="fd-page">
         <header className="fd-page-header">
           <PageIntro page="drills" />
         </header>
         <EmptyState title="No drills found">
-          Add a <code>*.drill.yaml</code> or <code>*.drill.json</code> file, validate it, then refresh.
+          Add a <code>*.drill.yaml</code> or <code>*.drill.json</code> file with an agent task and checks,
+          validate it, then refresh.
         </EmptyState>
       </section>
     );
-  }
-
   return (
     <section className="fd-page fd-page--workspace">
       <header className="fd-page-header">
         <PageIntro page="drills" />
-        <Button
-          variant="primary"
-          onClick={() => setDialogOpen(true)}
-          disabled={selected === undefined || unavailable}
-        >
-          <Play size={16} />
-          Run {selected?.kind ?? "drill"}
-        </Button>
       </header>
-      {unavailable ? (
-        <InlineMessage tone="info" title="This target is owned by the caller">
-          Start the inspector from the process that supplies the external agent callback. Firedrill does not
-          host or replace that agent.
-        </InlineMessage>
-      ) : null}
-      <div className="fd-workspace fd-drill-workspace">
+      <div className="fd-workspace fd-drill-workspace fd-drill-workspace--focused">
         <aside className="fd-workspace-rail">
           <div className="fd-rail-head">
-            <strong>Definitions</strong>
+            <strong>{project.suites.length > 0 ? "Drills & suites" : "Drills"}</strong>
             <span>{all.length}</span>
           </div>
           <div className="fd-rail-search">
             <SearchField
               value={query}
-              onChange={(event) => setQuery(event.target.value)}
-              placeholder="Find a drill"
+              onChange={(event) => {
+                setQuery(event.target.value);
+                setPage(0);
+              }}
+              placeholder="Find a drill or agent"
             />
           </div>
           <div className="fd-rail-list">
-            {filtered.map((item) => {
+            {filtered.slice(pageIndex * 25, (pageIndex + 1) * 25).map((item) => {
               const key = `${item.kind}:${item.value.id}`;
               return (
                 <button
                   type="button"
                   className="fd-rail-item"
                   key={key}
-                  aria-current={selectedKey === key ? "true" : undefined}
-                  onClick={() => setSelectedKey(key)}
+                  aria-current={
+                    selected?.kind === item.kind && selected.value.id === item.value.id ? "true" : undefined
+                  }
+                  onClick={() => choose(key)}
                 >
-                  {item.kind === "drill" ? <TestTubeDiagonal size={16} /> : <Braces size={16} />}
                   <span>
                     <strong>{item.value.title ?? titleFromId(item.value.id)}</strong>
-                    <small>{item.kind}</small>
+                    {item.kind === "suite" ? <small>Suite</small> : null}
                   </span>
                 </button>
               );
             })}
+            {filtered.length === 0 ? <p className="fd-rail-empty">No drills match “{query}”.</p> : null}
           </div>
-          {filtered.length === 0 ? (
-            <div className="fd-rail-empty">No definitions match “{query}”.</div>
-          ) : null}
-        </aside>
-        <div className="fd-workspace-main fd-definition-scroll">
-          {selected?.kind === "drill" ? <DrillDetails drill={selected.value} project={project} /> : null}
-          {selected?.kind === "suite" ? (
-            <SuiteDetails suite={selected.value} drills={selectedSuiteDrills(project, selected.value)} />
-          ) : null}
-        </div>
-        {selected === undefined ? null : (
-          <aside className="fd-selection-inspector">
-            <div className="fd-inspector-head">
+          {filtered.length > 25 ? (
+            <div className="fd-catalog-pagination">
+              <span>
+                {pageIndex * 25 + 1}–{Math.min((pageIndex + 1) * 25, filtered.length)} of {filtered.length}
+              </span>
               <div>
-                <strong>Repository source</strong>
-                <code>{selected.value.source?.path ?? "Compiled definition"}</code>
+                <IconButton
+                  label="Previous drills"
+                  disabled={pageIndex === 0}
+                  onClick={() => setPage(pageIndex - 1)}
+                >
+                  <ChevronLeft size={16} />
+                </IconButton>
+                <IconButton
+                  label="Next drills"
+                  disabled={(pageIndex + 1) * 25 >= filtered.length}
+                  onClick={() => setPage(pageIndex + 1)}
+                >
+                  <ChevronRight size={16} />
+                </IconButton>
               </div>
             </div>
-            <div className="fd-inspector-scroll">
-              <section className="fd-inspector-section">
-                <h3>Run behavior</h3>
-                <dl>
-                  <KeyValue label="Selection">{selected.kind}</KeyValue>
-                  <KeyValue label="Drills">{selectedDrills.length}</KeyValue>
-                  <KeyValue label="Availability">
-                    <Status tone={unavailable ? "warning" : "success"}>
-                      {unavailable ? "Callback required" : "Ready locally"}
-                    </Status>
-                  </KeyValue>
-                </dl>
-              </section>
-              {selected.value.source === undefined ? null : (
-                <section className="fd-inspector-section">
-                  <h3>Source identity</h3>
-                  <p className="fd-muted-copy">
-                    Durable changes belong in <code>{selected.value.source.path}</code>. Refresh after editing
-                    the repository.
-                  </p>
-                  <p className="fd-hash">{selected.value.source.contentHash}</p>
-                  {selected.value.source.readable ? (
-                    <div className="fd-inspector-actions">
-                      <SourceViewer kind={selected.kind} id={selected.value.id} />
-                    </div>
-                  ) : null}
-                </section>
+          ) : null}
+        </aside>
+        <div className="fd-workspace-main">
+          <div className="fd-workspace-titlebar fd-drill-titlebar">
+            <h2>{selected?.value.title ?? titleFromId(selected?.value.id ?? "")}</h2>
+            <div className="fd-drill-actions">
+              {selected?.value.source?.readable ? (
+                <SourceViewer kind={selected.kind} id={selected.value.id} />
+              ) : null}
+              {canRun ? (
+                <Button variant="primary" onClick={() => setDialogOpen(true)} disabled={starting}>
+                  <Play size={16} />
+                  Run {selected?.kind}
+                </Button>
+              ) : (
+                <Button
+                  onClick={() => setHelpOpen(!helpOpen)}
+                  aria-expanded={helpOpen}
+                  aria-controls={helpId}
+                >
+                  How to run
+                </Button>
               )}
             </div>
-          </aside>
-        )}
+          </div>
+          <div className="fd-definition-scroll fd-drill-body">
+            {!canRun ? (
+              <div className="fd-drill-connection">
+                <p>
+                  {selectedDrills.length === 0
+                    ? "This suite has no drills to run."
+                    : missingTargets.length > 0
+                      ? "An agent connection is missing from this project."
+                      : "This agent runs from your test script, which is not connected to this inspector."}
+                </p>
+                {helpOpen ? (
+                  <div id={helpId} className="fd-drill-connection__help">
+                    {unavailableTargets.length > 0 ? (
+                      <>
+                        <p>
+                          Run the drill from your existing test script to generate a report. To also start it
+                          here, launch the inspector from that script and pass the same <code>agent</code>{" "}
+                          callback you use with <code>runDrills</code>:
+                        </p>
+                        <CodeBlock>{"await startLocalInspector({ root: process.cwd(), agent });"}</CodeBlock>
+                        <p>
+                          <code>startLocalInspector</code> is exported by <code>@firedrill/inspector</code>.
+                          The <code>agent</code> variable above is your existing callback, not a built-in
+                          agent. A plain <code>firedrill inspect</code> command cannot load that in-memory
+                          function.
+                        </p>
+                        {unavailableTargets.map((target) =>
+                          target.source?.readable ? (
+                            <SourceViewer
+                              key={target.id}
+                              kind="target"
+                              id={target.id}
+                              label={`View connection: ${target.id}`}
+                            />
+                          ) : null,
+                        )}
+                      </>
+                    ) : (
+                      <p>
+                        Update the drill or suite in your repository so it selects a declared agent and at
+                        least one drill, then refresh the inspector.
+                      </p>
+                    )}
+                  </div>
+                ) : null}
+              </div>
+            ) : null}
+            {selected?.kind === "drill" ? <DrillDetails drill={selected.value} project={project} /> : null}
+            {selected?.kind === "suite" ? (
+              <SuiteDetails
+                suite={selected.value}
+                drills={selectedDrills}
+                onSelect={(drill) => choose(`drill:${drill.id}`)}
+              />
+            ) : null}
+          </div>
+        </div>
       </div>
       <RunDialog
         selection={selected}

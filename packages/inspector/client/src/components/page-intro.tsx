@@ -31,7 +31,8 @@ const pages = {
   },
   drills: {
     title: "Drills",
-    description: "A drill is a test that gives your agent a task and checks its actions and results.",
+    description:
+      "Simulate your agent in a synthetic world. Each drill defines a task, a starting scenario, and checks. Open Runs to see the results.",
   },
   runs: {
     title: "Runs",

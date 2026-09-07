@@ -1,11 +1,13 @@
 import {
   ActorBindingIdSchema,
   ActorDefinitionSchema,
+  AssertionDefinitionSchema,
   AssertionStatusSchema,
   CallbackDeliveryIdSchema,
   CallbackRefSchema,
   CorrelationIdSchema,
   DiagnosticSchema,
+  DrillTimelineSchema,
   ErrorEnvelopeSchema,
   EventIdSchema,
   EventRefSchema,
@@ -142,6 +144,7 @@ const DrillViewSchema = z
         maxEvents: z.number().int().positive(),
       })
       .strict(),
+    execution: DrillTimelineSchema.optional(),
     assertions: z.number().int().positive(),
     expectations: z.array(
       z
@@ -159,6 +162,7 @@ const DrillViewSchema = z
           ]),
           gate: z.boolean(),
           checkpoint: z.enum(["invariant", "final"]),
+          definition: AssertionDefinitionSchema.optional(),
         })
         .strict(),
     ),

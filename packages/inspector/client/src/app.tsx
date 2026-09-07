@@ -170,11 +170,19 @@ export function App() {
     setStarting(true);
     try {
       await inspectorApi.startRun(input);
-      await readRuntime();
       notify("info", "Drill run requested. Its live world will appear when ready.");
       navigate("/runs");
+      try {
+        await readRuntime();
+      } catch {
+        showError(
+          "The run was accepted, but its results could not be refreshed yet. Do not submit it again; wait for results or refresh this page.",
+        );
+      }
     } catch (error) {
-      showError(error instanceof Error ? error.message : "The drill could not be started.");
+      const message = error instanceof Error ? error.message : "The drill could not be started.";
+      showError(message);
+      return message;
     } finally {
       setStarting(false);
     }
@@ -258,11 +266,10 @@ export function App() {
             page={route === "/schema" ? "schema" : route === "/data" ? "data" : "personas"}
           />
         ) : null}
-        {route === "/drills" ? (
-          <DrillsView project={project} starting={starting} onStart={(input) => void start(input)} />
-        ) : null}
+        {route === "/drills" ? <DrillsView project={project} starting={starting} onStart={start} /> : null}
         {route === "/runs" ? (
           <RunsView
+            project={project}
             runs={runs}
             requests={requests}
             starting={starting}

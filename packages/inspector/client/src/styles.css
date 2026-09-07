@@ -1422,6 +1422,196 @@ summary:focus-visible {
   overflow: auto;
 }
 
+.fd-workspace.fd-drill-workspace--focused {
+  grid-template-columns: 232px minmax(0, 1fr);
+}
+
+.fd-drill-workspace .fd-rail-item strong {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  white-space: normal;
+  overflow: hidden;
+}
+
+.fd-drill-titlebar,
+.fd-drill-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+}
+
+.fd-drill-titlebar h2 {
+  flex: 1 1 220px;
+  overflow-wrap: anywhere;
+}
+
+.fd-drill-body {
+  flex: 1;
+  min-height: 0;
+}
+
+.fd-drill-definition {
+  min-height: auto;
+  overflow-wrap: anywhere;
+}
+
+.fd-drill-context dl {
+  margin: 0;
+}
+
+.fd-drill-context .fd-key-value {
+  border: 0;
+  padding: 4px 0;
+}
+
+.fd-drill-connection {
+  padding: 12px 24px;
+  border-bottom: 1px solid var(--border-subtle);
+  background: var(--surface-tonal);
+  color: var(--text-secondary);
+  font-size: 13px;
+  line-height: 1.6;
+  overflow-wrap: anywhere;
+}
+
+.fd-drill-connection p {
+  margin: 0;
+}
+
+.fd-drill-connection__help {
+  margin-top: 12px;
+}
+
+.fd-drill-connection__help > * + * {
+  margin-top: 12px;
+}
+
+.fd-drill-connection__help .fd-code {
+  white-space: pre-wrap;
+}
+
+.fd-drill-tasks {
+  display: grid;
+  gap: 20px;
+  margin-top: 12px;
+}
+
+.fd-drill-task__instruction {
+  margin: 0;
+  font-size: 14px;
+  line-height: 1.65;
+  white-space: pre-wrap;
+}
+
+.fd-drill-task__timing {
+  margin: 6px 0 0;
+  color: var(--text-secondary);
+  font-size: 12px;
+}
+
+.fd-drill-disclosure {
+  margin-top: 12px;
+  color: var(--text-secondary);
+  font-size: 12px;
+}
+
+.fd-drill-disclosure summary,
+.fd-run-advanced summary {
+  width: fit-content;
+  cursor: pointer;
+  padding: 4px 0;
+}
+
+.fd-drill-disclosure summary:hover,
+.fd-run-advanced summary:hover {
+  color: var(--text);
+}
+
+.fd-drill-disclosure .fd-code {
+  max-height: 360px;
+  margin-top: 10px;
+}
+
+.fd-drill-checks {
+  padding-left: 22px;
+  margin: 12px 0 0;
+}
+
+.fd-drill-checks > li {
+  padding: 15px 0 15px 6px;
+  border-bottom: 1px solid var(--border-subtle);
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.fd-drill-checks > li:last-child {
+  border-bottom: 0;
+}
+
+.fd-drill-checks > li::marker {
+  color: var(--text-tertiary);
+  font-variant-numeric: tabular-nums;
+}
+
+.fd-drill-checks strong {
+  font-weight: 600;
+}
+
+.fd-drill-checks p {
+  margin: 3px 0;
+}
+
+.fd-drill-check__subject,
+.fd-drill-checks small {
+  color: var(--text-secondary);
+  font-size: 12px;
+}
+
+.fd-drill-suite-list {
+  display: grid;
+  margin-top: 12px;
+}
+
+.fd-drill-suite-list button {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  border: 0;
+  border-bottom: 1px solid var(--border-subtle);
+  padding: 14px 8px;
+  background: transparent;
+  color: var(--text);
+  text-align: left;
+  cursor: pointer;
+}
+
+.fd-drill-suite-list button:hover {
+  background: var(--hover);
+}
+
+.fd-drill-suite-list span {
+  flex-shrink: 0;
+  color: var(--text-secondary);
+  font-size: 12px;
+}
+
+.fd-run-advanced {
+  padding: 0 24px 20px;
+  font-size: 13px;
+}
+
+.fd-run-advanced > p {
+  color: var(--text-secondary);
+  line-height: 1.6;
+}
+
+.fd-run-advanced .fd-run-fields {
+  padding: 0;
+}
+
 .fd-definition {
   min-height: 100%;
 }
@@ -2524,6 +2714,10 @@ summary:focus-visible {
   .fd-run-titlebar {
     align-items: flex-start;
     flex-direction: column;
+  }
+
+  .fd-drill-titlebar h2 {
+    flex: none;
   }
 
   .fd-compact-facts {

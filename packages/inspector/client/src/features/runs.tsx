@@ -16,6 +16,7 @@ import {
 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { inspectorApi } from "../api";
+import { DetailsPanel, DetailsTrigger } from "../components/details-panel";
 import { PageIntro } from "../components/page-intro";
 import {
   Button,
@@ -33,6 +34,7 @@ import { compactId, evidenceLabel, json, plural, titleFromId, virtualTime } from
 import { evidenceSearchText, matchesSearch, preferredEvidenceSequence, runSearchText } from "../search";
 import type {
   EvidenceEntry,
+  SimulationProject,
   SimulationRunComparison,
   SimulationRunDetail,
   SimulationRunRequest,
@@ -90,15 +92,15 @@ function EventIcon({ kind }: { readonly kind: EvidenceEntry["kind"] }) {
 function EventInspector({ entry }: { readonly entry: EvidenceEntry | undefined }) {
   if (entry === undefined) {
     return (
-      <aside className="fd-selection-inspector">
+      <div className="fd-details-content">
         <EmptyState title="Select an evidence entry">
           Choose an item in the causal timeline to inspect it.
         </EmptyState>
-      </aside>
+      </div>
     );
   }
   return (
-    <aside className="fd-selection-inspector">
+    <div className="fd-details-content">
       <div className="fd-inspector-head">
         <div>
           <strong>{evidenceLabel(entry)}</strong>
@@ -182,7 +184,7 @@ function EventInspector({ entry }: { readonly entry: EvidenceEntry | undefined }
           </details>
         </section>
       </div>
-    </aside>
+    </div>
   );
 }
 
@@ -562,6 +564,7 @@ function ComparisonDialog({
 
 function RunWorkspace({
   summary,
+  canRerun,
   onCancel,
   cancelling,
   onOpenReport,
@@ -570,6 +573,7 @@ function RunWorkspace({
   onError,
 }: {
   readonly summary: SimulationRunSummary;
+  readonly canRerun: boolean;
   readonly onCancel: (requestId: string) => void;
   readonly cancelling: boolean;
   readonly onOpenReport: (runId: string) => void;
@@ -586,6 +590,8 @@ function RunWorkspace({
   const [query, setQuery] = useState("");
   const [kind, setKind] = useState("all");
   const [confirmCancel, setConfirmCancel] = useState(false);
+  const [detailsOpen, setDetailsOpen] = useState(false);
+  const detailsId = "run-event-details";
 
   useEffect(() => {
     let current = true;
@@ -593,6 +599,7 @@ function RunWorkspace({
     setEntries([]);
     setNextSequence(1);
     setSelectedSequence(undefined);
+    setDetailsOpen(false);
     Promise.all([inspectorApi.run(summary.runId), inspectorApi.evidence(summary.runId, 1, 300)])
       .then(([nextDetail, page]) => {
         if (!current) return;
@@ -693,14 +700,16 @@ function RunWorkspace({
           <div className="fd-run-actions">
             {summary.reportAvailable ? (
               <>
-                <Button
-                  size="compact"
-                  onClick={() => onRerun({ drillId: summary.drillId, seed: summary.seed })}
-                  disabled={starting}
-                >
-                  {starting ? <Spinner label="Starting drill" /> : <RotateCcw size={15} />}
-                  Rerun seed
-                </Button>
+                {canRerun ? (
+                  <Button
+                    size="compact"
+                    onClick={() => onRerun({ drillId: summary.drillId, seed: summary.seed })}
+                    disabled={starting}
+                  >
+                    {starting ? <Spinner label="Starting drill" /> : <RotateCcw size={15} />}
+                    Rerun seed
+                  </Button>
+                ) : null}
                 <Button size="compact" onClick={() => onOpenReport(summary.runId)}>
                   <FileText size={15} /> Open report
                 </Button>
@@ -827,6 +836,14 @@ function RunWorkspace({
                   <option value="clock">Clock</option>
                   <option value="lifecycle">Lifecycle</option>
                 </Select>
+                <DetailsTrigger
+                  id={detailsId}
+                  open={detailsOpen}
+                  onClick={() => setDetailsOpen(!detailsOpen)}
+                  disabled={selected === undefined}
+                >
+                  Event details
+                </DetailsTrigger>
               </div>
               <div className="fd-timeline">
                 {filtered.map((entry) => (
@@ -835,7 +852,12 @@ function RunWorkspace({
                     className="fd-timeline-entry"
                     key={entry.sequence}
                     aria-current={selectedSequence === entry.sequence ? "true" : undefined}
-                    onClick={() => setSelectedSequence(entry.sequence)}
+                    aria-expanded={detailsOpen && selectedSequence === entry.sequence}
+                    aria-controls={detailsId}
+                    onClick={() => {
+                      setSelectedSequence(entry.sequence);
+                      setDetailsOpen(true);
+                    }}
                   >
                     <span className="fd-timeline-entry__sequence">{entry.sequence}</span>
                     <span className="fd-timeline-entry__mark" data-tone={eventTone(entry)}>
@@ -876,7 +898,14 @@ function RunWorkspace({
           </>
         )}
       </div>
-      <EventInspector entry={selected} />
+      <DetailsPanel
+        id={detailsId}
+        title="Event details"
+        open={detailsOpen}
+        onClose={() => setDetailsOpen(false)}
+      >
+        <EventInspector entry={selected} />
+      </DetailsPanel>
       <ConfirmDialog
         open={confirmCancel}
         title="Cancel this drill run?"
@@ -893,6 +922,7 @@ function RunWorkspace({
 }
 
 export function RunsView({
+  project,
   runs,
   requests,
   starting,
@@ -903,6 +933,7 @@ export function RunsView({
   onNavigateDrills,
   onError,
 }: {
+  readonly project: SimulationProject;
   readonly runs: readonly SimulationRunSummary[];
   readonly requests: readonly SimulationRunRequest[];
   readonly starting: boolean;
@@ -968,7 +999,7 @@ export function RunsView({
           Firedrill is preparing an isolated world for the selected drill.
         </InlineMessage>
       ) : null}
-      <div className="fd-workspace fd-run-workspace">
+      <div className="fd-workspace fd-run-workspace fd-details-workspace">
         <aside className="fd-workspace-rail fd-run-rail">
           <div className="fd-rail-head">
             <strong>Runs</strong>
@@ -1018,7 +1049,15 @@ export function RunsView({
           </EmptyState>
         ) : (
           <RunWorkspace
+            key={selected.runId}
             summary={selected}
+            canRerun={project.drills.some(
+              (drill) =>
+                drill.id === selected.drillId &&
+                project.targets.some(
+                  (target) => target.id === drill.targetId && target.runAvailability === "ready",
+                ),
+            )}
             onCancel={onCancel}
             onRerun={onRerun}
             starting={starting}

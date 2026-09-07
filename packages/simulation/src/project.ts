@@ -119,6 +119,7 @@ export async function loadSimulationProject(
         maxToolCalls: drill.timeline.maxToolCalls,
         maxEvents: drill.timeline.maxEvents,
       },
+      execution: drill.timeline,
       assertions: drill.assertions.length + drill.timeline.invariants.length,
       expectations: [
         ...drill.timeline.invariants.map((assertion) => ({
@@ -126,12 +127,14 @@ export async function loadSimulationProject(
           kind: assertion.kind,
           gate: assertion.gate,
           checkpoint: "invariant" as const,
+          definition: assertion,
         })),
         ...drill.assertions.map((assertion) => ({
           id: assertion.id,
           kind: assertion.kind,
           gate: assertion.gate,
           checkpoint: "final" as const,
+          definition: assertion,
         })),
       ],
       ...(source.get(`drill:${drill.id}`) === undefined ? {} : { source: source.get(`drill:${drill.id}`) }),

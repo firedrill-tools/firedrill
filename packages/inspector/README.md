@@ -26,7 +26,9 @@ queries then report that the world artifact is missing.
   Customer records stay under Data; an actor is not assumed to be a human persona.
 - **Scenarios / Tools**: starting situations and the synthetic service contracts,
   including operation input and response schemas.
-- **Drills**: tasks and expectations you can run against an agent.
+- **Drills**: read the agent's task, starting scenario and checks, then run the
+  drill. Repeated workloads and task inputs come from the same source files.
+  Execution limits and raw check definitions are expandable details.
 - **Runs**: actual attempts, checks, events and retained data after execution.
 
 The central static report entry is `.firedrill/reports/index.html` (or the index
@@ -34,6 +36,16 @@ inside your configured report directory). It lists saved executions; individual
 reports explain task, checks, tool calls and data changes. This navigation file
 is separate from immutable evidence bundles. A report opened from the inspector
 embeds verified attachments so downloads also work outside the original folder.
+
+Detail panels are closed by default. Open **Details** when you need source or
+technical metadata; on Runs, selecting an event opens its details. Close the
+panel to restore the full workspace width.
+
+**Run drill** appears when the declared agent can be invoked by this inspector.
+For an external target without its callback, **How to run** explains the missing
+connection instead of showing a disabled Run button. Run from your existing test
+script, or start the inspector with the same `agent` callback you pass to
+`runDrills`. Opening saved reports alone does not connect an external agent.
 
 The UI reads the compiled world setup, scenarios, actors and permissions, seeded
 state, Tool surfaces, live or sealed causal evidence, retained world state,

@@ -11,6 +11,7 @@ import {
   Wrench,
 } from "lucide-react";
 import { useMemo, useState } from "react";
+import { DetailsPanel, DetailsTrigger } from "../components/details-panel";
 import { PageIntro } from "../components/page-intro";
 import { CodeBlock, EmptyState, KeyValue, SearchField } from "../components/primitives";
 import { SourceViewer } from "../components/source-viewer";
@@ -172,7 +173,7 @@ function OperationTable({ tool }: { readonly tool: SimulationTool }) {
 
 function ToolInspector({ tool }: { readonly tool: SimulationTool }) {
   return (
-    <aside className="fd-selection-inspector">
+    <div className="fd-details-content">
       <div className="fd-inspector-head">
         <div>
           <strong>{titleFromId(tool.id)}</strong>
@@ -241,7 +242,7 @@ function ToolInspector({ tool }: { readonly tool: SimulationTool }) {
         </section>
         {tool.source === undefined ? null : <SourceSection source={tool.source} kind="tool" id={tool.id} />}
       </div>
-    </aside>
+    </div>
   );
 }
 
@@ -489,7 +490,7 @@ function SetupInspector({
   readonly resolved: boolean;
 }) {
   return (
-    <aside className="fd-selection-inspector">
+    <div className="fd-details-content">
       <div className="fd-inspector-head">
         <div>
           <strong>{title}</strong>
@@ -517,7 +518,7 @@ function SetupInspector({
         </section>
         {source === undefined ? null : <SourceSection source={source} kind={sourceKind} id={sourceId} />}
       </div>
-    </aside>
+    </div>
   );
 }
 
@@ -570,6 +571,8 @@ export function WorldView({
   readonly project: SimulationProject;
   readonly page?: "world" | "scenarios" | "tools";
 }) {
+  const [detailsOpen, setDetailsOpen] = useState(false);
+  const detailsId = `${page}-details`;
   const [selected, setSelected] = useState<WorldSelection>(() =>
     page === "tools" && project.tools[0] !== undefined
       ? `tool:${project.tools[0].id}`
@@ -609,17 +612,37 @@ export function WorldView({
             {plural(project.diagnostics.length, "compiler diagnostic")}
           </span>
         )}
+        <DetailsTrigger id={detailsId} open={detailsOpen} onClick={() => setDetailsOpen(!detailsOpen)} />
       </header>
-      <div className="fd-workspace fd-world-workspace">
-        <WorldRail project={project} selected={selection} onSelect={setSelected} page={page} />
+      <div className="fd-workspace fd-world-workspace fd-details-workspace">
+        <WorldRail
+          project={project}
+          selected={selection}
+          onSelect={(next) => {
+            setSelected(next);
+            setDetailsOpen(false);
+          }}
+          page={page}
+        />
         {scenario !== undefined ? (
-          <>
-            <SetupMain
-              title={scenario.title ?? titleFromId(scenario.id)}
-              id={scenario.id}
-              setup={scenario}
-              resolved
-            />
+          <SetupMain
+            title={scenario.title ?? titleFromId(scenario.id)}
+            id={scenario.id}
+            setup={scenario}
+            resolved
+          />
+        ) : tool !== undefined ? (
+          <ToolMain tool={tool} />
+        ) : (
+          <SetupMain
+            title={project.world.title ?? titleFromId(project.world.id)}
+            id={project.world.id}
+            setup={project.world.baseline}
+            resolved={false}
+          />
+        )}
+        <DetailsPanel id={detailsId} title="Details" open={detailsOpen} onClose={() => setDetailsOpen(false)}>
+          {scenario !== undefined ? (
             <SetupInspector
               title={scenario.title ?? titleFromId(scenario.id)}
               setup={scenario}
@@ -628,20 +651,9 @@ export function WorldView({
               sourceId={scenario.id}
               resolved
             />
-          </>
-        ) : tool !== undefined ? (
-          <>
-            <ToolMain tool={tool} />
+          ) : tool !== undefined ? (
             <ToolInspector tool={tool} />
-          </>
-        ) : (
-          <>
-            <SetupMain
-              title={project.world.title ?? titleFromId(project.world.id)}
-              id={project.world.id}
-              setup={project.world.baseline}
-              resolved={false}
-            />
+          ) : (
             <SetupInspector
               title={project.world.title ?? titleFromId(project.world.id)}
               setup={project.world.baseline}
@@ -650,8 +662,8 @@ export function WorldView({
               sourceId={project.world.id}
               resolved={false}
             />
-          </>
-        )}
+          )}
+        </DetailsPanel>
       </div>
     </section>
   );
