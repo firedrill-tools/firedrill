@@ -1,5 +1,5 @@
 schemaVersion: 1
-module: ./resource.mjs
+module: ./behavior.mjs
 manifest:
   schemaVersion: 1
   id: resource-store

@@ -2,7 +2,6 @@ import {
   Activity,
   Ban,
   Braces,
-  CheckCircle2,
   Clock3,
   Database,
   FileText,
@@ -14,7 +13,6 @@ import {
   TriangleAlert,
   Webhook,
   Wrench,
-  XCircle,
 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { inspectorApi } from "../api";
@@ -200,44 +198,53 @@ function StateBrowser({
   const [selectedKey, setSelectedKey] = useState<string>();
   const [page, setPage] = useState<SimulationStatePage>();
   const [loading, setLoading] = useState(false);
+  const stateRequest = useRef(0);
   const selected = namespaces.find((item) => `${item.packageId}:${item.namespace}` === selectedKey);
 
   const load = async (namespace: StateNamespace, after?: string) => {
+    const request = ++stateRequest.current;
     setLoading(true);
     try {
       const result = await inspectorApi.state(runId, namespace.packageId, namespace.namespace, after);
+      if (request !== stateRequest.current) return;
       setPage((current) =>
         after === undefined || current === undefined
           ? result
           : { ...result, records: [...current.records, ...result.records] },
       );
     } catch (error) {
-      onError(error instanceof Error ? error.message : "State could not be loaded.");
+      if (request === stateRequest.current)
+        onError(error instanceof Error ? error.message : "State could not be loaded.");
     } finally {
-      setLoading(false);
+      if (request === stateRequest.current) setLoading(false);
     }
   };
 
   if (namespaces.length === 0) return null;
   return (
     <section className="fd-run-section">
-      <div className="fd-section-heading">
+      <div className="fd-section-heading fd-state-heading">
         <div>
-          <h3>Retained world state</h3>
-          <p>Queryable state from this run's isolated SQLite world.</p>
+          <h3>Data after this run</h3>
+          <p>
+            Retained records from this run’s synthetic world, separate from the starting data defined in
+            source.
+          </p>
         </div>
         <Select
           label="State namespace"
           value={selectedKey ?? ""}
           onChange={(event) => {
             const next = event.target.value;
+            stateRequest.current += 1;
+            setLoading(false);
             setSelectedKey(next || undefined);
             setPage(undefined);
             const namespace = namespaces.find((item) => `${item.packageId}:${item.namespace}` === next);
             if (namespace !== undefined) void load(namespace);
           }}
         >
-          <option value="">Choose state</option>
+          <option value="">Choose a table</option>
           {namespaces.map((namespace) => (
             <option
               key={`${namespace.packageId}:${namespace.namespace}`}
@@ -732,10 +739,76 @@ function RunWorkspace({
               </span>
             </div>
             {detail === undefined ? null : <RuntimeWork detail={detail} />}
+            {detail?.result === undefined ? null : (
+              <section className="fd-run-section">
+                <div className="fd-section-heading">
+                  <div>
+                    <h3>Task</h3>
+                    <p>What the agent was asked to do in this run.</p>
+                  </div>
+                </div>
+                {detail.result.interactions.length === 0 ? (
+                  <p className="fd-muted-copy">The run ended before an interaction started.</p>
+                ) : (
+                  detail.result.interactions.map((interaction) => (
+                    <div className="fd-catalog-disclosure" key={interaction.interactionId}>
+                      <strong>{interaction.task.instruction}</strong>
+                      <p className="fd-muted-copy">
+                        Agent result: {titleFromId(interaction.targetResult.status)}
+                      </p>
+                      <details>
+                        <summary>Task input and agent output</summary>
+                        <CodeBlock>
+                          {json({
+                            input: interaction.task.input,
+                            output: interaction.targetResult.output,
+                            error: interaction.targetResult.error,
+                          })}
+                        </CodeBlock>
+                      </details>
+                    </div>
+                  ))
+                )}
+              </section>
+            )}
+            {assertions.length > 0 ? (
+              <section className="fd-run-section">
+                <div className="fd-section-heading">
+                  <div>
+                    <h3>Checks</h3>
+                    <p>
+                      Your expectations compared with observed actions and data. Expand a check to see
+                      expected and actual.
+                    </p>
+                  </div>
+                </div>
+                <div className="fd-run-checks">
+                  {assertions.map((assertion) => (
+                    <details key={assertion.assertionId} open={assertion.status === "failed"}>
+                      <summary>
+                        <strong>{titleFromId(assertion.assertionId)}</strong>
+                        <Status tone={resultTone(assertion.status)}>{titleFromId(assertion.status)}</Status>
+                      </summary>
+                      <p>{assertion.message}</p>
+                      <div className="fd-check-comparison">
+                        <div>
+                          <h4>Expected</h4>
+                          <CodeBlock>{json(assertion.expected)}</CodeBlock>
+                        </div>
+                        <div>
+                          <h4>Actual</h4>
+                          <CodeBlock>{json(assertion.actual)}</CodeBlock>
+                        </div>
+                      </div>
+                    </details>
+                  ))}
+                </div>
+              </section>
+            ) : null}
             <section className="fd-timeline-section">
               <div className="fd-timeline-toolbar">
                 <div>
-                  <h3>Causal evidence</h3>
+                  <h3>Event log</h3>
                   <span>{plural(entries.length, "loaded entry", "loaded entries")}</span>
                 </div>
                 <SearchField
@@ -792,37 +865,6 @@ function RunWorkspace({
                 </div>
               ) : null}
             </section>
-            {assertions.length > 0 ? (
-              <section className="fd-run-section">
-                <div className="fd-section-heading">
-                  <div>
-                    <h3>Assertions</h3>
-                    <p>Final checks against state and evidence.</p>
-                  </div>
-                </div>
-                <div className="fd-assertion-list">
-                  {assertions.map((assertion) => (
-                    <button
-                      type="button"
-                      key={assertion.assertionId}
-                      onClick={() => {
-                        setQuery("");
-                        setKind("verification");
-                        setSelectedSequence(assertion.evidenceSequences.at(-1));
-                      }}
-                      disabled={assertion.evidenceSequences.length === 0}
-                    >
-                      {assertion.status === "passed" ? <CheckCircle2 size={16} /> : <XCircle size={16} />}
-                      <span>
-                        <strong>{titleFromId(assertion.assertionId)}</strong>
-                        <small>{assertion.message}</small>
-                      </span>
-                      <Status tone={resultTone(assertion.status)}>{titleFromId(assertion.status)}</Status>
-                    </button>
-                  ))}
-                </div>
-              </section>
-            ) : null}
             {detail === undefined ? null : (
               <StateBrowser
                 key={summary.runId}

@@ -1,5 +1,5 @@
 schemaVersion: 1
-module: ./workspace.js
+module: ./behavior.js
 manifest:
   schemaVersion: 1
   id: workspace

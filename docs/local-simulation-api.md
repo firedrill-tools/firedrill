@@ -15,7 +15,7 @@ Every project, run, state, evidence, and control request requires `Authorization
 
 ## What a client can do
 
-- Read the compiled World, Tools, targets, drills, suites, diagnostics, and repository-relative source provenance.
+- Read the compiled World, Tools, targets, drills, suites, diagnostics, and repository-relative source provenance. Tool views include their declared state schemas and operation input/output schemas without inferring extra fields or relationships.
 - Start one drill or a named suite with optional seed, trial, retry, and concurrency overrides.
 - Follow a run request until its real drill-run IDs exist, then inspect those runs while the agent is still acting.
 - Page the ordered evidence journal and current synthetic Tool state.
@@ -27,10 +27,29 @@ The fixed routes are rooted at `/api/v1`: `project`, `runs`, `run-requests`, and
 
 An `external` target is available only when the embedding application supplies its agent callback to `startLocalSimulationServer()`. Module, command, and HTTP targets continue to use their declared target adapters even when an external callback is present.
 
+## Report files
+
+All report routes require the same bearer header; a token is never placed in a report URL.
+
+| Route | Response |
+| --- | --- |
+| `GET /api/v1/runs/:runId/report` | Verified HTML report. |
+| `GET /api/v1/runs/:runId/report/attachments` | Verified attachment descriptors, including IDs, portable relative paths, declared media types, byte lengths, and hashes. |
+| `GET /api/v1/runs/:runId/report/attachments/:attachmentId` | The verified attachment's bytes, served as an inert download. |
+
+Attachment requests select a descriptor ID, not a filesystem path. Unknown IDs are rejected, and changed or invalid bundles are not served. Downloads use `application/octet-stream`, `Content-Disposition: attachment`, and `nosniff`; the original declared media type remains in the descriptor. The inspector embeds these verified bytes into the report it opens or downloads so links do not depend on the inspector's authentication or local attachment paths.
+
 ## Artifact semantics
 
 Each trial and retry has its own retained SQLite world beneath `.firedrill/runs/`. That database contains the synthetic Tool state, clock, faults, pending work, and ordered evidence for that run; it is not the customer's application database. Completed portable reports remain under `.firedrill/reports/` in terminal, JSON, JUnit, and self-contained HTML formats.
 
+`startLocalSimulationServer()` and `startLocalInspector()` accept `runDirectory`
+and `reportDirectory` launch options for artifacts written to custom locations.
+They resolve relative to the repository root, matching `runDrills()`. The HTTP API
+cannot choose or override those directories.
+
 State reads show the current retained world. Historical before/after values are carried by `state_change` evidence entries, so a client can explain a consequence without inventing a replay or time-travel claim.
+
+Project setup is different from retained run state: each compiled scenario already includes the world's baseline followed by its own ordered patches. Apply these once in order, using Tool, namespace, and record ID together as identity. An upsert replaces the entire record; a delete removes it. These are starting records, not the outcome of a past run.
 
 Generated `.firedrill/` artifacts may contain complete synthetic records and agent output. Keep the directory out of version control.

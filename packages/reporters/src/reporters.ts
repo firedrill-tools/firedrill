@@ -34,6 +34,11 @@ import {
   ToolPackageManifestSchema,
 } from "@firedrill/contracts";
 import { trajectoryHash } from "@firedrill/world-ir";
+import { legacyProjections as initialProjections } from "./compatibility/initial.js";
+import { trajectoryHash as initialTrajectoryHash } from "./compatibility/trajectory-initial.js";
+import { trajectoryHash as versionOneTrajectoryHash } from "./compatibility/trajectory-v1.js";
+import { legacyProjections as versionOneProjections } from "./compatibility/v1.js";
+import { renderReportPage } from "./report-html.js";
 
 export interface LocalReportInput {
   readonly result: RunResult;
@@ -89,6 +94,7 @@ export interface VerifiedLocalReport {
 
 export type LocalReportVerificationErrorCode =
   | "reporter.MANIFEST_INVALID"
+  | "reporter.VERSION_UNSUPPORTED"
   | "reporter.BUNDLE_CONTENT_MISMATCH"
   | "reporter.BUNDLE_LIMIT_EXCEEDED"
   | "reporter.ARTIFACT_MISMATCH"
@@ -452,10 +458,6 @@ function checkedInput(input: LocalReportInput): CheckedLocalReport {
   };
 }
 
-function operationName(entry: Extract<EvidenceEntry, { kind: "operation" }>): string {
-  return `${entry.invocation.operation.packageId}.${entry.invocation.operation.operationId}`;
-}
-
 function assertionMark(assertion: AssertionResult): string {
   if (assertion.status === "passed") return "PASS";
   if (assertion.status === "failed") return assertion.gate ? "FAIL" : "WARN";
@@ -701,170 +703,22 @@ export function renderJunitReport(rawInput: LocalReportInput): string {
   return junitReport(checkedInput(rawInput));
 }
 
-function html(value: unknown): string {
-  return String(value)
-    .replaceAll("&", "&amp;")
-    .replaceAll("<", "&lt;")
-    .replaceAll(">", "&gt;")
-    .replaceAll('"', "&quot;")
-    .replaceAll("'", "&#39;");
+function htmlReport(input: Pick<CheckedLocalReport, "result" | "evidence" | "tools">): string {
+  return renderReportPage({
+    ...input,
+    reproduce: reproductionCommand(input.result),
+    reproductionNote: hasRuntimeFaultControls(input.evidence)
+      ? RUNTIME_CONTROL_REPRODUCTION_NOTE
+      : "Restores the same world inputs and seed. Your agent may make different choices on another run; use the original harness for external targets.",
+  });
 }
-
-function json(value: unknown): string {
-  return html(JSON.stringify(value, null, 2));
-}
-
-function evidenceRows(evidence: readonly EvidenceEntry[]): string {
-  return evidence
-    .map((entry) => {
-      let subject: string;
-      if (entry.kind === "operation") subject = operationName(entry);
-      else if (entry.kind === "state_change")
-        subject = `${entry.packageId}.${entry.namespace}/${entry.rowId}`;
-      else if (entry.kind === "event") subject = `${entry.event.packageId}.${entry.event.eventId}`;
-      else if (entry.kind === "callback")
-        subject = `${entry.callback.packageId}.${entry.callback.callbackId} · ${entry.phase}`;
-      else if (entry.kind === "fault") subject = `${entry.packageId}.${entry.faultId}`;
-      else if (entry.kind === "fault_control")
-        subject = `${entry.packageId}.${entry.faultId} · ${entry.active ? "enabled" : "disabled"}${entry.previouslyActive === entry.active ? " (unchanged)" : ""}`;
-      else if (entry.kind === "clock") subject = `${entry.fromUs} → ${entry.toUs} μs`;
-      else if (entry.kind === "random") subject = `${entry.packageId} draw ${entry.draw}`;
-      else if (entry.kind === "verification") {
-        subject = `${entry.checkpointId}/${entry.result.assertionId}`;
-      } else subject = entry.action;
-      return `<tr><td class="mono">${entry.sequence}</td><td>${html(entry.kind.replaceAll("_", " "))}</td><td>${html(subject)}</td><td class="mono">${entry.virtualTimeUs}</td><td><details><summary>Inspect</summary><pre>${json(entry)}</pre></details></td></tr>`;
-    })
-    .join("");
-}
-
-function assertionRows(assertions: readonly AssertionResult[]): string {
-  if (assertions.length === 0) return '<p class="empty">No assertions were evaluated.</p>';
-  return `<div class="assertions">${assertions
-    .map((assertion) => {
-      const disclosure = assertion.status === "passed" ? "" : " open";
-      return `<article class="assertion ${html(assertion.status)}"><span class="status">${html(assertionMark(assertion))}</span><div><h3>${html(assertion.assertionId)}</h3><p>${html(assertion.message)}</p><details${disclosure}><summary>Expected and actual</summary><pre>${json({ expected: assertion.expected, actual: assertion.actual, diff: assertion.diff })}</pre></details></div></article>`;
-    })
-    .join("")}</div>`;
-}
-
-function stateChangeRows(evidence: readonly EvidenceEntry[]): string {
-  const changes = evidence.filter((entry) => entry.kind === "state_change");
-  if (changes.length === 0) return '<p class="empty">No state changed during this run.</p>';
-  return `<table><thead><tr><th scope="col">Record</th><th scope="col">Change</th><th scope="col">Before</th><th scope="col">After</th></tr></thead><tbody>${changes
-    .map(
-      (entry) =>
-        `<tr><td class="mono">${html(`${entry.packageId}.${entry.namespace}/${entry.rowId}`)}</td><td>${html(entry.change)}</td><td><pre>${json(entry.before)}</pre></td><td><pre>${json(entry.after)}</pre></td></tr>`,
-    )
-    .join("")}</tbody></table>`;
-}
-
-function interactionRows(result: RunResult): string {
-  if (result.interactions.length === 0) {
-    return '<p class="empty">No agent interaction started before this run ended.</p>';
-  }
-  return `<table><thead><tr><th scope="col">Interaction</th><th scope="col">Actor</th><th scope="col">Virtual time</th><th scope="col">Result</th><th scope="col">Task</th></tr></thead><tbody>${result.interactions
-    .map((interaction) => {
-      const error = interaction.targetResult.error;
-      const output = interaction.targetResult.output;
-      const attachments = interaction.targetResult.attachments
-        .map((attachment) => {
-          if (attachment.kind === "file") {
-            const file = TargetFileAttachmentSchema.parse(attachment);
-            const redaction =
-              file.redaction.status === "applied_by_caller"
-                ? "caller applied redaction before attachment"
-                : "copied verbatim without redaction";
-            return `<details><summary>${html(file.name)}</summary><p><a href="${html(attachmentArtifactPath(file))}" download>Open attachment</a> · ${file.bytes} bytes · ${html(file.mediaType)}</p><p class="meta">${html(redaction)}${file.redaction.note === null ? "" : ` · ${html(file.redaction.note)}`}</p></details>`;
-          }
-          const label =
-            typeof attachment.kind === "string"
-              ? attachment.kind.replaceAll(".", " ")
-              : typeof attachment.name === "string"
-                ? attachment.name
-                : "Attachment";
-          const body = typeof attachment.text === "string" ? html(attachment.text) : json(attachment);
-          return `<details><summary>${html(label)}</summary><pre>${body}</pre></details>`;
-        })
-        .join("");
-      return `<tr><td class="mono">${html(interaction.interactionId)}</td><td>${html(interaction.actorId)}</td><td class="mono">${interaction.scheduledAtVirtualUs}</td><td><strong>${html(interaction.targetResult.status)}</strong>${error === undefined ? "" : `<p class="meta">${html(`${error.code}: ${error.message}`)}</p>`}${output === undefined ? "" : `<details><summary>Output</summary><pre>${json(output)}</pre></details>`}${attachments}</td><td><p>${html(interaction.task.instruction)}</p>${interaction.task.input === undefined ? "" : `<details><summary>Input</summary><pre>${json(interaction.task.input)}</pre></details>`}</td></tr>`;
-    })
-    .join("")}</tbody></table>`;
-}
-
-function checkpointRows(result: RunResult): string {
-  const checkpoints = result.checkpoints.filter((checkpoint) => checkpoint.kind !== "final");
-  if (checkpoints.length === 0) {
-    return '<p class="empty">No repeating invariants were configured.</p>';
-  }
-  return `<div class="checkpoints">${checkpoints
-    .map(
-      (checkpoint) =>
-        `<details${checkpoint.verdict === "failed" ? " open" : ""}><summary><span class="checkpoint-status ${html(checkpoint.verdict)}">${html(checkpoint.verdict)}</span> ${html(checkpoint.kind.replaceAll("_", " "))} at <span class="mono">${checkpoint.virtualTimeUs}</span>${checkpoint.interactionId === undefined ? "" : ` · ${html(checkpoint.interactionId)}`}</summary>${assertionRows(checkpoint.assertionResults)}</details>`,
-    )
-    .join("")}</div>`;
-}
-
-function toolRows(tools: readonly ReportToolDescriptor[]): string {
-  if (tools.length === 0) return '<p class="empty">No Tool manifests were attached to this report.</p>';
-  return `<table><thead><tr><th scope="col">Tool</th><th scope="col">Operations</th><th scope="col">Client compatibility</th></tr></thead><tbody>${tools
-    .map((tool) => {
-      const operations = tool.operations
-        .map((operation) => `${operation.id} — ${operation.fidelity}`)
-        .join("\n");
-      const compatibility =
-        tool.compatibility.length === 0
-          ? '<span class="meta">No official-client compatibility claimed.</span>'
-          : tool.compatibility
-              .map((profile) => {
-                const covered = profile.routes
-                  .map((route) => `${route.clientMethod} → ${route.routeId}`)
-                  .join("\n");
-                return `<div><strong>${html(`${profile.client.name}@${profile.client.version}`)}</strong><p class="meta">${html(`${profile.service}${profile.apiVersion === undefined ? "" : ` · API ${profile.apiVersion}`} · ${profile.mode}`)}</p><details><summary>${profile.routes.length} covered route${profile.routes.length === 1 ? "" : "s"}</summary><pre>${html(covered)}</pre></details><details><summary>Known limitations</summary><ul>${profile.limitations.map((limitation) => `<li>${html(limitation)}</li>`).join("")}</ul></details></div>`;
-              })
-              .join("");
-      return `<tr><td><strong>${html(tool.id)}</strong><p class="meta mono">${html(tool.version)}</p></td><td><pre>${html(operations)}</pre>${tool.http.length === 0 ? "" : `<p class="meta">${tool.http.length} synthetic HTTP route${tool.http.length === 1 ? "" : "s"}</p>`}</td><td>${compatibility}</td></tr>`;
-    })
-    .join("")}</tbody></table>`;
-}
-
-function htmlReport({ result, evidence, tools }: CheckedLocalReport): string {
-  const verdict = result.status === "sealed" ? result.verdict : result.status;
-  const operations = evidence.filter((entry) => entry.kind === "operation").length;
-  const stateChanges = evidence.filter((entry) => entry.kind === "state_change").length;
-  const events = evidence.filter((entry) => entry.kind === "event").length;
-  const count = (value: number, singular: string, plural = `${singular}s`) =>
-    `${value} ${value === 1 ? singular : plural}`;
-  const summary = [
-    count(result.interactions.length, "agent interaction"),
-    count(operations, "tool call"),
-    count(stateChanges, "state change"),
-    count(events, "event"),
-    count(evidence.length, "evidence entry", "evidence entries"),
-  ].join(" · ");
-  const reproduction = reproductionCommand(result);
-  return `<!doctype html>
-<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${html(result.identity.drillId)} · Firedrill report</title>
-<style>
-:root{color-scheme:light dark;--bg:#f7f7f8;--panel:#fff;--text:#18181b;--muted:#71717a;--line:#e4e4e7;--blue:#315ed8;--green:#16845b;--red:#c33d48;--amber:#a86308;--code:#f1f1f3}*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--text);font:14px/1.5 ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}main{max-width:1180px;margin:0 auto;padding:48px 28px 72px}header{display:flex;align-items:flex-start;justify-content:space-between;gap:24px;margin-bottom:12px}h1{font-size:30px;line-height:1.15;letter-spacing:-.025em;margin:0 0 8px;overflow-wrap:anywhere}.meta{color:var(--muted);margin:0;overflow-wrap:anywhere}.summary{color:var(--muted);margin:0 0 28px}.pill{border:1px solid var(--line);border-radius:999px;padding:7px 12px;font-weight:700;text-transform:uppercase;font-size:12px}.pill.passed{color:var(--green)}.pill.failed,.pill.runner_failed{color:var(--red)}.pill.inconclusive,.pill.cancelled{color:var(--amber)}section{margin-top:30px}h2{font-size:18px;letter-spacing:-.01em;margin:0 0 12px}.panel{border:1px solid var(--line);border-radius:12px;background:var(--panel);padding:18px 20px}.assertions{border:1px solid var(--line);border-radius:12px;background:var(--panel);overflow:hidden}.assertion{display:grid;grid-template-columns:64px 1fr;gap:10px;padding:16px 18px;border-bottom:1px solid var(--line)}.assertion:last-child{border:0}.assertion h3{font-size:14px;margin:0}.assertion p{color:var(--muted);margin:3px 0 0}.status{font-size:11px;font-weight:800;color:var(--green)}.assertion.failed .status{color:var(--red)}.assertion.inconclusive .status,.assertion.invalid .status{color:var(--amber)}.checkpoints{border:1px solid var(--line);border-radius:12px;background:var(--panel);padding:4px 16px}.checkpoints>details{padding:10px 0;border-bottom:1px solid var(--line)}.checkpoints>details:last-child{border:0}.checkpoint-status{color:var(--green);text-transform:uppercase;font-size:11px}.checkpoint-status.failed{color:var(--red)}table{width:100%;border-collapse:collapse;background:var(--panel);border:1px solid var(--line);font-size:13px}th,td{text-align:left;padding:11px 12px;border-bottom:1px solid var(--line);vertical-align:top}th{color:var(--muted);font-size:11px;text-transform:uppercase;letter-spacing:.05em}td p{margin:0}tr:last-child td{border:0}.mono,pre,code{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}code{display:block;background:var(--code);border-radius:8px;padding:12px;overflow:auto}details{margin-top:8px}summary{cursor:pointer;color:var(--blue);font-weight:600}summary:focus-visible{border-radius:4px;outline:2px solid var(--blue);outline-offset:2px}pre{white-space:pre-wrap;overflow-wrap:anywhere;background:var(--code);padding:12px;border-radius:8px;font-size:12px}.empty{color:var(--muted)}@media(max-width:760px){main{padding:28px 16px}header{display:block}.pill{display:inline-block;margin-top:14px}table{display:block;overflow:auto}}
-@media(prefers-color-scheme:dark){:root{--bg:#0c0d0f;--panel:#121316;--text:#f4f4f5;--muted:#a1a1aa;--line:#27272a;--code:#191a1e;--blue:#83a2ff;--green:#55cf9b;--red:#ff818e;--amber:#f4b65f}}
-</style></head><body><main>
-<header><div><h1>${html(result.identity.drillId)}</h1><p class="meta">Trial ${result.identity.trial}/${result.identity.trialCount} · Attempt ${result.identity.attempt}/${result.identity.attemptLimit} · Run <span class="mono">${html(result.identity.runId)}</span></p></div><span class="pill ${html(verdict)}">${html(verdict)}</span></header>
-<p class="summary">${html(summary)}</p>
-${result.status === "runner_failed" ? `<section><h2>Runner failure</h2><div class="panel"><strong>${html(result.error.code)}</strong><p class="meta">${html(result.error.message)}</p></div></section>` : result.status === "cancelled" ? `<section><h2>Cancelled</h2><div class="panel"><p>${html(result.reason)}</p></div></section>` : ""}
-<section><h2>Resource budgets</h2><div class="panel"><p>${result.budgetUsage.toolCalls.attempted}/${result.budgetUsage.toolCalls.limit} Tool calls${result.budgetUsage.toolCalls.rejected === 0 ? "" : ` · ${result.budgetUsage.toolCalls.rejected} rejected`}</p><p class="meta">${result.budgetUsage.scheduledEvents.processed}/${result.budgetUsage.scheduledEvents.limit} scheduled events processed${result.budgetUsage.scheduledEvents.exhausted ? " · budget exhausted" : ""}</p></div></section>
-<section><h2>World capabilities</h2>${toolRows(tools)}</section>
-<section><h2>Agent interactions</h2>${interactionRows(result)}</section>
-<section><h2>Invariant checkpoints</h2>${checkpointRows(result)}</section>
-<section><h2>Final assertions</h2>${assertionRows(result.assertionResults)}</section>
-<section><h2>State changes</h2>${stateChangeRows(evidence)}</section>
-${result.setup === undefined ? "" : `<section><h2>Test-local setup</h2><div class="panel"><p class="meta">${html(result.setup.setupHash)}</p><details><summary>View resolved setup</summary><pre>${html(JSON.stringify(result.setup.setup, null, 2))}</pre></details></div></section>`}
-<section><h2>Evidence timeline</h2><table><thead><tr><th scope="col">Seq</th><th scope="col">Kind</th><th scope="col">Subject</th><th scope="col">Virtual time</th><th scope="col">Details</th></tr></thead><tbody>${evidenceRows(evidence)}</tbody></table></section>
-<section><h2>${hasRuntimeFaultControls(evidence) ? "Rerun initial world inputs" : "Reproduce"}</h2><code>${html(reproduction)}</code>${hasRuntimeFaultControls(evidence) ? `<p class="meta">${html(RUNTIME_CONTROL_REPRODUCTION_NOTE)}</p>` : ""}<p class="meta">Build ${html(result.identity.buildHash)} · Seed ${html(result.identity.seed)}${result.status === "sealed" ? ` · Trajectory ${html(result.trajectoryHash)}` : ""}</p></section>
-</main></body></html>\n`;
-}
-
 export function renderHtmlReport(rawInput: LocalReportInput): string {
   return htmlReport(checkedInput(rawInput));
+}
+
+/** Render today's readable view of a verified saved bundle without rewriting its artifacts. */
+export function renderSavedReport(outputDirectory: string): string {
+  return htmlReport(verifyLocalReport(outputDirectory));
 }
 
 function artifact(
@@ -910,6 +764,8 @@ export function writeLocalReport(rawInput: LocalReportInput, outputDirectory: st
   ];
   const manifest = EvidenceBundleManifestSchema.parse({
     schemaVersion: 1,
+    presentationVersion: 2,
+    trajectoryVersion: 2,
     runId: input.result.identity.runId,
     complete: true,
     runResultHash: input.sourceRunResultHash,
@@ -1039,7 +895,10 @@ function artifactPath(root: string, path: string): string {
   return resolved;
 }
 
-function parseManifest(path: string): EvidenceBundleManifest {
+function parseManifest(path: string): {
+  readonly manifest: EvidenceBundleManifest;
+  readonly legacyHasTools: boolean;
+} {
   try {
     if (statSync(path).size > MAX_MANIFEST_BYTES) {
       throw new LocalReportVerificationError(
@@ -1047,7 +906,28 @@ function parseManifest(path: string): EvidenceBundleManifest {
         "report manifest exceeds 1 MiB",
       );
     }
-    return EvidenceBundleManifestSchema.parse(JSON.parse(readFileSync(path, "utf8")));
+    const raw: unknown = JSON.parse(readFileSync(path, "utf8"));
+    if (objectValue(raw) && objectValue(raw.redaction) && raw.redaction.policy === "safe_fields_v1") {
+      // Classify the known old envelope only. These substitutions are never
+      // returned, written, or used as evidence that the old report verifies.
+      const legacyEnvelope = EvidenceBundleManifestSchema.safeParse({
+        ...raw,
+        projectedRunResultHash: raw.projectedRunResultHash ?? raw.runResultHash,
+        projectedEvidenceHash: raw.projectedEvidenceHash ?? raw.evidenceHash,
+        projectedTrajectoryHash: raw.projectedTrajectoryHash ?? raw.trajectoryHash,
+        redaction: { ...raw.redaction, policy: "safe_fields_v2" },
+      });
+      if (legacyEnvelope.success) {
+        throw new LocalReportVerificationError(
+          "reporter.VERSION_UNSUPPORTED",
+          "older report format (safe_fields_v1) is not supported; this report was not verified or changed. Use the original compatible Firedrill release to inspect it, or rerun the drill to create a new report",
+        );
+      }
+    }
+    return {
+      manifest: EvidenceBundleManifestSchema.parse(raw),
+      legacyHasTools: objectValue(raw) && Object.hasOwn(raw, "tools"),
+    };
   } catch (error) {
     if (error instanceof LocalReportVerificationError) throw error;
     throw new LocalReportVerificationError(
@@ -1070,7 +950,20 @@ export function verifyLocalReport(outputDirectory: string): VerifiedLocalReport 
       "report bundle cannot be read",
     );
   }
-  const manifest = parseManifest(join(directory, "manifest.json"));
+  const { manifest, legacyHasTools } = parseManifest(join(directory, "manifest.json"));
+  const presentationVersion = manifest.presentationVersion ?? (legacyHasTools ? 1 : 0);
+  const trajectoryVersion = manifest.trajectoryVersion ?? (legacyHasTools ? 2 : 1);
+  if (
+    (manifest.presentationVersion !== undefined &&
+      (typeof manifest.presentationVersion !== "number" || ![1, 2].includes(manifest.presentationVersion))) ||
+    typeof trajectoryVersion !== "number" ||
+    ![1, 2].includes(trajectoryVersion)
+  ) {
+    throw new LocalReportVerificationError(
+      "reporter.VERSION_UNSUPPORTED",
+      "this report uses an unsupported presentation or trajectory version; use a compatible Firedrill release",
+    );
+  }
   if (!manifest.complete) {
     throw new LocalReportVerificationError("reporter.REPORT_INVALID", "report bundle is not marked complete");
   }
@@ -1229,13 +1122,24 @@ export function verifyLocalReport(outputDirectory: string): VerifiedLocalReport 
     sourceEvidenceHash: manifest.evidenceHash,
     redaction: manifest.redaction,
   };
+  const projections =
+    presentationVersion === 0
+      ? initialProjections(checked)
+      : presentationVersion === 1
+        ? versionOneProjections(checked)
+        : {
+            json: jsonReport(checked),
+            terminal: terminalReport(checked),
+            junit: junitReport(checked),
+            html: htmlReport(checked),
+          };
   const expectedBodies = new Map<string, string>([
     [runArtifact.path, `${JSON.stringify(result, null, 2)}\n`],
     [evidenceArtifact.path, `${evidence.map((entry) => JSON.stringify(entry)).join("\n")}\n`],
-    [jsonArtifact.path, jsonReport(checked)],
-    [terminalArtifact.path, terminalReport(checked)],
-    [junitArtifact.path, junitReport(checked)],
-    [htmlArtifact.path, htmlReport(checked)],
+    [jsonArtifact.path, projections.json],
+    [terminalArtifact.path, projections.terminal],
+    [junitArtifact.path, projections.junit],
+    [htmlArtifact.path, projections.html],
   ]);
   for (const [path, expected] of expectedBodies) {
     if (readFileSync(artifactPath(directory, path), "utf8") !== expected) {
@@ -1250,8 +1154,11 @@ export function verifyLocalReport(outputDirectory: string): VerifiedLocalReport 
     semanticHash(result) !== manifest.projectedRunResultHash ||
     semanticHash(evidence) !== manifest.projectedEvidenceHash ||
     (result.status === "sealed" &&
-      trajectoryHash({ interactions: result.interactions, checkpoints: result.checkpoints, evidence }) !==
-        manifest.projectedTrajectoryHash)
+      (trajectoryVersion === 1 ? initialTrajectoryHash : versionOneTrajectoryHash)({
+        interactions: result.interactions,
+        checkpoints: result.checkpoints,
+        evidence,
+      }) !== manifest.projectedTrajectoryHash)
   ) {
     throw new LocalReportVerificationError(
       "reporter.SOURCE_HASH_MISMATCH",

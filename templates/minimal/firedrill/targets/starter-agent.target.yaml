@@ -6,6 +6,6 @@ target:
     - http
   executable: node
   arguments:
-    - firedrill/example-agent.mjs
+    - firedrill-example/agent.mjs
   workingDirectory: .
   timeoutMs: 5000

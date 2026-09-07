@@ -1,3 +1,5 @@
+import type { SimulationReportAttachments as ReportAttachments } from "@firedrill/simulation";
+import { attachmentDataUrl, embedReportAttachments } from "./report-attachments";
 import type {
   SimulationEvidencePage,
   SimulationProject,
@@ -111,6 +113,35 @@ export const inspectorApi = {
       }
       throw new InspectorApiError(response.status, "framework.REPORT_UNAVAILABLE", message);
     }
-    return response.blob();
+    const html = await response.text();
+    const files = await request<ReportAttachments>(
+      `/api/v1/runs/${encodeURIComponent(runId)}/report/attachments`,
+    );
+    const embedded: { path: string; dataUrl: string }[] = [];
+    for (const file of files.attachments) {
+      const attachment = await fetch(
+        `/api/v1/runs/${encodeURIComponent(runId)}/report/attachments/${encodeURIComponent(file.id)}`,
+        { headers: { authorization: `Bearer ${token()}` } },
+      );
+      if (!attachment.ok) {
+        throw new InspectorApiError(
+          attachment.status,
+          "framework.REPORT_UNAVAILABLE",
+          "A report attachment could not be verified. Refresh the runs and try again.",
+        );
+      }
+      const body = await attachment.arrayBuffer();
+      const digest = await crypto.subtle.digest("SHA-256", body);
+      const hash = `sha256:${Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, "0")).join("")}`;
+      if (body.byteLength !== file.bytes || hash !== file.hash) {
+        throw new InspectorApiError(
+          422,
+          "framework.REPORT_INVALID",
+          "A report attachment no longer matches its verified bytes.",
+        );
+      }
+      embedded.push({ path: file.path, dataUrl: attachmentDataUrl(new Uint8Array(body)) });
+    }
+    return new Blob([embedReportAttachments(html, embedded)], { type: "text/html;charset=utf-8" });
   },
 };

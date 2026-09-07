@@ -75,10 +75,13 @@ export async function loadSimulationProject(
       operations: tool.operations.map((operation) => ({
         id: operation.id,
         ...(operation.description === undefined ? {} : { description: operation.description }),
+        inputSchema: operation.inputSchema,
+        outputSchema: operation.outputSchema,
         fidelity: operation.fidelity,
         idempotency: operation.idempotency,
       })),
       stateNamespaces: tool.state.map((state) => state.namespace),
+      stateDefinitions: tool.state,
       events: tool.events.map((event) => event.id),
       faults: tool.faults.map((fault) => fault.id),
       httpRoutes: tool.http.map((route) => ({

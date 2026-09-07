@@ -243,14 +243,15 @@ describe("local evidence reporters", () => {
     expect(renderJunitReport(input)).toContain('name="firedrill.trajectoryHash"');
     expect(renderJunitReport(input)).toContain('name="firedrill.toolCalls.limit" value="1000"');
     const html = renderHtmlReport(input);
-    expect(html).toContain("Firedrill report");
-    expect(html).toContain("Resource budgets");
-    expect(html).toContain("World capabilities");
-    expect(html).toContain("@example/records@2.1.0");
+    expect(html).toContain("Firedrill / Drill report");
+    expect(html).toContain("Run details and limits");
+    expect(html).toContain("Synthetic tools used by this world");
+    expect(html).toContain("@example/records");
+    expect(html).toContain("2.1.0");
     expect(html).toContain("Only update is covered.");
     expect(html).not.toContain('class="eyebrow"');
     expect(html).toContain("Verify the agent changes only the intended record.");
-    expect(html).toContain("generic-tool.records/item-1");
+    expect(html).toContain("generic-tool / records / item-1");
     expect(html).toContain("&lt;script&gt;alert(&#39;unsafe&#39;)&lt;/script&gt;");
     expect(html).not.toContain("<script>alert('unsafe')</script>");
     expect(html).not.toContain("built-in-secret-1234");
@@ -260,6 +261,137 @@ describe("local evidence reporters", () => {
     expect(renderJunitReport(input)).not.toContain("declared-secret-5678");
     expect(html).not.toContain("https://");
     expect(html).not.toContain("<strong>completed</strong><p");
+  });
+
+  it("puts task and checks before implementation details and labels virtual time accurately", () => {
+    const entries = evidence();
+    const html = renderHtmlReport({ result: run(entries), evidence: entries, tools: tools() });
+    const task = html.indexOf('<section id="task">');
+    const checks = html.indexOf('<section id="checks">');
+    const actions = html.indexOf('<section id="actions">');
+    const changes = html.indexOf('<section id="changes">');
+    const details = html.indexOf('<section id="details">');
+    expect(task).toBeGreaterThan(0);
+    expect(checks).toBeGreaterThan(task);
+    expect(actions).toBeGreaterThan(checks);
+    expect(changes).toBeGreaterThan(actions);
+    expect(details).toBeGreaterThan(changes);
+    expect(html.indexOf("Run details and limits")).toBeGreaterThan(details);
+    expect(html).toContain("not elapsed execution time");
+    expect(html).toContain("Agent output (not the test verdict)");
+    expect(html).toContain("No tool calls were recorded. This alone does not prove the agent was connected.");
+    expect(html).toContain("Passing means the configured checks passed");
+  });
+
+  it("shows received tool arguments and responses, escapes user text, and separates initial seed changes", () => {
+    const unsafe = '<img src=x onerror="alert(1)">';
+    const escaped = "&lt;img src=x onerror=&quot;alert(1)&quot;&gt;";
+    const entries: readonly EvidenceEntry[] = [
+      evidence()[0] as EvidenceEntry,
+      {
+        schemaVersion: 1,
+        sequence: 2,
+        causeSequence: 1,
+        transactionId: "txn_report002",
+        transactionIndex: 0,
+        transactionSize: 1,
+        virtualTimeUs: 500,
+        correlationId: "corr_report002",
+        kind: "state_change",
+        packageId: "generic-tool",
+        namespace: "records",
+        rowId: "initial-record",
+        change: "insert",
+        before: null,
+        after: { value: "initial seed marker" },
+        deltaHash: HASH,
+      },
+      {
+        schemaVersion: 1,
+        sequence: 3,
+        transactionId: "txn_report003",
+        transactionIndex: 0,
+        transactionSize: 1,
+        virtualTimeUs: 500,
+        correlationId: "corr_report003",
+        kind: "operation",
+        invocation: {
+          schemaVersion: 1,
+          callId: "call_report003",
+          correlationId: "corr_report003",
+          operation: { packageId: "generic-tool", operationId: "items.update" },
+          actorBindingId: "actor_report003",
+          arguments: { requestedValue: unsafe },
+        },
+        actorId: "operator",
+        outcome: { status: "ok", value: { acceptedValue: unsafe } },
+        idempotency: "not_requested",
+      },
+      {
+        schemaVersion: 1,
+        sequence: 4,
+        causeSequence: 3,
+        transactionId: "txn_report004",
+        transactionIndex: 0,
+        transactionSize: 1,
+        virtualTimeUs: 500,
+        correlationId: "corr_report004",
+        kind: "state_change",
+        packageId: "generic-tool",
+        namespace: "records",
+        rowId: unsafe,
+        change: "update",
+        before: { value: "before agent action" },
+        after: { value: "after agent action" },
+        deltaHash: HASH,
+      },
+    ];
+    const base = run(entries);
+    if (base.status !== "sealed") throw new Error("fixture must be sealed");
+    const assertions = base.assertionResults.map((assertion) => ({
+      ...assertion,
+      expected: { operator: "equals", value: 1 },
+      actual: 1,
+      evidenceSequences: [3],
+    }));
+    const checkpoints = base.checkpoints.map((checkpoint) => ({
+      ...checkpoint,
+      assertionResults: assertions,
+    }));
+    const interactions = base.interactions.map((interaction) => ({
+      ...interaction,
+      task: { instruction: `Set the record to ${unsafe}` },
+    }));
+    const result = RunResultSchema.parse({
+      ...base,
+      interactions,
+      checkpoints,
+      assertionResults: assertions,
+      trajectoryHash: trajectoryHash({ interactions, checkpoints, evidence: entries }),
+    });
+    const html = renderHtmlReport({ result, evidence: entries, tools: tools() });
+    const actions = html.slice(
+      html.indexOf('<section id="actions">'),
+      html.indexOf('<section id="changes">'),
+    );
+    const changes = html.slice(
+      html.indexOf('<section id="changes">'),
+      html.indexOf('<section id="details">'),
+    );
+    expect(html).not.toContain(unsafe);
+    expect(html).toContain(`Set the record to ${escaped}`);
+    expect(actions).toContain("generic-tool.items.update");
+    expect(actions).toContain("Arguments sent");
+    expect(actions).toContain("requestedValue");
+    expect(actions).toContain("Response received");
+    expect(actions).toContain("acceptedValue");
+    expect(actions).toContain("Success");
+    expect(changes).toContain(escaped);
+    expect(changes).toContain("before agent action");
+    expect(changes).toContain("after agent action");
+    expect(changes).not.toContain("initial seed marker");
+    expect(html).toContain("initial seed marker");
+    expect(html).toContain('href="#event-3"');
   });
 
   it("prints concise expected and actual values for a failed terminal assertion", () => {
@@ -409,7 +541,7 @@ describe("local evidence reporters", () => {
     expect(verified.evidence.filter((entry) => entry.kind === "fault")).toHaveLength(0);
     for (const file of [written.files.html, written.files.terminal]) {
       const text = readFileSync(file, "utf8");
-      expect(text).toContain("Rerun initial world inputs");
+      expect(text).toContain(file === written.files.html ? "Run again" : "Rerun initial world inputs");
       expect(text).toContain("Runtime fault controls require the original harness");
       expect(text).not.toContain("Reproduce");
     }
@@ -497,7 +629,7 @@ describe("local evidence reporters", () => {
         path: join(destination, "attachments", attachment.id, attachment.name),
       },
     ]);
-    expect(readFileSync(written.files.html, "utf8")).toContain("copied verbatim without redaction");
+    expect(readFileSync(written.files.html, "utf8")).toMatch(/copied verbatim without redaction/i);
 
     writeFileSync(written.attachments[0]?.path ?? "", "tampered");
     expect(() => verifyLocalReport(destination)).toThrowError(

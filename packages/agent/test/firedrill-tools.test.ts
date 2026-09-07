@@ -45,12 +45,12 @@ function selected(root: string, name: string): ToolDefinition {
 describe("Firedrill Agent authoring Tools", () => {
   it("removes execution tools and refuses executable Tool checks in source-only sessions", async () => {
     const root = project();
-    const behavior = resolve(root, "firedrill", "resource.mjs");
+    const behavior = resolve(root, "firedrill", "tools", "resource-store", "behavior.mjs");
     writeFileSync(
       behavior,
       `throw new Error("Repository Tool code must never execute");\n${readFileSync(behavior, "utf8")}`,
     );
-    const target = resolve(root, "firedrill", "example-agent.mjs");
+    const target = resolve(root, "firedrill-example", "agent.mjs");
     writeFileSync(
       target,
       `throw new Error("Customer agent must never execute");\n${readFileSync(target, "utf8")}`,
@@ -84,7 +84,7 @@ describe("Firedrill Agent authoring Tools", () => {
     expect(files.isError).not.toBe(true);
     expect(parsedText(files)).toMatchObject({
       status: "success",
-      files: ["firedrill/example-agent.mjs", "firedrill/local-agent.target.yaml"],
+      files: ["firedrill/targets/starter-agent.target.yaml", "firedrill-example/agent.mjs"],
     });
     expect(search.isError).not.toBe(true);
     expect(JSON.stringify(parsedText(search))).toContain("changes-resource.drill.yaml");
@@ -120,14 +120,14 @@ describe("Firedrill Agent authoring Tools", () => {
 
   it("treats pending canonical formatting as an actionable Tool error", async () => {
     const root = project();
-    const source = resolve(root, "firedrill", "changes-resource.drill.yaml");
+    const source = resolve(root, "firedrill", "drills", "changes-resource.drill.yaml");
     writeFileSync(source, readFileSync(source, "utf8").replace("tags:\n  - smoke", "tags: [smoke]"));
 
     const check = await selected(root, "format").handler({ check: true }, {});
     expect(check.isError).toBe(true);
     expect(parsedText(check)).toMatchObject({
       status: "changes_required",
-      changed: ["firedrill/changes-resource.drill.yaml"],
+      changed: ["firedrill/drills/changes-resource.drill.yaml"],
     });
 
     const formatted = await selected(root, "format").handler({ check: false }, {});

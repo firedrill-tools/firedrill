@@ -101,6 +101,10 @@ export const EvidenceBundleManifestSchema = z
     schemaVersion: z.literal(1),
     runId: RunIdSchema,
     complete: z.boolean(),
+    /** Projection layout version; absent only in pre-versioned local bundles. */
+    presentationVersion: z.number().int().positive().optional(),
+    /** Behavioral trajectory algorithm version, independent of presentation. */
+    trajectoryVersion: z.number().int().positive().optional(),
     /** Hashes of the unredacted runtime values. They link the report to the sealed run. */
     runResultHash: Sha256Schema,
     evidenceHash: Sha256Schema,

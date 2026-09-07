@@ -208,7 +208,7 @@ try {
   if (passing.verdict !== "passed") throw new Error("starter drill did not pass");
   assertEvidence(passing);
 
-  const drillPath = join(workspace, "firedrill", "changes-resource.drill.yaml");
+  const drillPath = join(workspace, "firedrill", "drills", "changes-resource.drill.yaml");
   const originalDrill = readFileSync(drillPath, "utf8");
   const failingDrill = originalDrill.replace(
     "    comparison:\n      operator: equals\n      value: 7",

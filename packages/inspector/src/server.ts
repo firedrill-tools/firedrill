@@ -1,7 +1,7 @@
 import { randomBytes } from "node:crypto";
-import { readFileSync, readdirSync } from "node:fs";
-import { createServer } from "node:http";
+import { readdirSync, readFileSync } from "node:fs";
 import type { IncomingMessage, Server, ServerResponse } from "node:http";
+import { createServer } from "node:http";
 import { extname, join, relative, resolve, sep } from "node:path";
 import {
   createLocalSimulationRequestHandler,
@@ -9,7 +9,17 @@ import {
   type LocalSimulationSupervisorOptions,
 } from "@firedrill/simulation";
 
-const KNOWN_ROUTES = new Set(["/", "/world", "/drills", "/runs"]);
+const KNOWN_ROUTES = new Set([
+  "/",
+  "/world",
+  "/schema",
+  "/data",
+  "/personas",
+  "/scenarios",
+  "/tools",
+  "/drills",
+  "/runs",
+]);
 const CONTENT_TYPES: Readonly<Record<string, string>> = {
   ".css": "text/css; charset=utf-8",
   ".js": "text/javascript; charset=utf-8",
@@ -63,7 +73,9 @@ function staticHeaders(contentType: string): Readonly<Record<string, string>> {
   return {
     "cache-control": "no-store",
     "content-security-policy":
-      "default-src 'self'; connect-src 'self'; font-src 'self'; img-src 'self' data:; script-src 'self'; style-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'",
+      // Locally opened verified report blobs inherit this policy and carry their own inline CSS.
+      // Only styles are relaxed; scripts and network requests remain same-origin restricted.
+      "default-src 'self'; connect-src 'self'; font-src 'self'; img-src 'self' data:; script-src 'self'; style-src 'self' 'unsafe-inline'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'",
     "content-type": contentType,
     "cross-origin-resource-policy": "same-origin",
     "referrer-policy": "no-referrer",

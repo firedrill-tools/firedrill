@@ -8,12 +8,14 @@ Use this reference when creating or repairing repository source. These are patte
 firedrill.json
 firedrill/
   world.yaml
-  resource.tool.yaml
-  resource.js
-  baseline.scenario.yaml
-  agent.target.yaml
-  changes-resource.drill.yaml
-  pull-request.suite.yaml       # optional
+  tools/resource-store/
+    resource-store.tool.yaml
+    behavior.js
+  scenarios/baseline.scenario.yaml
+  targets/agent-under-test.target.yaml
+  drills/changes-resource.drill.yaml
+  suites/pull-request.suite.yaml       # optional
+agent.mjs                             # existing agent or separate test harness
 ```
 
 `firedrill.json` may contain only:
@@ -22,7 +24,9 @@ firedrill/
 { "schemaVersion": 1 }
 ```
 
-The defaults are `sourceRoot: firedrill` and `world: world.yaml`. Resource filenames end in `.tool`, `.scenario`, `.target`, `.drill`, or `.suite` followed by `.yaml`, `.yml`, or `.json`. A resource's identity is its in-file `id`; renaming a title must not require moving its file.
+The defaults are `sourceRoot: firedrill` and `world: world.yaml`. The compiler discovers resources recursively beneath `sourceRoot`; the folders above are a recommended convention, not required names. Preserve an existing project's organization rather than moving files merely to match this example. Resource filenames end in `.tool`, `.scenario`, `.target`, `.drill`, or `.suite` followed by `.yaml`, `.yml`, or `.json`. Prefer descriptive kebab-case basenames. A resource's identity is its in-file `id`; renaming a title must not require moving its file.
+
+Keep schema in the Tool declaration, shared starting data and identities in the world, variations in scenarios, and the task plus assertions in each drill. Keep the agent's actual code or a test-only harness separate from synthetic Tool behavior. `.firedrill/` is generated runtime output, never a source directory to author or commit.
 
 ## Reusable Tool package
 
@@ -56,11 +60,11 @@ Actors are deterministic identities with explicit operation grants. Put shared b
 
 ## Minimal stateful Tool
 
-`resource.tool.yaml`:
+`firedrill/tools/resource-store/resource-store.tool.yaml`:
 
 ```yaml
 schemaVersion: 1
-module: ./resource.js
+module: ./behavior.js
 manifest:
   schemaVersion: 1
   id: resource-store
@@ -94,7 +98,7 @@ manifest:
       fidelity: stateful
 ```
 
-`resource.js`:
+`firedrill/tools/resource-store/behavior.js`:
 
 ```js
 export default {

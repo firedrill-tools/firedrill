@@ -7,11 +7,11 @@ import {
   symlinkSync,
   writeFileSync,
 } from "node:fs";
-import { createServer } from "node:http";
 import type { Server } from "node:http";
+import { createServer } from "node:http";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   type AgentCallback,
   type FiredrillProjectError,
@@ -446,7 +446,9 @@ describe("repository-level TypeScript API", () => {
     const verified = verifyReport({ report: trial?.report.directory ?? "" });
     expect(verified.attachments).toHaveLength(1);
     expect(verified.attachments[0]?.attachment).toMatchObject({ name: "agent-screen.png" });
-    expect(readFileSync(trial?.report.files.html ?? "", "utf8")).toContain("Open attachment");
+    const html = readFileSync(trial?.report.files.html ?? "", "utf8");
+    expect(html).toContain(`href="attachments/${attachment?.id}/agent-screen.png"`);
+    expect(html).toContain('download="agent-screen.png">agent-screen.png</a>');
   });
 
   it("fails closed when an agent tries to attach an outside or symlinked file", async () => {
@@ -959,6 +961,62 @@ describe("repository-level TypeScript API", () => {
     expect(trial?.attempts.map((item) => item.result.identity.seed)).toEqual(["29", "29"]);
     expect(new Set(trial?.attempts.map((item) => item.result.identity.runId))).toHaveProperty("size", 2);
     expect(trial?.attempts.every((item) => existsSync(item.report.files.html))).toBe(true);
+  });
+
+  it("keeps a central report index across separate invocations and after an afterAll hook fails", async () => {
+    const root = repository();
+    const first = await runDrills({ root, drill: "set-record", agent: setValueAgent });
+    expect(first.reportIndex).toBe(join(root, ".firedrill", "reports", "index.html"));
+    const original = new Error("caller afterAll failed");
+    let secondRunId = "";
+    await expect(
+      runDrills({
+        root,
+        drill: "set-record",
+        agent: setValueAgent,
+        hooks: {
+          afterAll: ({ result }) => {
+            secondRunId = result.drills[0]?.trials[0]?.result.identity.runId ?? "";
+            expect(readFileSync(result.reportIndex ?? "", "utf8")).toContain(secondRunId);
+            throw original;
+          },
+        },
+      }),
+    ).rejects.toBe(original);
+    const html = readFileSync(first.reportIndex ?? "", "utf8");
+    expect(html).toContain(first.drills[0]?.trials[0]?.result.identity.runId);
+    expect(secondRunId).not.toBe("");
+    expect(html).toContain(secondRunId);
+  });
+
+  it("reports index failures without overwriting an original hook failure", async () => {
+    const root = repository();
+    const original = new Error("caller hook failed");
+    const warn = vi.spyOn(process, "emitWarning").mockImplementation(() => {});
+    try {
+      await expect(
+        runDrills({
+          root,
+          drill: "set-record",
+          agent: setValueAgent,
+          hooks: {
+            afterDrill: () => {
+              mkdirSync(join(root, ".firedrill", "reports", "index.html"));
+              throw original;
+            },
+          },
+        }),
+      ).rejects.toBe(original);
+      expect(warn).toHaveBeenCalledWith(expect.stringContaining("could not refresh the report index"), {
+        code: "FIREDRILL_REPORT_INDEX_FAILED",
+      });
+    } finally {
+      warn.mockRestore();
+    }
+    await expect(runDrills({ root, drill: "set-record", agent: setValueAgent })).rejects.toMatchObject({
+      code: "framework.INTERNAL_ERROR",
+      message: expect.stringContaining("reports were saved"),
+    });
   });
 
   it("bounds concurrent trials and runs lifecycle hooks around logical trials", async () => {

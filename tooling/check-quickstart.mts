@@ -49,7 +49,7 @@ try {
     throw new Error(`quickstart passing drill failed\n${passing.stdout}\n${passing.stderr}`);
   }
 
-  const drillPath = join(temporary, "firedrill", "set-record.drill.yaml");
+  const drillPath = join(temporary, "firedrill", "drills", "set-record.drill.yaml");
   const drill = readFileSync(drillPath, "utf8");
   const changed = drill.replace(
     "    comparison:\n      operator: equals\n      value: 7",
@@ -71,7 +71,11 @@ try {
   const htmlPath = /HTML report: (.+)/.exec(failing.stdout)?.[1]?.trim();
   if (htmlPath === undefined) throw new Error("quickstart failure did not print its HTML report path");
   const report = readFileSync(htmlPath, "utf8");
-  if (!report.includes('class="assertion failed"') || !report.includes("<details open>")) {
+  const visibleFailure =
+    /<details\b[^>]*\bopen[^>]*><summary><span class="tag failed">failed<\/span>[\s\S]*?<h3>Expected<\/h3>[\s\S]*?<h3>Actual<\/h3>/.test(
+      report,
+    );
+  if (!visibleFailure) {
     throw new Error("quickstart HTML does not expose failed assertion evidence on first view");
   }
   if (report.includes('class="eyebrow"') || report.includes("<strong>completed</strong><p")) {

@@ -1,17 +1,18 @@
+import { createHmac } from "node:crypto";
 import {
   appendFileSync,
   existsSync,
   mkdirSync,
   mkdtempSync,
   readFileSync,
+  renameSync,
   rmSync,
   writeFileSync,
 } from "node:fs";
-import { createHmac } from "node:crypto";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
 import { createServer } from "node:http";
 import type { AddressInfo } from "node:net";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { type CliWriter, runCli } from "../src/index.js";
 
@@ -691,7 +692,7 @@ describe("local CLI front door", () => {
     expect(readFileSync(join(root, ".gitignore"), "utf8")).toBe("node_modules/\n!.firedrill/\n.firedrill/\n");
   });
 
-  it("scaffolds a complete template that validates and runs locally", async () => {
+  it("scaffolds an organized template that validates and runs locally", async () => {
     const root = mkdtempSync(join(tmpdir(), "firedrill-cli-"));
     temporaryDirectories.push(root);
     const initialized = await invoke(root, ["init", "--path", "template", "--json"]);
@@ -702,6 +703,19 @@ describe("local CLI front door", () => {
       written: readonly string[];
     };
     expect(initialization).toMatchObject({ status: "initialized", path: "template" });
+    expect(initialization.written).toEqual(
+      expect.arrayContaining([
+        "firedrill/README.md",
+        "firedrill/world.yaml",
+        "firedrill/tools/resource-store/resource-store.tool.yaml",
+        "firedrill/tools/resource-store/behavior.mjs",
+        "firedrill/scenarios/baseline.scenario.yaml",
+        "firedrill/targets/starter-agent.target.yaml",
+        "firedrill/drills/changes-resource.drill.yaml",
+        "firedrill/suites/resource-store-conformance.suite.yaml",
+        "firedrill-example/agent.mjs",
+      ]),
+    );
     for (const path of initialization.written.filter((path) => path !== ".gitignore")) {
       expect(readFileSync(join(root, ...path.split("/")), "utf8"), path).not.toContain("\r");
     }
@@ -728,11 +742,60 @@ describe("local CLI front door", () => {
     });
   });
 
+  it("runs the same resource IDs from custom nested folders and descriptive filenames", async () => {
+    const root = mkdtempSync(join(tmpdir(), "firedrill-cli-"));
+    temporaryDirectories.push(root);
+    const initialized = await invoke(root, ["init", "--path", "template", "--json"]);
+    expect(initialized.code, `${initialized.stdout}\n${initialized.stderr}`).toBe(0);
+
+    mkdirSync(join(root, "test"));
+    const sourceRoot = join(root, "test", "agent-environment");
+    renameSync(join(root, "firedrill"), sourceRoot);
+    mkdirSync(join(sourceRoot, "starting-point"));
+    renameSync(join(sourceRoot, "world.yaml"), join(sourceRoot, "starting-point", "seed.yaml"));
+    renameSync(join(sourceRoot, "tools"), join(sourceRoot, "dependencies"));
+    renameSync(join(sourceRoot, "scenarios"), join(sourceRoot, "situations"));
+    renameSync(join(sourceRoot, "targets"), join(sourceRoot, "connections"));
+    renameSync(join(sourceRoot, "drills"), join(sourceRoot, "checks"));
+    renameSync(join(sourceRoot, "suites"), join(sourceRoot, "groups"));
+    renameSync(
+      join(sourceRoot, "checks", "changes-resource.drill.yaml"),
+      join(sourceRoot, "checks", "first-write.drill.yaml"),
+    );
+    writeFileSync(
+      join(root, "firedrill.json"),
+      `${JSON.stringify({
+        schemaVersion: 1,
+        sourceRoot: "test/agent-environment",
+        world: "starting-point/seed.yaml",
+      })}\n`,
+    );
+
+    const validation = await invoke(root, ["validate", "--json"]);
+    expect(validation.code, `${validation.stdout}\n${validation.stderr}`).toBe(0);
+    expect(JSON.parse(validation.stdout)).toMatchObject({ status: "success", diagnostics: [] });
+    const run = await invoke(root, ["run", "changes-resource", "--json"]);
+    expect(run.code, `${run.stdout}\n${run.stderr}`).toBe(0);
+    expect(JSON.parse(run.stdout)).toMatchObject({
+      verdict: "passed",
+      drills: [{ drillId: "changes-resource", verdict: "passed" }],
+    });
+    const conformance = await invoke(root, ["tool", "test", "resource-store", "--json"]);
+    expect(conformance.code, `${conformance.stdout}\n${conformance.stderr}`).toBe(0);
+    expect(JSON.parse(conformance.stdout)).toMatchObject({ status: "passed", deterministic: true });
+  });
+
   it("creates a compilable manual world shell without a fake drill", async () => {
     const root = mkdtempSync(join(tmpdir(), "firedrill-cli-"));
     temporaryDirectories.push(root);
     const initialized = await invoke(root, ["init", "--path", "manual", "--json"]);
     expect(initialized.code, `${initialized.stdout}\n${initialized.stderr}`).toBe(0);
+    expect(JSON.parse(initialized.stdout)).toMatchObject({
+      written: expect.arrayContaining([
+        "firedrill/tools/local-probe/local-probe.tool.yaml",
+        "firedrill/tools/local-probe/local-probe.mjs",
+      ]),
+    });
     const validation = await invoke(root, ["validate", "--json"]);
     expect(validation.code, `${validation.stdout}\n${validation.stderr}`).toBe(0);
     expect(JSON.parse(validation.stdout)).toMatchObject({
@@ -988,6 +1051,7 @@ describe("local CLI front door", () => {
     const output = JSON.parse(result.stdout) as {
       verdict: string;
       buildHash: string;
+      reportIndex: string;
       drills: Array<{
         verdict: string;
         trials: Array<{
@@ -1003,6 +1067,8 @@ describe("local CLI front door", () => {
       }>;
     };
     expect(output.verdict).toBe("passed");
+    expect(output.reportIndex).toBe(join(root, ".firedrill", "reports", "index.html"));
+    expect(readFileSync(output.reportIndex, "utf8")).toContain("Drill reports");
     expect(output.drills[0]).toMatchObject({ verdict: "passed" });
     expect(output.drills[0]?.trials).toHaveLength(2);
     for (const trial of output.drills[0]?.trials ?? []) {
@@ -1029,6 +1095,7 @@ describe("local CLI front door", () => {
     expect(failing.code).toBe(1);
     const failedOutput = JSON.parse(failing.stdout) as typeof output;
     expect(failedOutput.verdict).toBe("failed");
+    expect(failedOutput.reportIndex).toBe(join(root, ".firedrill", "failing-reports", "index.html"));
 
     const original = failedOutput.drills[0]?.trials[0];
     expect(original).toBeDefined();
@@ -1056,6 +1123,7 @@ describe("local CLI front door", () => {
     const defaultRun = await invoke(repository(), []);
     expect(defaultRun.code).toBe(0);
     expect(defaultRun.stdout).toMatch(/PASSED {2}read-note[\s\S]*HTML report:/);
+    expect(defaultRun.stdout.match(/^All reports: /gm)).toHaveLength(1);
   });
 
   it("routes signed world callbacks through explicit local receiver bindings", async () => {

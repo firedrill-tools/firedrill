@@ -338,6 +338,29 @@ export function createLocalSimulationRequestHandler(
         writeHtml(response, supervisor.reportHtml(decoded(reportMatch[1] ?? "")));
         return;
       }
+      const attachmentsMatch = /^\/api\/v1\/runs\/([^/]+)\/report\/attachments$/.exec(url.pathname);
+      if (request.method === "GET" && attachmentsMatch !== null) {
+        writeJson(response, 200, supervisor.reportAttachments(decoded(attachmentsMatch[1] ?? "")));
+        return;
+      }
+      const attachmentMatch = /^\/api\/v1\/runs\/([^/]+)\/report\/attachments\/([^/]+)$/.exec(url.pathname);
+      if (request.method === "GET" && attachmentMatch !== null) {
+        const file = supervisor.reportAttachment(
+          decoded(attachmentMatch[1] ?? ""),
+          decoded(attachmentMatch[2] ?? ""),
+        );
+        response.writeHead(200, {
+          "cache-control": "no-store",
+          "content-length": file.body.byteLength,
+          "content-type": "application/octet-stream",
+          "content-disposition": `attachment; filename="${file.name}"`,
+          "content-security-policy": "default-src 'none'; sandbox; frame-ancestors 'none'",
+          "referrer-policy": "no-referrer",
+          "x-content-type-options": "nosniff",
+        });
+        response.end(file.body);
+        return;
+      }
       const runMatch = /^\/api\/v1\/runs\/([^/]+)$/.exec(url.pathname);
       if (request.method === "GET" && runMatch !== null) {
         writeJson(response, 200, supervisor.run(decoded(runMatch[1] ?? "")));

@@ -1,9 +1,9 @@
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { existsSync, lstatSync, readdirSync, readFileSync, realpathSync, statSync } from "node:fs";
 import { extname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import type { ErrorEnvelope, RunId, RunResult, StableId } from "@firedrill/contracts";
 import { PackageIdSchema, RunIdSchema, StableIdSchema } from "@firedrill/contracts";
-import { verifyLocalReport } from "@firedrill/reporters";
+import { renderSavedReport, verifyLocalReport } from "@firedrill/reporters";
 import type { AgentCallback, CallbackReceiver, LocalRunComparison, RunDrillsResult } from "@firedrill/sdk";
 import { compareRuns, FiredrillProjectError, runDrills } from "@firedrill/sdk";
 import type { WorldReader } from "@firedrill/world-store";
@@ -11,6 +11,7 @@ import { SqliteWorldReader } from "@firedrill/world-store-sqlite";
 import type {
   SimulationEvidencePage,
   SimulationProject,
+  SimulationReportAttachments,
   SimulationRunComparison,
   SimulationRunDetail,
   SimulationRunList,
@@ -23,6 +24,7 @@ import type {
 } from "./contracts.js";
 import {
   SimulationEvidencePageSchema,
+  SimulationReportAttachmentsSchema,
   SimulationRunComparisonSchema,
   SimulationRunDetailSchema,
   SimulationRunListSchema,
@@ -93,6 +95,10 @@ interface MutableRunRequest {
 
 export interface LocalSimulationSupervisorOptions {
   readonly root?: string;
+  /** Retained worlds; relative paths resolve from root. Defaults to .firedrill/runs. */
+  readonly runDirectory?: string;
+  /** Saved report bundles; relative paths resolve from root. Defaults to .firedrill/reports. */
+  readonly reportDirectory?: string;
   readonly agent?: AgentCallback;
   readonly callbackReceivers?: Readonly<Record<string, CallbackReceiver>>;
   readonly hostEnvironment?: Readonly<Record<string, string | undefined>>;
@@ -238,8 +244,8 @@ export class LocalSimulationSupervisor {
     options: LocalSimulationSupervisorOptions,
   ) {
     this.repositoryRoot = repositoryRoot;
-    this.runDirectory = join(repositoryRoot, ".firedrill", "runs");
-    this.reportDirectory = join(repositoryRoot, ".firedrill", "reports");
+    this.runDirectory = resolve(repositoryRoot, options.runDirectory ?? join(".firedrill", "runs"));
+    this.reportDirectory = resolve(repositoryRoot, options.reportDirectory ?? join(".firedrill", "reports"));
     this.projectValue = project;
     this.buildHash = buildHash;
     this.options = options;
@@ -604,7 +610,57 @@ export class LocalSimulationSupervisor {
     this.assertOpen();
     const id = this.parseRunId(runId);
     this.report(id);
-    return readFileSync(join(this.reportDirectory, id, "index.html"), "utf8");
+    return renderSavedReport(join(this.reportDirectory, id));
+  }
+
+  reportAttachments(runId: string): SimulationReportAttachments {
+    this.assertOpen();
+    const id = this.parseRunId(runId);
+    const report = this.report(id);
+    return SimulationReportAttachmentsSchema.parse({
+      schemaVersion: 1,
+      runId: id,
+      attachments: report.attachments.map(({ attachment }) => ({
+        ...attachment,
+        path: `attachments/${attachment.id}/${attachment.name}`,
+      })),
+    });
+  }
+
+  reportAttachment(runId: string, attachmentId: string): { readonly body: Buffer; readonly name: string } {
+    this.assertOpen();
+    const id = this.parseRunId(runId);
+    const parsedAttachmentId = StableIdSchema.safeParse(attachmentId);
+    if (!parsedAttachmentId.success) {
+      throw new LocalSimulationError(400, "framework.INVALID_ARGUMENT", "attachmentId is invalid");
+    }
+    const report = this.report(id);
+    const file = report.attachments.find((entry) => entry.attachment.id === parsedAttachmentId.data);
+    if (file === undefined) {
+      throw new LocalSimulationError(
+        404,
+        "framework.REPORT_ATTACHMENT_NOT_FOUND",
+        "this report does not contain the requested attachment",
+      );
+    }
+    try {
+      const entry = lstatSync(file.path);
+      if (!entry.isFile() || entry.isSymbolicLink() || entry.size !== file.attachment.bytes) {
+        throw new Error("attachment changed");
+      }
+      const body = readFileSync(file.path);
+      const hash = `sha256:${createHash("sha256").update(body).digest("hex")}`;
+      if (body.byteLength !== file.attachment.bytes || hash !== file.attachment.hash) {
+        throw new Error("attachment changed");
+      }
+      return { body, name: file.attachment.name };
+    } catch {
+      throw new LocalSimulationError(
+        422,
+        "framework.REPORT_INVALID",
+        "the report attachment no longer matches its verified bytes",
+      );
+    }
   }
 
   state(

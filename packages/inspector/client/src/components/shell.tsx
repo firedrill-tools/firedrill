@@ -1,4 +1,18 @@
-import { Activity, Database, Menu, Moon, RefreshCw, Sun, TestTubeDiagonal, X } from "lucide-react";
+import {
+  Activity,
+  Database,
+  FileStack,
+  FlaskConical,
+  Globe,
+  Menu,
+  Moon,
+  RefreshCw,
+  Sun,
+  TestTubeDiagonal,
+  Users,
+  Wrench,
+  X,
+} from "lucide-react";
 import type { ReactNode } from "react";
 import { useEffect, useState } from "react";
 import { compactId } from "../format";
@@ -10,7 +24,12 @@ const navigation: ReadonlyArray<{
   readonly label: string;
   readonly icon: typeof Database;
 }> = [
-  { route: "/world", label: "World", icon: Database },
+  { route: "/world", label: "Synthetic world", icon: Globe },
+  { route: "/schema", label: "Schema", icon: FileStack },
+  { route: "/data", label: "Data", icon: Database },
+  { route: "/personas", label: "Personas & actors", icon: Users },
+  { route: "/scenarios", label: "Scenarios", icon: FlaskConical },
+  { route: "/tools", label: "Tools", icon: Wrench },
   { route: "/drills", label: "Drills", icon: TestTubeDiagonal },
   { route: "/runs", label: "Runs", icon: Activity },
 ];

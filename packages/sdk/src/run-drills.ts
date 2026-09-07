@@ -28,12 +28,12 @@ import type {
   TargetInvocation,
 } from "@firedrill/contracts";
 import {
+  compareStableStrings,
   DrillShardSchema,
   RunWorldSetupSchema,
   SeedSchema,
   StableIdSchema,
   TargetFileAttachmentSchema,
-  compareStableStrings,
 } from "@firedrill/contracts";
 import type {
   CallbackReceiver,
@@ -45,7 +45,7 @@ import type {
 } from "@firedrill/drills";
 import { runDrill, TargetAttachmentError } from "@firedrill/drills";
 import type { LocalReportAttachmentSource, WrittenLocalReport } from "@firedrill/reporters";
-import { verifyLocalReport, writeLocalReport } from "@firedrill/reporters";
+import { verifyLocalReport, writeLocalReport, writeReportIndex } from "@firedrill/reporters";
 import type { LoadedWorldBuild } from "@firedrill/world-build";
 import type { BoundWorldClient } from "@firedrill/world-kernel";
 import { prepareExecutableBuild } from "./project-build.js";
@@ -172,6 +172,8 @@ export interface DrillStatistics {
 export interface RunDrillsResult {
   readonly schemaVersion: 1;
   readonly repositoryRoot: string;
+  /** Central HTML entry point for verified reports retained in this report directory. */
+  readonly reportIndex?: string;
   /** Non-error compiler diagnostics for a source build. Empty when loading an exact existing build. */
   readonly diagnostics: readonly Diagnostic[];
   readonly buildHash: Sha256;
@@ -756,6 +758,31 @@ function drillStatistics(
   };
 }
 
+async function refreshReportsAfterRun(reportDirectory: string, runFailed: boolean): Promise<void> {
+  try {
+    await writeReportIndex(reportDirectory);
+  } catch (error) {
+    if (runFailed) {
+      // Preserve the original failure while explicitly reporting this secondary one.
+      process.emitWarning(
+        "Firedrill also could not refresh the report index. Saved individual reports remain in the configured report directory.",
+        { code: "FIREDRILL_REPORT_INDEX_FAILED" },
+      );
+      return;
+    }
+    throw new FiredrillProjectError(
+      "framework.INTERNAL_ERROR",
+      "Drill reports were saved, but the central report index could not be refreshed.",
+      {
+        details: {
+          reportDirectory,
+          suggestion: error instanceof Error ? error.message : "Check report-directory access and retry.",
+        },
+      },
+    );
+  }
+}
+
 /**
  * Runs one or every repository drill locally and writes a verified report per trial.
  * The customer's agent remains caller-owned; external targets use the optional agent callback.
@@ -772,6 +799,10 @@ export async function runDrills(options: RunDrillsOptions = {}): Promise<RunDril
   );
   const build = preparedBuild.build;
   const attachmentStager = new LocalAttachmentStager(root);
+  const reportDirectory = resolve(root, options.reportDirectory ?? join(".firedrill", "reports"));
+  let reportsWritten = 0;
+  let runFailed = false;
+  let indexRefreshAttempted = false;
   try {
     if (validated.callbackReceivers !== undefined) {
       const declaredReceivers = new Set(
@@ -803,7 +834,6 @@ export async function runDrills(options: RunDrillsOptions = {}): Promise<RunDril
     }
 
     const runDirectory = resolve(root, options.runDirectory ?? join(".firedrill", "runs"));
-    const reportDirectory = resolve(root, options.reportDirectory ?? join(".firedrill", "reports"));
     const suiteId = selected.suite?.id;
     const selectedTrials = options.trials ?? selected.suite?.trials;
     const selectedRetries = options.retries ?? selected.suite?.retries ?? 0;
@@ -892,6 +922,7 @@ export async function runDrills(options: RunDrillsOptions = {}): Promise<RunDril
             },
             join(reportDirectory, attempt.result.identity.runId),
           );
+          reportsWritten += 1;
           verifyLocalReport(report.directory);
           return {
             result: attempt.result,
@@ -935,6 +966,7 @@ export async function runDrills(options: RunDrillsOptions = {}): Promise<RunDril
     const result: RunDrillsResult = {
       schemaVersion: 1,
       repositoryRoot: root,
+      ...(reportsWritten === 0 ? {} : { reportIndex: join(reportDirectory, "index.html") }),
       diagnostics: preparedBuild.diagnostics,
       buildHash: build.manifest.buildHash,
       packageLockHash: build.manifest.packageLockHash,
@@ -949,9 +981,22 @@ export async function runDrills(options: RunDrillsOptions = {}): Promise<RunDril
       },
       drills: reported,
     };
+    if (reportsWritten > 0) {
+      indexRefreshAttempted = true;
+      await refreshReportsAfterRun(reportDirectory, false);
+    }
     await options.hooks?.afterAll?.({ ...allContext, result });
     return result;
+  } catch (error) {
+    runFailed = true;
+    throw error;
   } finally {
-    attachmentStager.dispose();
+    try {
+      if (reportsWritten > 0 && !indexRefreshAttempted) {
+        await refreshReportsAfterRun(reportDirectory, runFailed);
+      }
+    } finally {
+      attachmentStager.dispose();
+    }
   }
 }

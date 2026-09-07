@@ -1,6 +1,6 @@
 import {
-  ActorDefinitionSchema,
   ActorBindingIdSchema,
+  ActorDefinitionSchema,
   AssertionStatusSchema,
   CallbackDeliveryIdSchema,
   CallbackRefSchema,
@@ -22,6 +22,8 @@ import {
   Sha256Schema,
   StableIdSchema,
   StateSetupSchema,
+  TargetFileAttachmentSchema,
+  ToolStateContractSchema,
   VirtualTimeSchema,
   WorldInstanceIdSchema,
 } from "@firedrill/contracts";
@@ -77,6 +79,8 @@ const OperationViewSchema = z
   .object({
     id: OperationIdSchema,
     description: z.string().min(1).max(1000).optional(),
+    inputSchema: JsonObjectSchema.optional(),
+    outputSchema: JsonObjectSchema.optional(),
     fidelity: z.enum(["contract", "stateful", "behavioral", "validated"]),
     idempotency: z.enum(["none", "optional", "required"]),
   })
@@ -88,6 +92,7 @@ const ToolViewSchema = z
     version: z.string().min(1).max(128),
     operations: z.array(OperationViewSchema),
     stateNamespaces: z.array(StableIdSchema),
+    stateDefinitions: z.array(ToolStateContractSchema).optional(),
     events: z.array(EventIdSchema),
     faults: z.array(StableIdSchema),
     httpRoutes: z.array(
@@ -240,6 +245,14 @@ export const SimulationRunListSchema = z
         })
         .strict(),
     ),
+  })
+  .strict();
+
+export const SimulationReportAttachmentsSchema = z
+  .object({
+    schemaVersion: z.literal(1),
+    runId: RunIdSchema,
+    attachments: z.array(TargetFileAttachmentSchema.extend({ path: RelativeSourcePathSchema }).strict()),
   })
   .strict();
 
@@ -464,6 +477,7 @@ export type SimulationSourceKind = z.infer<typeof SimulationSourceKindSchema>;
 export type SimulationSourceDocument = z.infer<typeof SimulationSourceDocumentSchema>;
 export type SimulationRunSummary = z.infer<typeof SimulationRunSummarySchema>;
 export type SimulationRunList = z.infer<typeof SimulationRunListSchema>;
+export type SimulationReportAttachments = z.infer<typeof SimulationReportAttachmentsSchema>;
 export type SimulationRunDetail = z.infer<typeof SimulationRunDetailSchema>;
 export type SimulationEvidencePage = z.infer<typeof SimulationEvidencePageSchema>;
 export type SimulationStatePage = z.infer<typeof SimulationStatePageSchema>;

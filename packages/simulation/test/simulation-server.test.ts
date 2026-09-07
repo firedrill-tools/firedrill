@@ -1,5 +1,6 @@
 import {
   cpSync,
+  existsSync,
   mkdirSync,
   mkdtempSync,
   readFileSync,
@@ -11,6 +12,7 @@ import {
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
+import { SimulationProjectSchema, SimulationReportAttachmentsSchema } from "../src/contracts.js";
 import type { LocalSimulationServer } from "../src/index.js";
 import { startLocalSimulationServer } from "../src/index.js";
 
@@ -216,6 +218,203 @@ afterEach(async () => {
 });
 
 describe("local simulation server", () => {
+  it("reopens custom report and world directories without accepting browser path overrides", async () => {
+    const root = repository();
+    const runDirectory = ".firedrill/review/runs";
+    const reportDirectory = join(root, ".firedrill", "review", "reports");
+    const first = await startLocalSimulationServer({ root, runDirectory, reportDirectory });
+    servers.push(first);
+    expect(first.supervisor.runDirectory).toBe(join(root, runDirectory));
+    expect(first.supervisor.reportDirectory).toBe(reportDirectory);
+    const start = await api(first, "/api/v1/runs", {
+      method: "POST",
+      body: JSON.stringify({ drillId: "set-record" }),
+    });
+    const completed = await waitForRequest(first, start.value.requestId);
+    expect(completed.verdict).toBe("passed");
+    const runId = completed.runIds[0];
+    expect(runId).toBeDefined();
+    const worldPath = join(root, runDirectory, `${runId}.sqlite`);
+    expect(existsSync(worldPath)).toBe(true);
+    expect(existsSync(join(reportDirectory, runId ?? "", "index.html"))).toBe(true);
+    expect(existsSync(join(root, ".firedrill", "runs"))).toBe(false);
+    expect(existsSync(join(root, ".firedrill", "reports"))).toBe(false);
+    await first.close();
+
+    const reopened = await startLocalSimulationServer({ root, runDirectory, reportDirectory });
+    servers.push(reopened);
+    const listed = await api(reopened, "/api/v1/runs");
+    expect(listed.value.runs).toContainEqual(expect.objectContaining({ runId, reportAvailable: true }));
+    const stateRoute = `/api/v1/runs/${runId}/state?packageId=workspace&namespace=records`;
+    expect((await api(reopened, stateRoute)).value.records).toEqual([
+      { rowId: "primary", value: { value: 7 } },
+    ]);
+    const override = await api(reopened, "/api/v1/runs", {
+      method: "POST",
+      body: JSON.stringify({ drillId: "set-record", reportDirectory: "../elsewhere" }),
+    });
+    expect(override.response.status).toBe(400);
+
+    renameSync(worldPath, `${worldPath}.saved`);
+    const missingWorld = await api(reopened, stateRoute);
+    expect(missingWorld.response.status).toBe(404);
+    expect(missingWorld.value.error.code).toBe("framework.WORLD_ARTIFACT_NOT_FOUND");
+    const detail = await api(reopened, `/api/v1/runs/${runId}`);
+    expect(detail.response.status).toBe(200);
+    expect(detail.value.result.identity.runId).toBe(runId);
+    const report = await fetch(`${reopened.baseUrl}/api/v1/runs/${runId}/report`, {
+      headers: { authorization: `Bearer ${reopened.token}` },
+    });
+    expect(report.status).toBe(200);
+    expect(await report.text()).toContain("set-record");
+  });
+
+  it("serves only verified attachments by ID with safe download headers", async () => {
+    const root = repository();
+    mkdirSync(join(root, "test-results"));
+    writeFileSync(join(root, "test-results", "result.html"), "<script>never execute me</script>");
+    const server = await startLocalSimulationServer({
+      root,
+      agent: (invocation) => {
+        invocation.attach({ path: "test-results/result.html", mediaType: "text/plain" });
+        return { schemaVersion: 1, status: "completed", attachments: [] };
+      },
+    });
+    servers.push(server);
+    const start = await api(server, "/api/v1/runs", {
+      method: "POST",
+      body: JSON.stringify({ drillId: "caller-owned-drill" }),
+    });
+    const completed = await waitForRequest(server, start.value.requestId);
+    const runId = completed.runIds[0];
+    expect(runId).toBeDefined();
+    const base = `/api/v1/runs/${runId}/report/attachments`;
+    const unauthorized = await fetch(`${server.baseUrl}${base}`);
+    expect(unauthorized.status).toBe(401);
+    const listed = await api(server, base);
+    expect(listed.response.status).toBe(200);
+    const attachments = SimulationReportAttachmentsSchema.parse(listed.value);
+    const file = attachments.attachments[0];
+    expect(file).toBeDefined();
+    expect(file?.mediaType).toBe("text/plain");
+    expect(file?.path).toBe(`attachments/${file?.id}/result.html`);
+    expect(JSON.stringify(attachments)).not.toContain(root);
+
+    const unauthorizedFile = await fetch(`${server.baseUrl}${base}/${file?.id}`);
+    expect(unauthorizedFile.status).toBe(401);
+    const response = await fetch(`${server.baseUrl}${base}/${file?.id}`, {
+      headers: { authorization: `Bearer ${server.token}` },
+    });
+    expect(response.status).toBe(200);
+    expect(response.headers.get("content-type")).toBe("application/octet-stream");
+    expect(response.headers.get("content-disposition")).toBe('attachment; filename="result.html"');
+    expect(response.headers.get("x-content-type-options")).toBe("nosniff");
+    expect(response.headers.get("x-injected")).toBeNull();
+    expect(response.headers.get("cache-control")).toBe("no-store");
+    expect(await response.text()).toBe("<script>never execute me</script>");
+    expect((await api(server, `${base}/missing`)).response.status).toBe(404);
+    expect((await api(server, `${base}/%2E%2E%2Fmanifest.json`)).response.status).toBe(400);
+
+    writeFileSync(join(root, ".firedrill", "reports", runId ?? "", file?.path ?? ""), "tampered");
+    const tampered = await api(server, `${base}/${file?.id}`);
+    expect(tampered.response.status).toBe(422);
+    expect(tampered.value.error.code).toBe("framework.REPORT_INVALID");
+    expect((await api(server, base)).response.status).toBe(422);
+  });
+
+  it("preserves authored schema meaning without inventing fields or relationships", async () => {
+    const root = repository();
+    const stateSchema = {
+      type: "object",
+      required: ["value"],
+      properties: {
+        value: { type: "integer", minimum: 0 },
+        customer_id: { type: "string", description: "An opaque external identifier." },
+        detail: { $ref: "#/$defs/detail" },
+      },
+      $defs: {
+        detail: {
+          type: "object",
+          properties: { label: { type: ["string", "null"] } },
+          additionalProperties: false,
+        },
+      },
+      additionalProperties: false,
+    };
+    const inputSchema = {
+      type: "object",
+      required: ["value"],
+      properties: { value: { type: "integer" }, mode: { enum: ["replace", "append"] } },
+      additionalProperties: false,
+    };
+    const outputSchema = {
+      type: "object",
+      required: ["value"],
+      properties: { value: { type: "integer" }, note: { type: ["string", "null"] } },
+      additionalProperties: false,
+    };
+    writeFileSync(
+      join(root, "firedrill", "tools", "workspace", "workspace.tool.yaml"),
+      JSON.stringify({
+        schemaVersion: 1,
+        module: "./behavior.js",
+        manifest: {
+          schemaVersion: 1,
+          id: "workspace",
+          version: "1.0.0",
+          engine: ">=0.1.0 <0.2.0",
+          capabilities: ["state.read", "state.write"],
+          state: [{ namespace: "records", description: "Stored test records.", schema: stateSchema }],
+          operations: [
+            {
+              id: "records.set",
+              description: "Replace the record value.",
+              inputSchema,
+              outputSchema,
+              idempotency: "required",
+              fidelity: "stateful",
+            },
+          ],
+        },
+      }),
+    );
+    const server = await startLocalSimulationServer({ root });
+    servers.push(server);
+    const { response, value } = await api(server, "/api/v1/project");
+    expect(response.status).toBe(200);
+    const project = SimulationProjectSchema.parse(value);
+    const tool = project.tools[0];
+    expect(tool?.stateDefinitions).toEqual([
+      { namespace: "records", description: "Stored test records.", schema: stateSchema },
+    ]);
+    expect(tool?.operations[0]).toEqual({
+      id: "records.set",
+      description: "Replace the record value.",
+      inputSchema,
+      outputSchema,
+      idempotency: "required",
+      fidelity: "stateful",
+    });
+
+    // Older project-view clients can still provide a catalog without the additive schema fields.
+    const legacy = {
+      ...project,
+      tools: project.tools.map(({ stateDefinitions: _stateDefinitions, ...entry }) => ({
+        ...entry,
+        operations: entry.operations.map(
+          ({ inputSchema: _input, outputSchema: _output, ...operation }) => operation,
+        ),
+      })),
+    };
+    expect(SimulationProjectSchema.safeParse(legacy).success).toBe(true);
+    expect(
+      SimulationProjectSchema.safeParse({
+        ...project,
+        tools: [{ ...tool, stateDefinitions: [{ namespace: "records", schema: "guessed" }] }],
+      }).success,
+    ).toBe(false);
+  });
+
   it("rejects tokens that are unsafe to place in an authorization header", async () => {
     await expect(
       startLocalSimulationServer({ root: repository(), token: `${"x".repeat(23)}\n` }),
@@ -286,12 +485,40 @@ describe("local simulation server", () => {
             value: { value: 0 },
           },
         ],
-        source: expect.objectContaining({ path: "firedrill/empty.scenario.yaml" }),
+        source: expect.objectContaining({ path: "firedrill/scenarios/empty.scenario.yaml" }),
       }),
     );
     expect(project.tools[0]).toMatchObject({
       id: "workspace",
       stateNamespaces: ["records"],
+      stateDefinitions: [
+        {
+          namespace: "records",
+          schema: {
+            type: "object",
+            required: ["value"],
+            properties: { value: { type: "integer" } },
+            additionalProperties: false,
+          },
+        },
+      ],
+      operations: [
+        {
+          id: "records.set",
+          inputSchema: {
+            type: "object",
+            required: ["value"],
+            properties: { value: { type: "integer" } },
+            additionalProperties: false,
+          },
+          outputSchema: {
+            type: "object",
+            required: ["value"],
+            properties: { value: { type: "integer" } },
+            additionalProperties: false,
+          },
+        },
+      ],
     });
     expect(
       project.targets.find((target: { id: string }) => target.id === "caller-owned-agent")?.runAvailability,
@@ -309,7 +536,7 @@ describe("local simulation server", () => {
     expect(targetSource.response.status).toBe(200);
     expect(targetSource.value).toMatchObject({
       kind: "target",
-      path: "firedrill/local-agent.target.yaml",
+      path: "firedrill/targets/local-agent.target.yaml",
       language: "yaml",
     });
     expect(targetSource.value.content).toContain("id: local-agent");

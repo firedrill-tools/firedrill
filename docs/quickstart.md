@@ -15,6 +15,10 @@ firedrill inspect
 
 That creates repository-owned source, validates it, runs one passing drill in an isolated world, prints the self-contained report path, and opens the local inspector. No account or network service is involved.
 
+For saved results, open `.firedrill/reports/index.html`. This central page lets you search and filter recorded executions, then open an individual report's task, checks, tool calls and data changes. It refreshes when the CLI or SDK saves reports; no inspector server is required to browse it. A custom `--report-dir` has its own `index.html`. The CLI prints this path once as `All reports`, and JSON/SDK results expose `reportIndex`.
+
+Individual run folders remain portable evidence bundles. The central index is just navigation over verified bundles; unavailable reports are listed without unsafe links, and bounded-history limits are stated on the page. Copy the index and its run folders together if you intend to share a browsable collection. Keep generated output out of Git.
+
 ## 1. Pick a verified starting path
 
 In an interactive terminal, `firedrill init` performs a bounded inspection, shows the frameworks, data systems, agent seams, and coding-agent conventions it found, then asks what the first drill should prove and which of four setup paths to use. Nothing is written until that final choice. In JSON, CI, or piped use, bare `firedrill init` remains a read-only inspection; pass `--path` to select a setup deterministically.
@@ -35,14 +39,21 @@ Alternatively, copy `examples/quickstart` into a temporary directory or inspect 
 firedrill.json
 firedrill/
   world.yaml
-  workspace.tool.yaml
-  workspace.js
-  empty.scenario.yaml
-  local-agent.target.yaml
-  set-record.drill.yaml
-  workspace-conformance.suite.yaml
+  tools/workspace/
+    workspace.tool.yaml
+    behavior.js
+  scenarios/empty.scenario.yaml
+  targets/local-agent.target.yaml
+  drills/set-record.drill.yaml
+  suites/workspace-conformance.suite.yaml
 agent.mjs
 ```
+
+`agent.mjs` is the agent being tested; the `firedrill/` folder describes its controlled surroundings and tests. The Tool declaration owns record/input/output schemas; its behavior module owns the fake consequences. `world.yaml` owns shared starting conditions and permissions, scenarios provide starting data or variations, and each drill owns its task and assertions. The example agent is a deterministic HTTP client, not an LLM.
+
+The generated template follows the same folders, with its demonstration agent kept separately in `firedrill-example/agent.mjs`. Both are teaching conventions, not required project layouts. Resource files are discovered recursively under `sourceRoot`; descriptive kebab-case filenames with `.tool`, `.scenario`, `.target`, `.drill` or `.suite` suffixes make their purpose obvious. YAML, YML and JSON are supported. References use stable in-file IDs, so changing a display title need not move a file.
+
+Existing flat projects remain valid and need no migration. Do not rerun `init` just to rearrange an existing world. If you choose to move source, preserve IDs, update relative Tool module paths and any configured world path, then validate. Set `sourceRoot` and `world` in `firedrill.json` if you prefer another source folder or world filename; neither `tools/` nor any other example subfolder is mandatory.
 
 Run `firedrill validate`, inspect the discovered work with `firedrill plan`, then run `firedrill`. A fresh SQLite world is created, the agent is invoked with only its declared binding, assertions inspect the resulting consequences, and the terminal prints a local HTML report path.
 

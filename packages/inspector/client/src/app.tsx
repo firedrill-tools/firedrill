@@ -3,6 +3,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { inspectorApi } from "./api";
 import { Button, IconButton, PageLoader } from "./components/primitives";
 import { AppShell } from "./components/shell";
+import { CatalogView } from "./features/catalog";
 import { DrillsView } from "./features/drills";
 import { RunsView } from "./features/runs";
 import { WorldView } from "./features/world";
@@ -16,7 +17,15 @@ import type {
 } from "./types";
 
 function routeFromPath(path: string): Route {
-  return path === "/drills" || path === "/runs" ? path : "/world";
+  return path === "/drills" ||
+    path === "/runs" ||
+    path === "/schema" ||
+    path === "/data" ||
+    path === "/personas" ||
+    path === "/scenarios" ||
+    path === "/tools"
+    ? path
+    : "/world";
 }
 
 function Notices({
@@ -79,7 +88,15 @@ export function App() {
       setRuns(runList.runs);
       const nextUnavailable = runList.unavailable.map((report) => report.runId).join("\n");
       if (nextUnavailable !== "" && nextUnavailable !== unavailableReports.current) {
-        notify("warning", `${runList.unavailable.length} local report bundle could not be verified.`);
+        const unsupported = runList.unavailable.every(
+          (report) => report.code === "reporter.VERSION_UNSUPPORTED",
+        );
+        notify(
+          "warning",
+          unsupported
+            ? `${runList.unavailable.length} saved report${runList.unavailable.length === 1 ? " uses an" : "s use an"} unsupported format. Original files are unchanged.`
+            : `${runList.unavailable.length} local report${runList.unavailable.length === 1 ? "" : "s"} could not be verified. Saved files have not been changed.`,
+        );
       }
       unavailableReports.current = nextUnavailable;
     },
@@ -179,7 +196,21 @@ export function App() {
   const openReport = async (runId: string) => {
     const target = window.open("about:blank", "_blank");
     if (target === null) {
-      showError("Allow pop-ups for this loopback page to open the local report.");
+      try {
+        const blob = await inspectorApi.report(runId);
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement("a");
+        link.href = url;
+        link.download = `${runId}.html`;
+        link.click();
+        window.setTimeout(() => URL.revokeObjectURL(url), 60_000);
+        notify(
+          "info",
+          "The browser blocked a new tab. The report was downloaded instead; open the HTML file to read it.",
+        );
+      } catch (error) {
+        showError(error instanceof Error ? error.message : "The local report could not be downloaded.");
+      }
       return;
     }
     target.opener = null;
@@ -217,6 +248,16 @@ export function App() {
         onRefresh={() => void refresh()}
       >
         {route === "/world" ? <WorldView project={project} /> : null}
+        {route === "/scenarios" || route === "/tools" ? (
+          <WorldView key={route} project={project} page={route === "/tools" ? "tools" : "scenarios"} />
+        ) : null}
+        {route === "/schema" || route === "/data" || route === "/personas" ? (
+          <CatalogView
+            key={route}
+            project={project}
+            page={route === "/schema" ? "schema" : route === "/data" ? "data" : "personas"}
+          />
+        ) : null}
         {route === "/drills" ? (
           <DrillsView project={project} starting={starting} onStart={(input) => void start(input)} />
         ) : null}

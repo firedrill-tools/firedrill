@@ -12,7 +12,7 @@ import {
 } from "lucide-react";
 import { useMemo, useState } from "react";
 import { PageIntro } from "../components/page-intro";
-import { CodeBlock, KeyValue, SearchField } from "../components/primitives";
+import { CodeBlock, EmptyState, KeyValue, SearchField } from "../components/primitives";
 import { SourceViewer } from "../components/source-viewer";
 import { compactId, json, plural, titleFromId, virtualTime } from "../format";
 import type { SimulationProject, SimulationScenario, SimulationSetup, SimulationTool } from "../types";
@@ -39,32 +39,38 @@ function WorldRail({
   project,
   selected,
   onSelect,
+  page,
 }: {
   readonly project: SimulationProject;
   readonly selected: WorldSelection;
   readonly onSelect: (selection: WorldSelection) => void;
+  readonly page: "world" | "scenarios" | "tools";
 }) {
   const [query, setQuery] = useState("");
   const normalized = query.trim().toLowerCase();
-  const scenarios = project.scenarios.filter((scenario) =>
+  const scenarios = (page === "tools" ? [] : project.scenarios).filter((scenario) =>
     `${scenario.id} ${scenario.title ?? ""}`.toLowerCase().includes(normalized),
   );
-  const tools = project.tools.filter((tool) => tool.id.toLowerCase().includes(normalized));
+  const tools = (page === "scenarios" ? [] : project.tools).filter((tool) =>
+    tool.id.toLowerCase().includes(normalized),
+  );
 
   return (
     <aside className="fd-workspace-rail">
       <div className="fd-rail-head">
-        <strong>World contents</strong>
+        <strong>{page === "tools" ? "Tools" : page === "scenarios" ? "Scenarios" : "World contents"}</strong>
       </div>
       <div className="fd-rail-search">
         <SearchField
           value={query}
           onChange={(event) => setQuery(event.target.value)}
-          placeholder="Find a scenario or Tool"
+          placeholder={
+            page === "tools" ? "Find a tool" : page === "scenarios" ? "Find a scenario" : "Find world content"
+          }
         />
       </div>
       <div className="fd-rail-list">
-        {normalized.length === 0 ? (
+        {normalized.length === 0 && page === "world" ? (
           <>
             <div className="fd-rail-section-label">Setup</div>
             <button
@@ -135,6 +141,7 @@ function OperationTable({ tool }: { readonly tool: SimulationTool }) {
             <th>Fidelity</th>
             <th>Idempotency</th>
             <th>Description</th>
+            <th>Contract</th>
           </tr>
         </thead>
         <tbody>
@@ -146,6 +153,15 @@ function OperationTable({ tool }: { readonly tool: SimulationTool }) {
               <td>{titleFromId(operation.fidelity)}</td>
               <td>{titleFromId(operation.idempotency)}</td>
               <td className="fd-table__muted">{operation.description ?? "—"}</td>
+              <td>
+                <details>
+                  <summary>Inputs & responses</summary>
+                  <h3>Input schema</h3>
+                  <CodeBlock>{json(operation.inputSchema ?? "Not available in this catalog")}</CodeBlock>
+                  <h3>Response schema</h3>
+                  <CodeBlock>{json(operation.outputSchema ?? "Not available in this catalog")}</CodeBlock>
+                </details>
+              </td>
             </tr>
           ))}
         </tbody>
@@ -425,7 +441,7 @@ function SetupMain({
             <UserRound size={14} /> {plural(setup.actors.length, "actor")}
           </span>
           <span>
-            <Database size={14} /> {plural(setup.state.length, "state change")}
+            <Database size={14} /> {plural(setup.state.length, "setup change")}
           </span>
           <span>
             <Clock3 size={14} /> {virtualTime(setup.virtualTimeUs)}
@@ -547,16 +563,46 @@ function selectedTool(project: SimulationProject, selected: WorldSelection): Sim
   return project.tools.find((tool) => tool.id === id);
 }
 
-export function WorldView({ project }: { readonly project: SimulationProject }) {
-  const [selected, setSelected] = useState<WorldSelection>("setup");
+export function WorldView({
+  project,
+  page = "world",
+}: {
+  readonly project: SimulationProject;
+  readonly page?: "world" | "scenarios" | "tools";
+}) {
+  const [selected, setSelected] = useState<WorldSelection>(() =>
+    page === "tools" && project.tools[0] !== undefined
+      ? `tool:${project.tools[0].id}`
+      : page === "scenarios" && project.scenarios[0] !== undefined
+        ? `scenario:${project.scenarios[0].id}`
+        : "setup",
+  );
   const scenario = useMemo(() => selectedScenario(project, selected), [project, selected]);
   const tool = useMemo(() => selectedTool(project, selected), [project, selected]);
   const selection = scenario === undefined && tool === undefined && selected !== "setup" ? "setup" : selected;
 
+  if (
+    (page === "scenarios" && project.scenarios.length === 0) ||
+    (page === "tools" && project.tools.length === 0)
+  ) {
+    return (
+      <section className="fd-page fd-page--workspace">
+        <header className="fd-page-header">
+          <PageIntro page={page} />
+        </header>
+        <EmptyState title={page === "scenarios" ? "No scenarios defined" : "No synthetic tools defined"}>
+          {page === "scenarios"
+            ? "Drills can use the world baseline directly. Add a scenario file when you need a different starting situation."
+            : "Define tools in your repository, then refresh source to inspect their contracts here."}
+        </EmptyState>
+      </section>
+    );
+  }
+
   return (
     <section className="fd-page fd-page--workspace">
       <header className="fd-page-header">
-        <PageIntro page="world" />
+        <PageIntro page={page} />
         {project.diagnostics.length === 0 ? null : (
           <span className="fd-page-diagnostic">
             <TriangleAlert size={15} aria-hidden="true" />
@@ -565,7 +611,7 @@ export function WorldView({ project }: { readonly project: SimulationProject }) 
         )}
       </header>
       <div className="fd-workspace fd-world-workspace">
-        <WorldRail project={project} selected={selection} onSelect={setSelected} />
+        <WorldRail project={project} selected={selection} onSelect={setSelected} page={page} />
         {scenario !== undefined ? (
           <>
             <SetupMain

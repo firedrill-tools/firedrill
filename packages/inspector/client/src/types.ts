@@ -36,7 +36,15 @@ export type SimulationSuite = SimulationProject["suites"][number];
 export type SimulationTarget = SimulationProject["targets"][number];
 export type EvidenceEntry = SimulationEvidencePage["entries"][number];
 export type StateNamespace = SimulationRunDetail["stateNamespaces"][number];
-export type Route = "/world" | "/drills" | "/runs";
+export type Route =
+  | "/world"
+  | "/schema"
+  | "/data"
+  | "/personas"
+  | "/scenarios"
+  | "/tools"
+  | "/drills"
+  | "/runs";
 
 export interface Notice {
   readonly id: number;

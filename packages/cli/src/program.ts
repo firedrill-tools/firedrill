@@ -1540,8 +1540,11 @@ async function runCommand(parsed: ParsedArguments, io: CliIo): Promise<number> {
         diagnostics: execution.diagnostics,
         buildHash: execution.buildHash,
         selection: execution.selection,
+        ...(execution.reportIndex === undefined ? {} : { reportIndex: execution.reportIndex }),
         drills,
       });
+    } else if (execution.reportIndex !== undefined) {
+      io.stdout.write(`All reports: ${execution.reportIndex}\n`);
     }
     return execution.verdict === "passed" ? 0 : 1;
   } catch (error) {

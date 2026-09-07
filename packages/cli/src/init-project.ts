@@ -3,8 +3,8 @@ import {
   existsSync,
   lstatSync,
   mkdirSync,
-  readFileSync,
   readdirSync,
+  readFileSync,
   writeFileSync,
 } from "node:fs";
 import { dirname, extname, isAbsolute, join, relative, resolve, sep } from "node:path";
@@ -446,8 +446,8 @@ function projectShell(): readonly PlannedFile[] {
   return [
     { path: "firedrill.json", body: Buffer.from(MANIFEST) },
     { path: "firedrill/world.yaml", body: Buffer.from(WORLD) },
-    { path: "firedrill/local-probe.tool.yaml", body: Buffer.from(PROBE_TOOL) },
-    { path: "firedrill/local-probe.mjs", body: Buffer.from(PROBE_BEHAVIOR) },
+    { path: "firedrill/tools/local-probe/local-probe.tool.yaml", body: Buffer.from(PROBE_TOOL) },
+    { path: "firedrill/tools/local-probe/local-probe.mjs", body: Buffer.from(PROBE_BEHAVIOR) },
   ];
 }
 
