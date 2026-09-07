@@ -39,6 +39,9 @@
   --border-strong: #c8cad0;
   --hover: rgb(49 87 213 / 4.5%);
   --pressed: rgb(49 87 213 / 10%);
+  --action-text: var(--cobalt-700);
+  --focus-ring: var(--cobalt-600);
+  --shadow-button: 0 1px 2px rgb(27 29 34 / 8%);
   --scrim: rgb(17 19 24 / 44%);
   --success: #267253;
   --success-surface: #e7f1ec;
@@ -78,6 +81,9 @@
   --border-strong: #363b45;
   --hover: rgb(125 147 236 / 10%);
   --pressed: rgb(125 147 236 / 22%);
+  --action-text: var(--cobalt-200);
+  --focus-ring: var(--cobalt-400);
+  --shadow-button: 0 1px 2px rgb(0 0 0 / 24%);
   --scrim: rgb(2 3 4 / 66%);
   --success: #8fc9ac;
   --success-surface: rgb(120 185 154 / 14%);
@@ -147,10 +153,11 @@ code {
 }
 
 button:focus-visible,
+a[href]:focus-visible,
 input:focus-visible,
 select:focus-visible,
 summary:focus-visible {
-  outline: 2px solid var(--cobalt-400);
+  outline: 2px solid var(--focus-ring);
   outline-offset: 2px;
 }
 
@@ -322,6 +329,10 @@ summary:focus-visible {
 .fd-nav-item:hover {
   background: var(--sidebar-hover);
   color: var(--text);
+}
+
+.fd-nav-item:active:not(:disabled) {
+  background: var(--pressed);
 }
 
 .fd-nav-item[aria-current="page"] {
@@ -568,7 +579,7 @@ summary:focus-visible {
 
 .fd-rail-item:hover,
 .fd-run-list-item:hover {
-  background: var(--hover);
+  background: var(--pressed);
   color: var(--text);
 }
 
@@ -576,6 +587,11 @@ summary:focus-visible {
 .fd-run-list-item[aria-current="true"] {
   background: var(--surface-selected);
   color: var(--cobalt-700);
+}
+
+.fd-rail-item[aria-current="true"]:hover,
+.fd-run-list-item[aria-current="true"]:hover {
+  background: var(--surface-selected-hover);
 }
 
 [data-theme="dark"] .fd-rail-item[aria-current="true"],
@@ -883,10 +899,6 @@ summary:focus-visible {
   vertical-align: middle;
 }
 
-.fd-table tbody tr:hover {
-  background: var(--hover);
-}
-
 .fd-table th:nth-child(1) {
   width: 27%;
 }
@@ -1036,7 +1048,16 @@ summary:focus-visible {
   border: 1px solid transparent;
   border-radius: 8px;
   font-weight: 600;
-  transition: 140ms ease;
+  transition:
+    background-color 140ms ease,
+    border-color 140ms ease,
+    color 140ms ease,
+    box-shadow 140ms ease;
+}
+
+.fd-button > svg,
+.fd-icon-button > svg {
+  flex: none;
 }
 
 .fd-button {
@@ -1057,6 +1078,7 @@ summary:focus-visible {
   border-color: var(--cobalt-600);
   background: var(--cobalt-600);
   color: #fff;
+  box-shadow: var(--shadow-button);
 }
 
 .fd-button--primary:hover:not(:disabled) {
@@ -1064,25 +1086,76 @@ summary:focus-visible {
   background: var(--cobalt-700);
 }
 
+.fd-button--primary:active:not(:disabled) {
+  border-color: var(--cobalt-800);
+  background: var(--cobalt-800);
+  box-shadow: none;
+}
+
 .fd-button--secondary {
-  border-color: var(--border);
+  border-color: var(--border-strong);
   background: var(--surface);
   color: var(--text);
+  box-shadow: var(--shadow-button);
 }
 
 .fd-button--secondary:hover:not(:disabled) {
-  border-color: var(--border-strong);
-  background: var(--hover);
+  border-color: var(--text-tertiary);
+  background: var(--surface-tonal);
 }
 
 .fd-button--quiet {
   background: transparent;
-  color: var(--text-secondary);
+  color: var(--action-text);
+  text-decoration: underline;
+  text-underline-offset: 3px;
 }
 
 .fd-button--quiet:hover:not(:disabled) {
   background: var(--hover);
   color: var(--text);
+}
+
+.fd-button--link {
+  max-width: 100%;
+  height: auto;
+  min-height: 32px;
+  padding-inline: 6px;
+  background: transparent;
+  color: var(--action-text);
+  text-decoration: underline;
+  text-decoration-color: color-mix(in srgb, var(--action-text) 45%, transparent);
+  text-underline-offset: 3px;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  text-align: left;
+}
+
+.fd-button--link:hover:not(:disabled) {
+  background: var(--hover);
+  text-decoration-color: currentColor;
+}
+
+.fd-button:is(.fd-button--secondary, .fd-button--quiet, .fd-button--link):active:not(:disabled),
+.fd-icon-button:active:not(:disabled) {
+  background: var(--pressed);
+  box-shadow: none;
+}
+
+.fd-button:is([aria-pressed="true"], [aria-expanded="true"]):not(:disabled) {
+  border-color: var(--action-text);
+  background: var(--surface-selected);
+  color: var(--action-text);
+  box-shadow: none;
+}
+
+.fd-button:is([aria-pressed="true"], [aria-expanded="true"]):hover:not(:disabled) {
+  background: var(--surface-selected-hover);
+}
+
+.fd-button:disabled,
+.fd-icon-button:disabled {
+  box-shadow: none;
 }
 
 .fd-button--danger {
@@ -1095,17 +1168,51 @@ summary:focus-visible {
   background: var(--danger-surface);
 }
 
+.fd-button--danger:active:not(:disabled) {
+  background: var(--danger-border);
+}
+
 .fd-icon-button {
   width: 34px;
   height: 34px;
   padding: 0;
-  background: transparent;
-  color: var(--text-secondary);
+  border-color: var(--border-strong);
+  background: var(--surface);
+  color: var(--text);
+  box-shadow: var(--shadow-button);
 }
 
 .fd-icon-button:hover:not(:disabled) {
-  background: var(--hover);
+  border-color: var(--text-tertiary);
+  background: var(--surface-tonal);
   color: var(--text);
+}
+
+/* Selection rows use one persistent opening cue, shared by every workspace. */
+button.fd-row-button {
+  position: relative;
+  padding-right: 32px;
+}
+
+button.fd-row-button > .fd-row-button__chevron {
+  position: absolute;
+  top: 50%;
+  right: 10px;
+  margin: 0;
+  color: var(--text-tertiary);
+  transform: translateY(-50%);
+}
+
+button.fd-row-button:is(:hover, :focus-visible, [aria-current="true"]) > .fd-row-button__chevron {
+  color: var(--action-text);
+}
+
+button.fd-row-button:active:not(:disabled) {
+  background: var(--pressed);
+}
+
+button.fd-row-button:focus-visible {
+  outline-offset: -2px;
 }
 
 .fd-mobile-menu {
@@ -1120,11 +1227,16 @@ summary:focus-visible {
   align-items: center;
   min-width: 0;
   height: 32px;
-  border: 1px solid var(--border);
+  border: 1px solid var(--border-strong);
   border-radius: 7px;
   background: var(--surface);
   color: var(--text-tertiary);
   transition: 140ms ease;
+}
+
+.fd-search:hover,
+.fd-select:hover {
+  border-color: var(--text-tertiary);
 }
 
 .fd-search:focus-within,
@@ -1419,12 +1531,23 @@ summary:focus-visible {
 .fd-run-advanced summary {
   width: fit-content;
   cursor: pointer;
-  padding: 4px 0;
+  padding: 8px 10px;
+  border: 1px solid var(--border-strong);
+  border-radius: 7px;
+  background: var(--surface);
+  color: var(--text);
+  font-weight: 500;
 }
 
 .fd-drill-disclosure summary:hover,
 .fd-run-advanced summary:hover {
-  color: var(--text);
+  background: var(--surface-tonal);
+  border-color: var(--text-tertiary);
+}
+
+.fd-drill-disclosure summary:active,
+.fd-run-advanced summary:active {
+  background: var(--pressed);
 }
 
 .fd-drill-disclosure .fd-code {
@@ -1828,6 +1951,24 @@ summary:focus-visible {
   font-size: 12px;
   font-weight: 600;
   cursor: pointer;
+  list-style: none;
+}
+
+.fd-runtime-work > summary::-webkit-details-marker {
+  display: none;
+}
+
+.fd-runtime-work > summary:hover {
+  background: var(--hover);
+}
+
+.fd-disclosure-chevron {
+  flex: none;
+  transition: transform 140ms ease;
+}
+
+details[open] > summary > .fd-disclosure-chevron {
+  transform: rotate(90deg);
 }
 
 .fd-runtime-work > summary span {
@@ -1947,11 +2088,15 @@ summary:focus-visible {
 }
 
 .fd-timeline-entry:hover {
-  background: var(--hover);
+  background: var(--pressed);
 }
 
 .fd-timeline-entry[aria-current="true"] {
   background: var(--surface-selected);
+}
+
+.fd-timeline-entry[aria-current="true"]:hover {
+  background: var(--surface-selected-hover);
 }
 
 .fd-timeline-entry__sequence {
@@ -2631,6 +2776,16 @@ summary:focus-visible {
   .fd-select,
   .fd-input,
   .fd-nav-item {
+    min-height: 44px;
+  }
+
+  .fd-icon-button {
+    min-width: 44px;
+  }
+
+  .fd-runtime-work > summary,
+  .fd-drill-disclosure > summary,
+  .fd-run-advanced > summary {
     min-height: 44px;
   }
 }

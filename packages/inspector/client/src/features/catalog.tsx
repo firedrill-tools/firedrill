@@ -2,7 +2,7 @@ import { ChevronLeft, ChevronRight } from "lucide-react";
 import { useMemo, useState } from "react";
 import { DataViewer } from "../components/data-viewer";
 import { PageIntro } from "../components/page-intro";
-import { EmptyState, IconButton, SearchField, Select } from "../components/primitives";
+import { EmptyState, IconButton, RowButton, SearchField, Select } from "../components/primitives";
 import { SourceViewer } from "../components/source-viewer";
 import type { SimulationProject } from "../types";
 import { recordCell, schemaFields, startingRecords } from "./catalog-data";
@@ -112,7 +112,7 @@ export function CatalogView({
             </div>
             <div className="fd-rail-list">
               {tableMatches.slice(currentTablePage * 25, (currentTablePage + 1) * 25).map((table) => (
-                <button
+                <RowButton
                   type="button"
                   key={table.id}
                   className="fd-rail-item"
@@ -123,7 +123,7 @@ export function CatalogView({
                     <strong>{table.namespace}</strong>
                     <small>{table.tool.id}</small>
                   </span>
-                </button>
+                </RowButton>
               ))}
               {tableMatches.length === 0 ? (
                 <p className="fd-rail-empty">No declared tables match this search.</p>

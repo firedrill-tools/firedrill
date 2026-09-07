@@ -25,15 +25,11 @@
   flex-wrap: wrap;
   align-items: center;
   justify-content: flex-end;
-  gap: 4px;
+  gap: 8px;
   padding: 6px 12px;
   border-bottom: 1px solid var(--border-subtle);
   color: var(--text-secondary);
   font: 13px / 1.5 var(--font-sans);
-}
-.fd-document-toolbar [aria-pressed="true"] {
-  background: var(--hover);
-  color: var(--text);
 }
 .fd-document-context {
   margin-right: auto;

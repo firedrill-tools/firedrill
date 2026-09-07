@@ -45,6 +45,11 @@ Detail panels are closed by default. Open **Details** when you need source or
 technical metadata; on Runs, selecting an event opens its details. Close the
 panel to restore the full workspace width.
 
+Actions have visible button boundaries. Clickable operation names use underlined
+links, and selectable list rows have a trailing chevron. Hover and keyboard focus
+identify the active control; an open Details panel or enabled Wrap lines control
+keeps its selected styling. Ordinary table cells and status labels remain static.
+
 Use **View record**, **View definition**, or the input/response actions to open
 structured data in a wide, line-numbered viewer. Copy and line wrapping work the
 same way for data and source files. JSON never expands inside a narrow table cell

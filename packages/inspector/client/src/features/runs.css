@@ -71,6 +71,19 @@
   gap: 16px;
   list-style: none;
   cursor: pointer;
+  min-height: 36px;
+  padding: 8px;
+  margin-inline: -8px;
+  border-radius: 7px;
+  transition: background-color 140ms ease;
+}
+
+.fd-result-check > summary:hover {
+  background: var(--hover);
+}
+
+.fd-result-check > summary:active {
+  background: var(--pressed);
 }
 
 .fd-result-check > summary::-webkit-details-marker {
@@ -190,6 +203,10 @@
 }
 
 @media (max-width: 680px) {
+  .fd-result-check > summary {
+    min-height: 44px;
+  }
+
   .fd-result-comparison {
     grid-template-columns: minmax(0, 1fr);
   }

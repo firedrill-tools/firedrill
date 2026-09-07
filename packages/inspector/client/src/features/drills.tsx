@@ -10,6 +10,7 @@ import {
   InlineMessage,
   Input,
   KeyValue,
+  RowButton,
   SearchField,
   Spinner,
 } from "../components/primitives";
@@ -374,10 +375,10 @@ function SuiteDetails({
         ) : (
           <div className="fd-drill-suite-list">
             {drills.map((drill) => (
-              <button type="button" key={drill.id} onClick={() => onSelect(drill)}>
+              <RowButton key={drill.id} onClick={() => onSelect(drill)}>
                 <strong>{drill.title ?? titleFromId(drill.id)}</strong>
                 <span>{plural(drill.assertions, "check")}</span>
-              </button>
+              </RowButton>
             ))}
           </div>
         )}
@@ -483,7 +484,7 @@ export function DrillsView({
             {filtered.slice(pageIndex * 25, (pageIndex + 1) * 25).map((item) => {
               const key = `${item.kind}:${item.value.id}`;
               return (
-                <button
+                <RowButton
                   type="button"
                   className="fd-rail-item"
                   key={key}
@@ -496,7 +497,7 @@ export function DrillsView({
                     <strong>{item.value.title ?? titleFromId(item.value.id)}</strong>
                     {item.kind === "suite" ? <small>Suite</small> : null}
                   </span>
-                </button>
+                </RowButton>
               );
             })}
             {filtered.length === 0 ? <p className="fd-rail-empty">No drills match “{query}”.</p> : null}

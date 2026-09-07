@@ -26,6 +26,7 @@ import {
   EmptyState,
   InlineMessage,
   KeyValue,
+  RowButton,
   SearchField,
   Select,
   Spinner,
@@ -380,6 +381,7 @@ function RuntimeWork({ detail }: { readonly detail: SimulationRunDetail }) {
   return (
     <details className="fd-runtime-work">
       <summary>
+        <ChevronRight className="fd-disclosure-chevron" size={15} aria-hidden="true" />
         World runtime
         <span>
           {plural(detail.faults.length, "active fault")} · {plural(pendingEvents.length, "pending event")} ·{" "}
@@ -926,7 +928,7 @@ function RunWorkspace({
               </div>
               <div className="fd-timeline">
                 {filtered.map((entry) => (
-                  <button
+                  <RowButton
                     type="button"
                     className="fd-timeline-entry"
                     key={entry.sequence}
@@ -952,7 +954,7 @@ function RunWorkspace({
                     {entry.causeSequence === undefined ? null : (
                       <span className="fd-timeline-entry__cause">← {entry.causeSequence}</span>
                     )}
-                  </button>
+                  </RowButton>
                 ))}
                 {filtered.length === 0 ? (
                   <div className="fd-table-empty">No activity matches these filters.</div>
@@ -1108,7 +1110,7 @@ export function RunsView({
           </div>
           <div className="fd-rail-list">
             {filtered.map((run) => (
-              <button
+              <RowButton
                 type="button"
                 className="fd-run-list-item"
                 key={run.runId}
@@ -1120,7 +1122,7 @@ export function RunsView({
                   <Status tone={resultTone(run.verdict ?? run.status)}>{resultLabel(run)}</Status>
                 </span>
                 <code>{compactId(run.runId, 19)}</code>
-              </button>
+              </RowButton>
             ))}
           </div>
           {filtered.length === 0 ? <div className="fd-rail-empty">No runs match these filters.</div> : null}

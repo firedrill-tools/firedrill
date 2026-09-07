@@ -6,7 +6,6 @@
 }
 .fd-operation-name .fd-button {
   font: 13px / 1.5 var(--font-mono);
-  color: var(--text);
 }
 
 .fd-workspace-titlebar > .fd-catalog-world-actions {

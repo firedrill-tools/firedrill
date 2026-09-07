@@ -32,11 +32,11 @@ export function CodeDocument({
     <>
       <div className="fd-document-toolbar">
         {context === undefined ? null : <span className="fd-document-context">{context}</span>}
-        <Button variant="quiet" size="compact" aria-pressed={wrap} onClick={() => setWrap(!wrap)}>
+        <Button size="compact" aria-pressed={wrap} onClick={() => setWrap(!wrap)}>
           <WrapText size={15} aria-hidden="true" />
           Wrap lines
         </Button>
-        <Button variant="quiet" size="compact" onClick={() => void copy()}>
+        <Button size="compact" onClick={() => void copy()}>
           {copied ? <Check size={15} aria-hidden="true" /> : <Copy size={15} aria-hidden="true" />}
           {copied ? "Copied" : "Copy"}
         </Button>

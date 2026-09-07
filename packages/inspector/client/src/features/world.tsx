@@ -3,7 +3,7 @@ import { useMemo, useState } from "react";
 import { DataViewer } from "../components/data-viewer";
 import { DetailsPanel, DetailsTrigger } from "../components/details-panel";
 import { PageIntro } from "../components/page-intro";
-import { EmptyState, KeyValue, SearchField } from "../components/primitives";
+import { EmptyState, KeyValue, RowButton, SearchField } from "../components/primitives";
 import { SourceViewer } from "../components/source-viewer";
 import { json, plural, titleFromId, virtualTime } from "../format";
 import type { SimulationProject, SimulationScenario, SimulationSetup, SimulationTool } from "../types";
@@ -65,7 +65,7 @@ function WorldRail({
         {normalized.length === 0 && page === "world" ? (
           <>
             <div className="fd-rail-section-label">Setup</div>
-            <button
+            <RowButton
               type="button"
               className="fd-rail-item"
               aria-current={selected === "setup" ? "true" : undefined}
@@ -75,7 +75,7 @@ function WorldRail({
               <span>
                 <strong>World setup</strong>
               </span>
-            </button>
+            </RowButton>
           </>
         ) : null}
 
@@ -83,7 +83,7 @@ function WorldRail({
           <div className="fd-rail-section-label">Scenarios</div>
         ) : null}
         {scenarios.map((scenario) => (
-          <button
+          <RowButton
             type="button"
             key={scenario.id}
             className="fd-rail-item"
@@ -94,12 +94,12 @@ function WorldRail({
             <span>
               <strong>{scenario.title ?? titleFromId(scenario.id)}</strong>
             </span>
-          </button>
+          </RowButton>
         ))}
 
         {page === "world" && tools.length > 0 ? <div className="fd-rail-section-label">Tools</div> : null}
         {tools.map((tool) => (
-          <button
+          <RowButton
             type="button"
             key={tool.id}
             className="fd-rail-item"
@@ -110,7 +110,7 @@ function WorldRail({
             <span>
               <strong>{titleFromId(tool.id)}</strong>
             </span>
-          </button>
+          </RowButton>
         ))}
       </div>
       {normalized.length > 0 && scenarios.length === 0 && tools.length === 0 ? (
@@ -136,7 +136,12 @@ function OperationTable({ tool }: { readonly tool: SimulationTool }) {
           {tool.operations.map((operation) => (
             <tr key={operation.id}>
               <td className="fd-operation-name">
-                <DataViewer title={`${tool.id}.${operation.id}`} value={operation} label={operation.id} />
+                <DataViewer
+                  title={`${tool.id}.${operation.id}`}
+                  value={operation}
+                  label={operation.id}
+                  variant="link"
+                />
               </td>
               {hasDescriptions ? <td className="fd-table__muted">{operation.description ?? "—"}</td> : null}
               <td>
