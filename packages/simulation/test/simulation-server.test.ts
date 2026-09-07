@@ -11,9 +11,19 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
-import { AssertionDefinitionSchema, DrillTimelineSchema, type ToolOverride } from "@firedrill/contracts";
+import {
+  AssertionDefinitionSchema,
+  DrillTimelineSchema,
+  RunResultSchema,
+  type ToolOverride,
+} from "@firedrill/contracts";
+import { writeLocalReport } from "@firedrill/reporters";
 import { afterEach, describe, expect, it } from "vitest";
-import { SimulationProjectSchema, SimulationReportAttachmentsSchema } from "../src/contracts.js";
+import {
+  SimulationProjectSchema,
+  SimulationReportAttachmentsSchema,
+  SimulationRunComparisonSchema,
+} from "../src/contracts.js";
 import type { LocalSimulationServer } from "../src/index.js";
 import { startLocalSimulationServer } from "../src/index.js";
 
@@ -219,6 +229,86 @@ afterEach(async () => {
 });
 
 describe("local simulation server", () => {
+  it("compares verified reports with runtime fault controls through the public API", async () => {
+    const root = repository();
+    const control = {
+      schemaVersion: 1 as const,
+      sequence: 1,
+      transactionId: "txn_control001",
+      transactionIndex: 0,
+      transactionSize: 1,
+      virtualTimeUs: 0,
+      correlationId: "corr_control001",
+      kind: "fault_control" as const,
+      packageId: "workspace",
+      faultId: "unavailable",
+      previouslyActive: false,
+      active: true,
+    };
+    for (const [suffix, controlled] of [
+      ["baseline001", false],
+      ["controlled001", true],
+      ["controlled002", true],
+    ] as const) {
+      const runId = `run_${suffix}`;
+      const result = RunResultSchema.parse({
+        schemaVersion: 1,
+        status: "cancelled",
+        reason: "The test harness stopped this fixture run.",
+        identity: {
+          runId,
+          worldInstanceId: `world_${suffix}`,
+          drillId: "set-record",
+          scenarioId: "empty",
+          targetId: "example-agent",
+          buildHash: `sha256:${"a".repeat(64)}`,
+          packageLockHash: `sha256:${"b".repeat(64)}`,
+          seed: "1",
+          trial: 1,
+          trialCount: 1,
+        },
+        startedAtVirtualUs: 0,
+        finishedAtVirtualUs: 0,
+        bindingEvidence: "not_checked",
+        worldConsistency: "atomic",
+        interactions: [],
+        checkpoints: [],
+        assertionResults: [],
+        budgetUsage: {
+          toolCalls: { limit: 100, attempted: 0, rejected: 0 },
+          scheduledEvents: { limit: 100, processed: 0, exhausted: false },
+        },
+      });
+      writeLocalReport(
+        { result, evidence: controlled ? [control] : [] },
+        join(root, ".firedrill", "reports", runId),
+      );
+    }
+    const server = await startLocalSimulationServer({ root });
+    servers.push(server);
+    for (const [baselineRunId, candidateRunId, differences] of [
+      ["run_baseline001", "run_controlled001", ["runtime_controls"]],
+      ["run_controlled001", "run_baseline001", ["runtime_controls"]],
+      ["run_controlled001", "run_controlled002", []],
+    ] as const) {
+      const comparison = await api(server, "/api/v1/comparisons", {
+        method: "POST",
+        body: JSON.stringify({ baselineRunId, candidateRunId }),
+      });
+      expect(comparison.response.status).toBe(200);
+      const value = SimulationRunComparisonSchema.parse(comparison.value);
+      expect(value.compatibility).toMatchObject({
+        status: "descriptive_only",
+        canAttributeBehaviorChange: false,
+        differences,
+      });
+      expect(value.baseline.runId).toBe(baselineRunId);
+      expect(value.candidate.runId).toBe(candidateRunId);
+      expect(value.baseline).not.toHaveProperty("reportDirectory");
+      expect(value.changes.stateChanged).toBeUndefined();
+    }
+  });
+
   it("reopens custom report and world directories without accepting browser path overrides", async () => {
     const root = repository();
     const runDirectory = ".firedrill/review/runs";

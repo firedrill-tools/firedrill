@@ -38,6 +38,12 @@ Data, Tools, Personas & actors), and the test workflow under **Testing**
   drill. Repeated workloads and task inputs come from the same source files.
   Execution limits stay under settings; raw check definitions open in a wide viewer.
 - **Runs**: actual attempts, checks, events and retained data after execution.
+  Check values appear inline as an expected/actual diff, and recorded data changes
+  show before/after together. Changed lines use minus/plus markers; check conditions
+  still determine the verdict (a threshold check can pass with different values).
+  Wide views align both sides; narrow views stack changed lines. Long documents
+  paginate without dropping content, with a jump to the first change.
+  Failed checks come first in run results; source and saved evidence order do not change.
 
 The central static report entry is `.firedrill/reports/index.html` (or the index
 inside your configured report directory). It lists saved executions; individual
@@ -79,8 +85,9 @@ that existing server limit.
 
 Use **View record**, **View definition**, or the input/response actions to open
 structured data in a wide, line-numbered viewer. Copy and line wrapping work the
-same way for data and source files. JSON never expands inside a narrow table cell
-or detail panel. Operation names open the full contract, including fidelity and
+same way for data and source files. Single documents do not expand inside narrow
+table cells; paired check values and recorded data changes use the inline diff.
+Operation names open the full contract, including fidelity and
 idempotency. Run details retain identifiers, seed, and execution metadata without
 repeating them throughout the workspace. Reports that cannot be opened stay
 listed under Runs with their verification errors; they are not silently omitted.
@@ -104,3 +111,12 @@ used by an older build or run. Refresh repository source to recompile current fi
 Run search covers drill, target, scenario, seed, trial, and result identity;
 evidence search covers nested actor, Tool, operation, event, assertion, fault,
 and payload facts. A failed assertion is the default evidence selection.
+
+**Compare runs** opens a full-width workspace when at least two verified reports
+are available. Choose a baseline and candidate; the comparison loads directly.
+Checks show each run's actual values together, plus changed expectations, and tool
+counts include errors even when the number of calls is unchanged. Input differences
+are explicit: different drills, scenarios, targets or seeds are not a controlled
+comparison. Matching world inputs do not make a live model deterministic.
+Final-data hashes and mutation counts are summary evidence, not a full snapshot
+diff. Missing evidence is never presented as unchanged or empty data.

@@ -1986,31 +1986,27 @@ details[open] > summary > .fd-disclosure-chevron {
   font-weight: 600;
 }
 
-.fd-runtime-work__body ul,
-.fd-compare-list {
+.fd-runtime-work__body ul {
   margin: 0;
   padding: 0;
   list-style: none;
 }
 
-.fd-runtime-work__body li,
-.fd-compare-list li {
+.fd-runtime-work__body li li {
   display: flex;
   min-width: 0;
   flex-direction: column;
   padding: 5px 0;
 }
 
-.fd-runtime-work__body li code,
-.fd-compare-list li code {
+.fd-runtime-work__body li code li code {
   overflow: hidden;
   font-size: 10px;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.fd-runtime-work__body li span,
-.fd-compare-list li span {
+.fd-runtime-work__body li span li span {
   margin-top: 1px;
   color: var(--text-tertiary);
   font-size: 10px;
@@ -2314,74 +2310,6 @@ details[open] > summary > .fd-disclosure-chevron {
   color: var(--code);
   font: 11px / 17px var(--font-mono);
   white-space: pre-wrap;
-}
-
-.fd-compare-dialog {
-  width: min(760px, calc(100vw - 32px));
-}
-
-.fd-compare-fields {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto;
-  align-items: end;
-  gap: 12px;
-  padding: 16px 18px;
-  border-bottom: 1px solid var(--border);
-}
-
-.fd-compare-result {
-  padding: 16px 18px 20px;
-}
-
-.fd-compare-result .fd-inline-message {
-  margin-bottom: 14px;
-}
-
-.fd-compare-result > section {
-  margin-top: 18px;
-}
-
-.fd-compare-result h3 {
-  margin: 0 0 8px;
-  font-size: 12px;
-  font-weight: 650;
-}
-
-.fd-compare-summary {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  margin: 0;
-  gap: 0 24px;
-}
-
-.fd-compare-table {
-  border: 1px solid var(--border-subtle);
-}
-
-.fd-compare-table th:nth-child(n),
-.fd-compare-table td:nth-child(n) {
-  width: auto;
-}
-
-.fd-compare-table th:nth-child(2) {
-  width: 42%;
-}
-
-.fd-compare-empty {
-  min-height: 180px;
-  padding: 54px 28px;
-  color: var(--text-tertiary);
-  font-size: 12px;
-  line-height: 18px;
-  text-align: center;
-}
-
-.fd-compare-list {
-  border-top: 1px solid var(--border-subtle);
-}
-
-.fd-compare-list li {
-  border-bottom: 1px solid var(--border-subtle);
 }
 
 .fd-table-empty,
@@ -2703,8 +2631,6 @@ details[open] > summary > .fd-disclosure-chevron {
   }
 
   .fd-runtime-work__body,
-  .fd-compare-fields,
-  .fd-compare-summary,
   .fd-world-work-grid {
     grid-template-columns: 1fr;
   }

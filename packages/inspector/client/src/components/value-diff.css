@@ -1,0 +1,109 @@
+.fd-value-diff {
+  container-type: inline-size;
+  min-width: 0;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+}
+.fd-value-diff__head,
+.fd-value-diff__row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+}
+.fd-value-diff__head {
+  background: var(--surface-tonal);
+  border-bottom: 1px solid var(--border);
+  color: var(--text-secondary);
+  font-size: 13px;
+  font-weight: 500;
+}
+.fd-value-diff__head > span {
+  padding: 9px 12px;
+  overflow-wrap: anywhere;
+}
+.fd-value-diff__head > span + span,
+.fd-value-diff__line--after {
+  border-left: 1px solid var(--border);
+}
+.fd-value-diff__rows {
+  padding-block: 5px;
+}
+.fd-value-diff__scroll > .fd-scroll-area__viewport {
+  max-height: 420px;
+}
+.fd-value-diff .sr-only {
+  user-select: none;
+}
+.fd-value-diff__line {
+  display: grid;
+  grid-template-columns: 3.5ch 1.5ch minmax(0, 1fr);
+  align-items: baseline;
+  gap: 4px;
+  min-width: 0;
+  padding: 2px 10px 2px 6px;
+  font-family: var(--font-mono);
+  font-size: 13px;
+  line-height: 1.65;
+}
+.fd-value-diff__line code {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font: inherit;
+  color: inherit;
+}
+.fd-value-diff__number {
+  color: var(--text-tertiary);
+  text-align: right;
+  user-select: none;
+}
+.fd-value-diff__marker {
+  user-select: none;
+  text-align: center;
+}
+.fd-value-diff__line--before[data-changed] {
+  background: var(--danger-surface);
+  color: var(--danger);
+}
+.fd-value-diff__line--after[data-changed] {
+  background: var(--success-surface);
+  color: var(--success);
+}
+.fd-value-diff__line[data-empty] {
+  background: var(--surface-tonal);
+}
+.fd-value-diff__note {
+  padding: 8px 12px;
+  margin: 0;
+  color: var(--text-secondary);
+  font-size: 13px;
+}
+.fd-value-diff__jump {
+  padding: 8px 12px;
+}
+.fd-value-diff .fd-pagination {
+  margin: 0;
+  padding: 8px 12px;
+  border-top: 1px solid var(--border);
+}
+.fd-check-comparison {
+  min-width: 0;
+}
+.fd-check-comparison__condition {
+  margin: 0 0 8px;
+  color: var(--text-secondary);
+  font-size: 14px;
+  line-height: 1.6;
+}
+@container (max-width: 580px) {
+  .fd-value-diff__row {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .fd-value-diff__line--after {
+    border-left: 0;
+  }
+  .fd-value-diff__row:not([data-changed]) .fd-value-diff__line--before,
+  .fd-value-diff__line[data-empty] {
+    display: none;
+  }
+}

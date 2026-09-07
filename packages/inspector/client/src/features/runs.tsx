@@ -1,5 +1,6 @@
 import {
   Activity,
+  ArrowLeft,
   Ban,
   Braces,
   ChevronRight,
@@ -17,6 +18,7 @@ import {
 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { inspectorApi } from "../api";
+import { CheckComparison, checksForReview } from "../components/check-comparison";
 import { DataViewer } from "../components/data-viewer";
 import { DetailsPanel, DetailsTrigger } from "../components/details-panel";
 import { PageIntro } from "../components/page-intro";
@@ -34,12 +36,12 @@ import {
   Status,
 } from "../components/primitives";
 import { ScrollArea } from "../components/scroll-area";
+import { ValueDiff } from "../components/value-diff";
 import { compactId, evidenceLabel, plural, titleFromId, virtualTime } from "../format";
 import { evidenceSearchText, matchesSearch, preferredEvidenceSequence, runSearchText } from "../search";
 import type {
   EvidenceEntry,
   SimulationProject,
-  SimulationRunComparison,
   SimulationRunDetail,
   SimulationRunList,
   SimulationRunRequest,
@@ -49,6 +51,7 @@ import type {
   StateNamespace,
 } from "../types";
 import "./runs.css";
+import { RunComparison } from "./run-comparison";
 import { overrideOutcomeLabel, overrideScopeLabel } from "./tool-overrides";
 
 type RunResult = NonNullable<SimulationRunDetail["result"]>;
@@ -60,55 +63,6 @@ function ResultValue({ title, value }: { readonly title: string; readonly value:
   }
   return (
     <span className="fd-result-value">{value === undefined ? "Not recorded" : JSON.stringify(value)}</span>
-  );
-}
-
-function ExpectedValue({ value, kind }: { readonly value: unknown; readonly kind: CheckResult["kind"] }) {
-  const usesComparison = [
-    "state.value",
-    "state.count",
-    "operation.count",
-    "event.count",
-    "callback.count",
-  ].includes(kind);
-  if (usesComparison && value !== null && typeof value === "object" && !Array.isArray(value)) {
-    const comparison = value as Record<string, unknown>;
-    const labels: Readonly<Record<string, string>> = {
-      equals: "Equals",
-      not_equals: "Does not equal",
-      greater_than_or_equal: "At least",
-      less_than_or_equal: "At most",
-      one_of: "One of",
-    };
-    const label = typeof comparison.operator === "string" ? labels[comparison.operator] : undefined;
-    if (label !== undefined && Object.hasOwn(comparison, "value") && Object.keys(comparison).length === 2) {
-      return (
-        <div className="fd-result-expectation">
-          <span>{label}</span>
-          <ResultValue title="Expected value" value={comparison.value} />
-        </div>
-      );
-    }
-  }
-  return <ResultValue title="Expected value" value={value} />;
-}
-
-function CheckComparison({ assertion }: { readonly assertion: CheckResult }) {
-  return (
-    <dl className="fd-result-comparison">
-      <div>
-        <dt>Expected</dt>
-        <dd>
-          <ExpectedValue value={assertion.expected} kind={assertion.kind} />
-        </dd>
-      </div>
-      <div>
-        <dt>Actual</dt>
-        <dd>
-          <ResultValue title="Actual value" value={assertion.actual} />
-        </dd>
-      </div>
-    </dl>
   );
 }
 
@@ -214,20 +168,13 @@ function EventInspector({ entry }: { readonly entry: EvidenceEntry | undefined }
         {entry.kind === "state_change" ? (
           <section className="fd-inspector-section">
             <h3>Data changed</h3>
-            <dl className="fd-result-comparison">
-              <div>
-                <dt>Before</dt>
-                <dd>
-                  <ResultValue title="Record before this change" value={entry.before} />
-                </dd>
-              </div>
-              <div>
-                <dt>After</dt>
-                <dd>
-                  <ResultValue title="Record after this change" value={entry.after} />
-                </dd>
-              </div>
-            </dl>
+            <ValueDiff
+              before={entry.before}
+              after={entry.after}
+              beforeLabel="Before"
+              afterLabel="After"
+              label="Record changes"
+            />
           </section>
         ) : null}
         {entry.kind === "operation" ? (
@@ -495,219 +442,6 @@ function RuntimeWork({ detail }: { readonly detail: SimulationRunDetail }) {
   );
 }
 
-function changedLabel(value: boolean | undefined): string {
-  if (value === undefined) return "Not available";
-  return value ? "Changed" : "Unchanged";
-}
-
-function ComparisonDialog({
-  runs,
-  selectedRunId,
-  onClose,
-}: {
-  readonly runs: readonly SimulationRunSummary[];
-  readonly selectedRunId: string | undefined;
-  readonly onClose: () => void;
-}) {
-  const dialog = useRef<HTMLDialogElement>(null);
-  const eligible = runs.filter((run) => run.reportAvailable);
-  const candidateDefault = eligible.find((run) => run.runId === selectedRunId) ?? eligible[0];
-  const baselineDefault = eligible.find((run) => run.runId !== candidateDefault?.runId);
-  const [baselineRunId, setBaselineRunId] = useState(baselineDefault?.runId ?? "");
-  const [candidateRunId, setCandidateRunId] = useState(candidateDefault?.runId ?? "");
-  const [comparison, setComparison] = useState<SimulationRunComparison>();
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string>();
-
-  useEffect(() => {
-    if (!dialog.current?.open) dialog.current?.showModal();
-  }, []);
-
-  const compare = async () => {
-    setLoading(true);
-    setError(undefined);
-    try {
-      setComparison(await inspectorApi.compareRuns(baselineRunId, candidateRunId));
-    } catch (error) {
-      setError(error instanceof Error ? error.message : "The runs could not be compared.");
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const deltas =
-    comparison === undefined
-      ? []
-      : [
-          ...comparison.changes.operationCounts.map((item) => ({ kind: "Operation", ...item })),
-          ...comparison.changes.stateChangeCounts.map((item) => ({ kind: "State change", ...item })),
-          ...comparison.changes.eventCounts.map((item) => ({ kind: "Event", ...item })),
-        ];
-
-  return (
-    <dialog
-      ref={dialog}
-      className="fd-dialog fd-compare-dialog"
-      aria-labelledby="compare-runs-title"
-      onCancel={(event) => {
-        event.preventDefault();
-        if (!loading) onClose();
-      }}
-      onClose={() => {
-        if (!loading) onClose();
-      }}
-    >
-      <div className="fd-dialog__head">
-        <div>
-          <h2 id="compare-runs-title">Compare runs</h2>
-        </div>
-        <Button variant="quiet" size="compact" onClick={onClose} disabled={loading}>
-          Close
-        </Button>
-      </div>
-      <div className="fd-compare-fields">
-        <div className="fd-field">
-          <span>Baseline</span>
-          <Select
-            label="Baseline run"
-            disabled={loading}
-            value={baselineRunId}
-            onChange={(event) => {
-              setBaselineRunId(event.target.value);
-              setComparison(undefined);
-              setError(undefined);
-            }}
-          >
-            {eligible.map((run) => (
-              <option key={run.runId} value={run.runId} disabled={run.runId === candidateRunId}>
-                {titleFromId(run.drillId)} · {compactId(run.runId, 16)} · seed {run.seed}
-              </option>
-            ))}
-          </Select>
-        </div>
-        <div className="fd-field">
-          <span>Candidate</span>
-          <Select
-            label="Candidate run"
-            disabled={loading}
-            value={candidateRunId}
-            onChange={(event) => {
-              setCandidateRunId(event.target.value);
-              setComparison(undefined);
-              setError(undefined);
-            }}
-          >
-            {eligible.map((run) => (
-              <option key={run.runId} value={run.runId} disabled={run.runId === baselineRunId}>
-                {titleFromId(run.drillId)} · {compactId(run.runId, 16)} · seed {run.seed}
-              </option>
-            ))}
-          </Select>
-        </div>
-        <Button
-          variant="primary"
-          onClick={() => void compare()}
-          disabled={
-            loading || baselineRunId === "" || candidateRunId === "" || baselineRunId === candidateRunId
-          }
-        >
-          {loading ? <Spinner label="Comparing runs" /> : <GitCompareArrows size={16} />}
-          Compare
-        </Button>
-      </div>
-      {error === undefined ? null : <InlineMessage tone="danger">{error}</InlineMessage>}
-      {comparison === undefined ? (
-        <div className="fd-compare-empty">
-          Choose two completed runs to compare their actions, data and results.
-        </div>
-      ) : (
-        <div className="fd-compare-result">
-          <InlineMessage
-            tone={
-              comparison.compatibility.status === "exact_inputs"
-                ? "success"
-                : comparison.compatibility.status === "descriptive_only"
-                  ? "warning"
-                  : "danger"
-            }
-            title={titleFromId(comparison.compatibility.status)}
-          >
-            {comparison.compatibility.explanation}
-          </InlineMessage>
-          <dl className="fd-compare-summary">
-            <KeyValue label="Outcome">{titleFromId(comparison.outcome)}</KeyValue>
-            <KeyValue label="Verdict">{changedLabel(comparison.changes.verdictChanged)}</KeyValue>
-            <KeyValue label="State">{changedLabel(comparison.changes.stateChanged)}</KeyValue>
-            <KeyValue label="Trajectory">{changedLabel(comparison.changes.trajectoryChanged)}</KeyValue>
-          </dl>
-          {deltas.length === 0 ? null : (
-            <section>
-              <h3>Count differences</h3>
-              <PaginatedContent
-                items={deltas}
-                label="Count differences"
-                resetKey={`${baselineRunId}:${candidateRunId}`}
-              >
-                {(pageDeltas) => (
-                  <table className="fd-table fd-compare-table">
-                    <thead>
-                      <tr>
-                        <th>Kind</th>
-                        <th>Subject</th>
-                        <th>Baseline</th>
-                        <th>Candidate</th>
-                        <th>Delta</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {pageDeltas.map((delta) => (
-                        <tr key={`${delta.kind}:${delta.subject}`}>
-                          <td>{delta.kind}</td>
-                          <td>
-                            <code>{delta.subject}</code>
-                          </td>
-                          <td>{delta.baseline}</td>
-                          <td>{delta.candidate}</td>
-                          <td>{delta.delta > 0 ? `+${delta.delta}` : delta.delta}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                )}
-              </PaginatedContent>
-            </section>
-          )}
-          {comparison.changes.assertions.length === 0 ? null : (
-            <section>
-              <h3>Check differences</h3>
-              <PaginatedContent
-                items={comparison.changes.assertions}
-                label="Check differences"
-                resetKey={`${baselineRunId}:${candidateRunId}`}
-              >
-                {(pageAssertions) => (
-                  <ul className="fd-compare-list">
-                    {pageAssertions.map((assertion) => (
-                      <li key={`${assertion.checkpointId}:${assertion.assertionId}`}>
-                        <code>{assertion.assertionId}</code>
-                        <span>
-                          {titleFromId(assertion.baseline ?? "missing")} →{" "}
-                          {titleFromId(assertion.candidate ?? "missing")}
-                          {assertion.actualChanged ? " · actual value changed" : ""}
-                        </span>
-                      </li>
-                    ))}
-                  </ul>
-                )}
-              </PaginatedContent>
-            </section>
-          )}
-        </div>
-      )}
-    </dialog>
-  );
-}
-
 function RunWorkspace({
   summary,
   canRerun,
@@ -828,7 +562,7 @@ function RunWorkspace({
     .map(({ entry }) => entry);
   const activity = usePagination(filtered, `${summary.runId}:${kind}:${query}`);
   const selected = entries.find((entry) => entry.sequence === selectedSequence);
-  const assertions = detail?.result?.assertionResults ?? [];
+  const assertions = checksForReview(detail?.result?.assertionResults ?? []);
   const checkpoints = detail?.result?.checkpoints.filter((checkpoint) => checkpoint.kind !== "final") ?? [];
   const failedCheckpointChecks = checkpoints.flatMap((checkpoint) =>
     checkpoint.assertionResults
@@ -1197,7 +931,11 @@ export function RunsView({
     <section className="fd-page fd-page--workspace">
       <header className="fd-page-header">
         <PageIntro page="runs" />
-        {runs.filter((run) => run.reportAvailable).length > 1 ? (
+        {compareOpen ? (
+          <Button onClick={() => setCompareOpen(false)}>
+            <ArrowLeft size={16} /> Back to runs
+          </Button>
+        ) : runs.filter((run) => run.reportAvailable).length > 1 ? (
           <Button onClick={() => setCompareOpen(true)}>
             <GitCompareArrows size={16} /> Compare runs
           </Button>
@@ -1209,75 +947,76 @@ export function RunsView({
           Firedrill is preparing an isolated world for the selected drill.
         </InlineMessage>
       ) : null}
-      <div className="fd-workspace fd-run-workspace fd-details-workspace">
-        <aside className="fd-workspace-rail fd-run-rail">
-          <div className="fd-rail-head">
-            <strong>Runs</strong>
-            <span>{runs.length}</span>
-          </div>
-          <div className="fd-run-filters">
-            <SearchField
-              value={query}
-              onChange={(event) => setQuery(event.target.value)}
-              placeholder="Drill, target, scenario, seed…"
-            />
-            <Select label="Run result" value={status} onChange={(event) => setStatus(event.target.value)}>
-              <option value="all">All results</option>
-              <option value="running">Running</option>
-              <option value="passed">Passed</option>
-              <option value="failed">Failed</option>
-              <option value="inconclusive">Inconclusive</option>
-              <option value="runner_failed">Runner failed</option>
-              <option value="cancelled">Cancelled</option>
-            </Select>
-          </div>
-          <div className="fd-rail-list">
-            {runPage.items.map((run) => (
-              <RowButton
-                type="button"
-                className="fd-run-list-item"
-                key={run.runId}
-                aria-current={selected?.runId === run.runId ? "true" : undefined}
-                onClick={() => setSelectedId(run.runId)}
-              >
-                <span className="fd-run-list-item__top">
-                  <strong>{titleFromId(run.drillId)}</strong>
-                  <Status tone={resultTone(run.verdict ?? run.status)}>{resultLabel(run)}</Status>
-                </span>
-                <code>{compactId(run.runId, 19)}</code>
-              </RowButton>
-            ))}
-          </div>
-          <Pagination label="Runs" {...runPage} variant="rail" />
-          {filtered.length === 0 ? <div className="fd-rail-empty">No runs match these filters.</div> : null}
-        </aside>
-        {selected === undefined ? (
-          <EmptyState title="Run is starting">
-            The first live attempt will appear here when its world is ready.
-          </EmptyState>
-        ) : (
-          <RunWorkspace
-            key={selected.runId}
-            summary={selected}
-            canRerun={project.drills.some(
-              (drill) =>
-                drill.id === selected.drillId &&
-                project.targets.some(
-                  (target) => target.id === drill.targetId && target.runAvailability === "ready",
-                ),
-            )}
-            onCancel={onCancel}
-            onRerun={onRerun}
-            starting={starting}
-            cancelling={cancelling}
-            onOpenReport={onOpenReport}
-            onError={onError}
-          />
-        )}
-      </div>
       {compareOpen ? (
-        <ComparisonDialog runs={runs} selectedRunId={selected?.runId} onClose={() => setCompareOpen(false)} />
-      ) : null}
+        <RunComparison runs={runs} selectedRunId={selected?.runId} />
+      ) : (
+        <div className="fd-workspace fd-run-workspace fd-details-workspace">
+          <aside className="fd-workspace-rail fd-run-rail">
+            <div className="fd-rail-head">
+              <strong>Runs</strong>
+              <span>{runs.length}</span>
+            </div>
+            <div className="fd-run-filters">
+              <SearchField
+                value={query}
+                onChange={(event) => setQuery(event.target.value)}
+                placeholder="Drill, target, scenario, seed…"
+              />
+              <Select label="Run result" value={status} onChange={(event) => setStatus(event.target.value)}>
+                <option value="all">All results</option>
+                <option value="running">Running</option>
+                <option value="passed">Passed</option>
+                <option value="failed">Failed</option>
+                <option value="inconclusive">Inconclusive</option>
+                <option value="runner_failed">Runner failed</option>
+                <option value="cancelled">Cancelled</option>
+              </Select>
+            </div>
+            <div className="fd-rail-list">
+              {runPage.items.map((run) => (
+                <RowButton
+                  type="button"
+                  className="fd-run-list-item"
+                  key={run.runId}
+                  aria-current={selected?.runId === run.runId ? "true" : undefined}
+                  onClick={() => setSelectedId(run.runId)}
+                >
+                  <span className="fd-run-list-item__top">
+                    <strong>{titleFromId(run.drillId)}</strong>
+                    <Status tone={resultTone(run.verdict ?? run.status)}>{resultLabel(run)}</Status>
+                  </span>
+                  <code>{compactId(run.runId, 19)}</code>
+                </RowButton>
+              ))}
+            </div>
+            <Pagination label="Runs" {...runPage} variant="rail" />
+            {filtered.length === 0 ? <div className="fd-rail-empty">No runs match these filters.</div> : null}
+          </aside>
+          {selected === undefined ? (
+            <EmptyState title="Run is starting">
+              The first live attempt will appear here when its world is ready.
+            </EmptyState>
+          ) : (
+            <RunWorkspace
+              key={selected.runId}
+              summary={selected}
+              canRerun={project.drills.some(
+                (drill) =>
+                  drill.id === selected.drillId &&
+                  project.targets.some(
+                    (target) => target.id === drill.targetId && target.runAvailability === "ready",
+                  ),
+              )}
+              onCancel={onCancel}
+              onRerun={onRerun}
+              starting={starting}
+              cancelling={cancelling}
+              onOpenReport={onOpenReport}
+              onError={onError}
+            />
+          )}
+        </div>
+      )}
     </section>
   );
 }

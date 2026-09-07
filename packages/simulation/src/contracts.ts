@@ -406,7 +406,9 @@ export const SimulationRunComparisonSchema = z
       .object({
         status: z.enum(["exact_inputs", "descriptive_only", "incompatible"]),
         canAttributeBehaviorChange: z.boolean(),
-        differences: z.array(z.enum(["drill", "scenario", "target", "seed", "build", "package_lock"])),
+        differences: z.array(
+          z.enum(["drill", "scenario", "target", "seed", "build", "package_lock", "runtime_controls"]),
+        ),
         explanation: z.string().min(1).max(2000),
       })
       .strict(),
