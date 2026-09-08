@@ -5,6 +5,7 @@ import { fileURLToPath } from "node:url";
 import type { EffortLevel, SDKMessage } from "@anthropic-ai/claude-agent-sdk";
 import { query } from "@anthropic-ai/claude-agent-sdk";
 import { FIREDRILL_FRAMEWORK_VERSION } from "@firedrill/contracts";
+import { checkFiredrillEnvironment, type FiredrillEnvironmentCheck } from "./environment-check.js";
 import { createFiredrillAuthoringServer, type FiredrillAuthoringPolicy } from "./firedrill-tools.js";
 import { repositoryGuardHook } from "./repository-policy.js";
 
@@ -17,6 +18,8 @@ export type FiredrillAgentEvent =
   | { readonly type: "diagnostic"; readonly message: string };
 
 export interface RunFiredrillAgentOptions extends FiredrillAuthoringPolicy {
+  /** Default: prepare usable synthetic tools. Drills are an explicit later task. */
+  readonly workflow?: "environment" | "drill";
   readonly root?: string;
   readonly prompt?: string;
   readonly model?: string;
@@ -39,6 +42,7 @@ export interface FiredrillAgentResult {
   readonly estimatedCostUsd: number;
   readonly result?: string;
   readonly errors: readonly string[];
+  readonly readiness?: FiredrillEnvironmentCheck;
 }
 
 export class FiredrillAgentError extends Error {
@@ -66,11 +70,12 @@ function skillDirectory(): string {
   throw new FiredrillAgentError("agent.EXECUTION_FAILED", "the canonical Firedrill skill is missing");
 }
 
-function canonicalInstructions(allowRepositoryExecution: boolean): string {
+function canonicalInstructions(allowRepositoryExecution: boolean, workflow: "environment" | "drill"): string {
   const directory = skillDirectory();
   const skill = readFileSync(resolve(directory, "SKILL.md"), "utf8");
   const authoring = readFileSync(resolve(directory, "references/authoring.md"), "utf8");
   const bindings = readFileSync(resolve(directory, "references/bindings.md"), "utf8");
+  const backend = readFileSync(resolve(directory, "references/backend.md"), "utf8");
   return [
     "You are Firedrill Agent, the optional local authoring assistant for the open-source Firedrill framework.",
     "The following canonical skill and references are authoritative for your task.",
@@ -78,6 +83,9 @@ function canonicalInstructions(allowRepositoryExecution: boolean): string {
     "Use the in-process firedrill MCP tools for bounded repository discovery, search, formatting, validation, planning, Tool checks, and drills; Bash and generic search tools are intentionally unavailable.",
     "Never read or write secrets, .git, .firedrill, node_modules, or files outside the repository. Never commit, push, publish, upload, or call a hosted Firedrill service.",
     "The framework's compiler, runner, assertions, and report verifier—not your prose—decide whether work passes.",
+    workflow === "environment"
+      ? "This is the synthetic-backend workflow. Prepare the tools, deterministic behavior, starting data and explicit actor access. Do not require targets, scenarios or drills. Use environment_check to verify startup; then report how to start the environment and connect the existing agent. Never call backend startup an agent test."
+      : "This is the drill workflow. Follow the skill's drill definition of done; runtime setup alone is insufficient.",
     "When a real target cannot be exercised (for example, caller-owned external execution), explain the exact remaining caller action instead of fabricating evidence.",
     "\n--- CANONICAL SKILL ---\n",
     skill,
@@ -85,6 +93,8 @@ function canonicalInstructions(allowRepositoryExecution: boolean): string {
     authoring,
     "\n--- BINDING REFERENCE ---\n",
     bindings,
+    "\n--- BACKEND REFERENCE ---\n",
+    backend,
     ...(allowRepositoryExecution
       ? []
       : [
@@ -94,7 +104,17 @@ function canonicalInstructions(allowRepositoryExecution: boolean): string {
   ].join("\n");
 }
 
-function defaultPrompt(allowRepositoryExecution: boolean): string {
+function defaultPrompt(allowRepositoryExecution: boolean, workflow: "environment" | "drill"): string {
+  if (workflow === "environment") {
+    return [
+      "Inspect this repository's actual dependencies and prepare a useful synthetic backend for its existing agent.",
+      "Reuse compatible selected tools; otherwise author repository-owned tool contracts, behavior and starting data matching the actual interface. Preserve production agent code.",
+      allowRepositoryExecution
+        ? "Format, validate and use environment_check to verify local startup. Exercise supported operations only with appropriate inputs. Finish with firedrill serve and the precise existing connection seam."
+        : "Format and validate source without executing repository code. Finish with the exact local startup and connection instructions, marked unverified.",
+      "Do not invent drills or scenarios to satisfy a checklist. Tools ready does not mean the customer's agent has been tested.",
+    ].join(" ");
+  }
   return [
     "Set up or repair Firedrill in this repository and carry the canonical skill to its definition of done.",
     "Start by inspecting the actual product agent, its normal entry point, and the smallest tool/client composition seam.",
@@ -165,6 +185,9 @@ function assistantContent(message: SDKMessage): readonly FiredrillAgentEvent[] {
 }
 
 function validatedOptions(options: RunFiredrillAgentOptions) {
+  if (options.workflow !== undefined && !["environment", "drill"].includes(options.workflow)) {
+    throw new FiredrillAgentError("agent.INVALID_OPTIONS", "workflow must be environment or drill");
+  }
   if (
     options.allowRepositoryExecution !== undefined &&
     typeof options.allowRepositoryExecution !== "boolean"
@@ -228,10 +251,11 @@ export async function runFiredrillAgent(
   let model: string | undefined;
   let result: FiredrillAgentResult | undefined;
   const allowRepositoryExecution = options.allowRepositoryExecution !== false;
+  const workflow = options.workflow ?? "environment";
   const server = createFiredrillAuthoringServer(validated.root, { allowRepositoryExecution });
   try {
     const stream = query({
-      prompt: options.prompt?.trim() || defaultPrompt(allowRepositoryExecution),
+      prompt: options.prompt?.trim() || defaultPrompt(allowRepositoryExecution, workflow),
       options: {
         abortController: controller,
         cwd: validated.root,
@@ -250,6 +274,7 @@ export async function runFiredrillAgent(
           "mcp__firedrill__validate",
           "mcp__firedrill__format",
           "mcp__firedrill__plan",
+          "mcp__firedrill__environment_check",
           ...(allowRepositoryExecution ? ["mcp__firedrill__run"] : []),
           "mcp__firedrill__tool_check",
         ],
@@ -272,7 +297,7 @@ export async function runFiredrillAgent(
         systemPrompt: {
           type: "preset",
           preset: "claude_code",
-          append: canonicalInstructions(allowRepositoryExecution),
+          append: canonicalInstructions(allowRepositoryExecution, workflow),
         },
         hooks: {
           PreToolUse: [{ hooks: [repositoryGuardHook(validated.root)] }],
@@ -313,6 +338,16 @@ export async function runFiredrillAgent(
           };
         }
       }
+    }
+    if (result?.status === "completed" && workflow === "environment" && !controller.signal.aborted) {
+      const readiness = await checkFiredrillEnvironment(validated.root, allowRepositoryExecution);
+      result = {
+        ...result,
+        readiness,
+        status: readiness.status === "failed" ? "failed" : "completed",
+        errors:
+          readiness.status === "failed" ? readiness.diagnostics.map((item) => item.message) : result.errors,
+      };
     }
   } catch (error) {
     if (error instanceof FiredrillAgentError) throw error;

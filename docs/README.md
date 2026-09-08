@@ -4,13 +4,15 @@ Firedrill lets you run your existing AI agent against controlled tools and data,
 then check what it actually changed. Your agent still chooses its actions. Your
 test defines the surroundings and what a correct outcome looks like.
 
-Start with one task, one or two tools, and one check. You do not need to describe
-your entire company or copy your agent's internal database.
+Start with the tools your agent needs. Try their behavior and data before adding
+tests. You do not need to describe your entire company, copy your agent's internal
+database, or learn every concept before the first useful call.
 
 ## Start here
 
-1. [Run the quickstart](quickstart.md): install from the current source checkout,
-   create a project, and see a passing and failing result.
+1. [Start local tools](local-environment.md): select or create tools, open their
+   live workspace, and connect your agent. Or [try a complete drill](quickstart.md)
+   to see a passing and failing test first.
 2. [Understand your files](world-authoring.md): where tools, fake data, scenarios,
    agent connections, and checks live.
 3. [Connect an existing agent](quickstart.md#3-keep-the-agent-integration-at-one-seam):
@@ -39,6 +41,7 @@ human or another LLM. [See the distinction](world-authoring.md#people-and-permis
 
 | I want to… | Read |
 | --- | --- |
+| Start fake tools without writing a test yet | [Local environment](local-environment.md) |
 | Use Jest, Vitest, Mocha, or my own script | [TypeScript SDK](../packages/sdk/README.md) |
 | Replace an imported function or SDK method only in a test | [Test-side mocks and overrides](test-mocking.md) |
 | Change fake data or a tool response for one test | [Per-test setup](../packages/sdk/README.md#per-test-synthetic-data-and-tools) |

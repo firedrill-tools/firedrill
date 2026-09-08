@@ -9,8 +9,9 @@ const pages = {
       "Fields, types, and constraints for records in your fake services—not your agent’s own database.",
   },
   data: {
-    title: "Data",
-    description: "Starting records for the world or a scenario. Changes made by the agent appear under Runs.",
+    title: "Starting data",
+    description:
+      "Starting records from source. See live changes in State & activity and saved drill outcomes in Results.",
   },
   personas: {
     title: "Personas & actors",
@@ -28,10 +29,10 @@ const pages = {
   drills: {
     title: "Drills",
     description:
-      "A drill simulates an agent task in a starting scenario and checks the outcome. See results under Runs.",
+      "A drill gives your agent a task in a controlled environment and checks the outcome. See saved outcomes in Results.",
   },
   runs: {
-    title: "Runs",
+    title: "Results",
     description:
       "A run records one attempt at a drill. See what your agent did, what changed, and which checks passed.",
   },

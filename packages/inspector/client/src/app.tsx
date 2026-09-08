@@ -5,13 +5,22 @@ import { Button, IconButton, PageLoader } from "./components/primitives";
 import { AppShell } from "./components/shell";
 import { CatalogView } from "./features/catalog";
 import { DrillsView } from "./features/drills";
+import {
+  ConnectAgentView,
+  EnvironmentBanner,
+  EnvironmentView,
+  TestTool,
+  useEnvironment,
+} from "./features/environment";
 import { type RunHistoryControls, RunsView } from "./features/runs";
+import { ToolsView } from "./features/tools";
 import { WorldView } from "./features/world";
 import {
   navigateInspector,
   readInspectorLocation,
   readRunSelection,
   readScenarioId,
+  readToolSelection,
   runHref,
   scenarioHref,
 } from "./navigation";
@@ -177,6 +186,7 @@ function Notices({
 export function App() {
   const [location, setLocation] = useState(() => readInspectorLocation(window.location));
   const route = location.route;
+  const environment = useEnvironment();
   const [project, setProject] = useState<SimulationProject>();
   const [history, setHistory] = useState<RunHistory>(emptyRunHistory);
   const [requests, setRequests] = useState<readonly SimulationRunRequest[]>([]);
@@ -442,11 +452,39 @@ export function App() {
             onSelectScenario={selectScenario}
           />
         ) : null}
-        {route === "/scenarios" || route === "/tools" ? (
+        {route === "/tools" ? (
+          <ToolsView
+            project={project}
+            selection={readToolSelection(location.search)}
+            onVisit={visit}
+            runtimeSummary={<EnvironmentBanner environment={environment} onVisit={visit} />}
+            testTool={(tool) => (
+              <TestTool
+                key={`${tool.id}:${environment.status?.available ? `${environment.status.metadata.worldInstanceId}:${environment.status.description.generation}` : "source"}`}
+                tool={tool}
+                project={project}
+                environment={environment}
+                onVisit={visit}
+              />
+            )}
+          />
+        ) : null}
+        {route === "/environment" ? (
+          <EnvironmentView
+            project={project}
+            environment={environment}
+            tab={new URLSearchParams(location.search).get("tab") === "activity" ? "activity" : "state"}
+            onVisit={visit}
+          />
+        ) : null}
+        {route === "/connect" ? (
+          <ConnectAgentView project={project} environment={environment} onVisit={visit} />
+        ) : null}
+        {route === "/scenarios" ? (
           <WorldView
             key={route}
             project={project}
-            page={route === "/tools" ? "tools" : "scenarios"}
+            page="scenarios"
             runs={history.runs}
             runHistory={historyControls}
             unavailableRunCount={history.unavailable.length}

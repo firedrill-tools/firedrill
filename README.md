@@ -9,7 +9,30 @@ Firedrill runs worlds and drills. It does not host, rewrite, or choose the agent
 **New here? [Start with the developer guide](docs/README.md)** for setup, file
 organization, connecting your agent, reading results, and optional capture.
 
-## The product loop
+## Start with tools, then test your agent
+
+Choose a ready-made tool or create your own, start it locally, and connect the
+agent you already have. The inspector shows what each tool does, its data, and
+the calls it receives. No account, Docker, scenario, or test definition is needed
+to start a backend.
+
+```sh
+firedrill init                  # guided tool selection and setup
+firedrill serve                 # start the local tools and open the inspector
+```
+
+The tools keep real synthetic state. A write changes what the next call reads;
+reset restores the starting state. This is a backend for your agent, not a new
+agent or a claim that your agent passed a test.
+
+When ready, add a **drill**: a task for your agent and checks on its consequences.
+Use the same tools and data, with your own test runner or `firedrill run`.
+See [the tool-first guide](docs/local-environment.md) for the complete flow.
+
+Packages are still unpublished; use the source checkout or reviewed packed
+artifacts until a release is available. No npm install is claimed to work today.
+
+## The underlying pieces
 
 1. **World** — repository-owned starting state, actors, permissions, clock, and deterministic behavior.
 2. **Tools** — local or explicitly selected package operations and the stateful consequences or failures they produce.
@@ -32,10 +55,13 @@ node packages/cli/dist/bin.js --root examples/quickstart
 
 The drill passes and prints an HTML report path. Change the expected final value as described in the quickstart and run it again to see the assertion diff and reproduction command.
 
-For an existing project, run the guided terminal setup or select a deterministic path directly. JSON, CI, and piped `init` remain read-only unless `--path` is present:
+For an existing project, use guided tool setup or a deterministic command.
+JSON, CI, and piped `init` remain read-only without an explicit setup selection:
 
 ```sh
 firedrill init
+firedrill init --custom my-tool --json # local editable backend; no test required
+firedrill init --tool @scope/firedrill-tool # select an installed package
 firedrill init --path firedrill-agent # canonical skill + optional local authoring agent
 firedrill init --path coding-agent  # canonical skill + repository brief
 firedrill init --path template      # complete runnable local example
@@ -54,7 +80,12 @@ firedrill inspect
 firedrill report verify .firedrill/reports/<run-id>
 ```
 
-`firedrill plan` lists the compiled Tools, drills, targets, and suites before anything runs. Bare `firedrill` runs every drill. `firedrill inspect` opens the offline World, Drills, and Runs workspace for the same repository; it starts real drills, reads their live state and evidence, repeats recorded seeds, and compares verified runs through the public local runtime. See the [quickstart guide](docs/quickstart.md) for the source layout and how to select an agent target.
+`firedrill plan` lists what is defined before anything runs. Bare `firedrill`
+runs every drill. `firedrill serve` runs the baseline tools and opens their live
+inspector. `firedrill inspect` on its own browses source and retained results;
+it does not silently start a backend. The same inspector can execute runnable
+drills, inspect consequences, and compare saved reports. See the
+[quickstart guide](docs/quickstart.md) for source layout and agent targets.
 
 The complete command reference is [generated from the executable CLI](docs/cli-reference.md), so command examples cannot quietly drift from `--help`.
 
@@ -123,6 +154,9 @@ firedrill agent
 
 Firedrill Agent uses the Claude Agent SDK with the developer's own Anthropic key. It can inspect and edit ordinary repository files and call the real local formatter, compiler, Tool checks, and drill runner. It cannot read secret files or generated evidence, use a shell, commit, push, publish, or contact a hosted Firedrill service. Repository content selected during the session is sent to Anthropic under Anthropic's applicable terms; no source is sent to Firedrill.
 
+An invocation defaults to preparing a synthetic environment, not generating a
+test suite. Its completion includes an independent compiler/startup check—not
+just the model's answer. Use `firedrill agent --workflow drill` to author a test.
 An invocation defaults to at most 40 turns, $2 of model spend, and a 15-minute wall-clock deadline. The CLI exposes explicit overrides for each limit.
 
 ## What works now

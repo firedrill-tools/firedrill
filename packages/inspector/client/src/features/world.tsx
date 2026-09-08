@@ -1,5 +1,5 @@
 import { Clock3, Database, FileInput, Radio, TriangleAlert, Wrench } from "lucide-react";
-import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { type ReactNode, useEffect, useMemo, useState } from "react";
 import { ActorIdentity } from "../components/actor-identity";
 import { CodeDocument } from "../components/code-document";
 import { DataViewer } from "../components/data-viewer";
@@ -156,7 +156,7 @@ function WorldRail({
   );
 }
 
-function OperationTable({ tool }: { readonly tool: SimulationTool }) {
+export function OperationTable({ tool }: { readonly tool: SimulationTool }) {
   const hasDescriptions = tool.operations.some((operation) => operation.description !== undefined);
   const pagination = usePagination(tool.operations, tool.id, 10);
   return (

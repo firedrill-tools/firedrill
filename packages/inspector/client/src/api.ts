@@ -1,4 +1,12 @@
 import type { SimulationReportAttachments as ReportAttachments } from "@firedrill/simulation";
+import type {
+  EnvironmentActivityPage,
+  EnvironmentCall,
+  EnvironmentCallResult,
+  EnvironmentConnections,
+  EnvironmentStatePage,
+  EnvironmentStatus,
+} from "./environment-types";
 import {
   attachmentDataUrl,
   attachmentPreviewDataUrl,
@@ -144,6 +152,24 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
 }
 
 export const inspectorApi = {
+  environment: () => request<EnvironmentStatus>("/api/environment"),
+  environmentConnections: () => request<EnvironmentConnections>("/api/environment/connections"),
+  environmentState: (packageId: string, namespace: string, generation: number, afterRowId?: string) => {
+    const query = new URLSearchParams({ packageId, namespace, generation: String(generation), limit: "50" });
+    if (afterRowId !== undefined) query.set("afterRowId", afterRowId);
+    return request<EnvironmentStatePage>(`/api/environment/state?${query.toString()}`);
+  },
+  environmentActivity: (generation: number, fromSequence = 1) =>
+    request<EnvironmentActivityPage>(
+      `/api/environment/activity?generation=${generation}&fromSequence=${fromSequence}&limit=50`,
+    ),
+  callEnvironmentTool: (input: EnvironmentCall) =>
+    request<EnvironmentCallResult>("/api/environment/call", { method: "POST", body: JSON.stringify(input) }),
+  resetEnvironment: (worldInstanceId: string) =>
+    request<{ readonly worldInstanceId: string }>("/api/environment/reset", {
+      method: "POST",
+      body: JSON.stringify({ worldInstanceId }),
+    }),
   project: () => request<SimulationProject>("/api/v1/project"),
   refreshProject: () => request<SimulationProject>("/api/v1/project/refresh", { method: "POST" }),
   source: (kind: SimulationSourceKind, id: string) =>

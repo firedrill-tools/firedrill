@@ -9,10 +9,12 @@ import type {
   EvidenceEntry,
   JsonObject,
   OperationId,
+  OperationContract,
   PackageId,
   Seed,
   Sha256,
   StableId,
+  ToolStateContract,
   WorldInstanceId,
 } from "@firedrill/contracts";
 import {
@@ -26,8 +28,8 @@ import {
   VirtualTimeSchema,
   WorldInstanceIdSchema,
 } from "@firedrill/contracts";
-import type { MaterializedDrillScenario } from "@firedrill/drills";
-import { createDrillWorld, DrillSetupError } from "@firedrill/drills";
+import type { MaterializedDrillScenario, MaterializedWorldScenario } from "@firedrill/drills";
+import { createDrillWorld, createScenarioWorld, DrillSetupError } from "@firedrill/drills";
 import type { LoadedWorldBuild } from "@firedrill/world-build";
 import type { ClockAdvanceResult, FaultControlResult, KernelInvocationResult } from "@firedrill/world-kernel";
 import { BoundWorldClient, WorldKernel } from "@firedrill/world-kernel";
@@ -43,18 +45,24 @@ import type {
 import type { SqliteWorldStore } from "@firedrill/world-store-sqlite";
 import { prepareExecutableBuild } from "./project-build.js";
 import { FiredrillProjectError } from "./project-error.js";
+import { LocalWorldBindingSession, validateLocalWorldListenOptions } from "./local-world-bindings.js";
+import type { LocalWorldBinding, LocalWorldListenOptions } from "./local-world-bindings.js";
 
 export interface CreateLocalWorldOptions {
   /** Consumer repository containing firedrill.json. Defaults to process.cwd(). */
   readonly root?: string;
   /** Repository drill whose scenario supplies initial state, actors, faults, events, and clock. */
-  readonly drill: string;
+  readonly drill?: string;
+  /** Named compiled scenario. Omit both scenario and drill to use the world baseline. */
+  readonly scenario?: string;
   /** Override the repository seed for this world. */
   readonly seed?: string;
   /** Load an existing immutable build instead of compiling current source. */
   readonly buildHash?: string;
   /** New directory for retained SQLite artifacts. Defaults beneath <root>/.firedrill/worlds. */
   readonly directory?: string;
+  /** Positive operation budget. Defaults to the selected drill budget, or 1,000 without a drill. */
+  readonly maxToolCalls?: number;
 }
 
 export interface LocalWorldActor {
@@ -67,14 +75,20 @@ export interface LocalWorldTool {
   readonly packageId: PackageId;
   readonly version: string;
   readonly operations: readonly OperationId[];
+  /** Contracts from this running world's immutable build, not current repository source. */
+  readonly operationContracts: readonly OperationContract[];
   readonly stateNamespaces: readonly StableId[];
+  readonly stateContracts: readonly ToolStateContract[];
   readonly events: readonly EventId[];
   readonly faults: readonly StableId[];
 }
 
 export interface LocalWorldDescription {
   readonly schemaVersion: 1;
-  readonly drillId: StableId;
+  /** Cursor epoch: successful resets invalidate previous live-state and evidence cursors. */
+  readonly generation: number;
+  readonly worldId: StableId;
+  readonly drillId?: StableId;
   readonly scenarioId?: StableId;
   readonly buildHash: Sha256;
   readonly packageLockHash: Sha256;
@@ -141,6 +155,9 @@ export interface LocalWorld {
   setFault(input: LocalWorldFaultControl): FaultControlResult;
   advanceTime(toUs: number, options?: LocalWorldAdvanceOptions): ClockAdvanceResult;
   reset(options?: LocalWorldResetOptions): LocalWorldResetResult;
+  /** Creates actor-scoped loopback listeners; their URLs and tokens survive world resets. */
+  listen(options?: LocalWorldListenOptions): Promise<LocalWorldBinding>;
+  /** Revokes access immediately and initiates listener cleanup. Await binding.close() for socket closure. */
   close(): void;
 }
 
@@ -151,7 +168,8 @@ interface LocalWorldControllerOptions {
   readonly baselineFilePath: string;
   readonly diagnostics: readonly Diagnostic[];
   readonly build: LoadedWorldBuild;
-  readonly materialized: MaterializedDrillScenario;
+  readonly materialized: MaterializedWorldScenario | MaterializedDrillScenario;
+  readonly maxToolCalls: number;
   readonly store: SqliteWorldStore;
   readonly kernel: WorldKernel;
   readonly clients: ReadonlyMap<ActorId, BoundWorldClient>;
@@ -179,7 +197,9 @@ class LocalWorldController implements LocalWorld {
   readonly baselineFilePath: string;
   readonly diagnostics: readonly Diagnostic[];
   private readonly build: LoadedWorldBuild;
-  private readonly materialized: MaterializedDrillScenario;
+  private readonly materialized: MaterializedWorldScenario | MaterializedDrillScenario;
+  private readonly maxToolCalls: number;
+  private readonly bindings = new Set<LocalWorldBindingSession>();
   private readonly store: SqliteWorldStore;
   private kernel: WorldKernel;
   private clients: ReadonlyMap<ActorId, BoundWorldClient>;
@@ -195,6 +215,7 @@ class LocalWorldController implements LocalWorld {
     this.diagnostics = options.diagnostics;
     this.build = options.build;
     this.materialized = options.materialized;
+    this.maxToolCalls = options.maxToolCalls;
     this.store = options.store;
     this.kernel = options.kernel;
     this.clients = options.clients;
@@ -204,7 +225,9 @@ class LocalWorldController implements LocalWorld {
     this.assertOpen();
     return {
       schemaVersion: 1,
-      drillId: this.materialized.drill.id,
+      generation: this.generation,
+      worldId: this.build.worldIr.world.id,
+      ...("drill" in this.materialized ? { drillId: this.materialized.drill.id } : {}),
       ...(this.materialized.scenarioId === undefined ? {} : { scenarioId: this.materialized.scenarioId }),
       buildHash: this.build.manifest.buildHash,
       packageLockHash: this.build.manifest.packageLockHash,
@@ -218,7 +241,13 @@ class LocalWorldController implements LocalWorld {
           packageId: tool.manifest.id,
           version: tool.manifest.version,
           operations: tool.manifest.operations.map((operation) => operation.id).sort(compareStableStrings),
+          operationContracts: structuredClone(tool.manifest.operations).sort((left, right) =>
+            compareStableStrings(left.id, right.id),
+          ),
           stateNamespaces: tool.manifest.state.map((state) => state.namespace).sort(compareStableStrings),
+          stateContracts: structuredClone(tool.manifest.state).sort((left, right) =>
+            compareStableStrings(left.namespace, right.namespace),
+          ),
           events: tool.manifest.events.map((event) => event.id).sort(compareStableStrings),
           faults: tool.manifest.faults.map((fault) => fault.id).sort(compareStableStrings),
         }))
@@ -241,7 +270,7 @@ class LocalWorldController implements LocalWorld {
     if (client === undefined) {
       throw new FiredrillProjectError(
         "framework.INVALID_ARGUMENT",
-        `actor ${actorId.data} is not present in this drill scenario`,
+        `actor ${actorId.data} is not present in this world scenario`,
         { details: { available: this.materialized.actors.map((actor) => actor.actorId) } },
       );
     }
@@ -259,11 +288,18 @@ class LocalWorldController implements LocalWorld {
         "packageId, operationId, arguments, and idempotencyKey must form a valid Tool call",
       );
     }
-    return client.invoke(
-      { packageId: packageId.data, operationId: operationId.data },
-      arguments_.data,
-      input.idempotencyKey === undefined ? {} : { idempotencyKey: input.idempotencyKey },
-    );
+    // The control API is operator activity, distinct from actor-scoped listener traffic.
+    // Preserve that origin in the canonical journal without treating either as a drill verdict.
+    const correlationId = this.nextCorrelation("operator");
+    return this.kernel.invoke({
+      schemaVersion: 1,
+      callId: correlationId.replace("corr_", "call_"),
+      correlationId,
+      actorBindingId: client.actorBindingId,
+      operation: { packageId: packageId.data, operationId: operationId.data },
+      arguments: arguments_.data,
+      ...(input.idempotencyKey === undefined ? {} : { idempotencyKey: input.idempotencyKey }),
+    });
   }
 
   state(query: LocalWorldStateQuery): readonly StoredStateRecord[] {
@@ -427,11 +463,62 @@ class LocalWorldController implements LocalWorld {
     }
   }
 
+  async listen(options: LocalWorldListenOptions = {}): Promise<LocalWorldBinding> {
+    this.assertOpen();
+    validateLocalWorldListenOptions(options);
+    const available = this.materialized.actors.map((actor) => actor.actorId);
+    const actorId = StableIdSchema.safeParse(
+      options.actorId === undefined ? (available.length === 1 ? available[0] : undefined) : options.actorId,
+    );
+    if (!actorId.success || !this.clients.has(actorId.data)) {
+      throw new FiredrillProjectError(
+        "framework.INVALID_ARGUMENT",
+        available.length === 0
+          ? "this world scenario has no actor; define an actor and explicit grants in world source before listening"
+          : "listen requires a known actorId unless the world scenario has exactly one actor",
+        { details: { available } },
+      );
+    }
+    const selectedActorId = actorId.data;
+    const client: Pick<BoundWorldClient, "invoke"> = Object.freeze({
+      invoke: (...arguments_: Parameters<BoundWorldClient["invoke"]>) => {
+        this.assertOpen();
+        // A reset revokes the previous generation. Resolve the current actor client per invocation.
+        const current = this.clients.get(selectedActorId);
+        if (current === undefined)
+          throw new FiredrillProjectError(
+            "framework.WORLD_CLOSED",
+            "the selected actor binding is unavailable",
+          );
+        return current.invoke(...arguments_);
+      },
+    });
+    const session = new LocalWorldBindingSession({
+      worldInstanceId: this.store.metadata().worldInstanceId,
+      actorId: selectedActorId,
+      tools: this.build.tools,
+      client,
+      options,
+      onClosed: () => this.bindings.delete(session),
+    });
+    // Register before the first asynchronous listen so close() also owns pending startups.
+    this.bindings.add(session);
+    return session.start();
+  }
+
   close(): void {
     if (this.closed) return;
-    this.revokeClients();
-    this.store.close();
     this.closed = true;
+    this.revokeClients();
+    for (const binding of this.bindings) {
+      void binding.close().catch(() => {
+        process.emitWarning(
+          "A local world listener could not close cleanly; await binding.close() for the cleanup error.",
+          { code: "FIREDRILL_WORLD_CLOSE_FAILED" },
+        );
+      });
+    }
+    this.store.close();
   }
 
   private createKernel(): WorldKernel {
@@ -442,7 +529,7 @@ class LocalWorldController implements LocalWorld {
       ...(this.materialized.toolOverrides === undefined
         ? {}
         : { toolOverrides: this.materialized.toolOverrides }),
-      budgets: { maxToolCalls: this.materialized.drill.timeline.maxToolCalls },
+      budgets: { maxToolCalls: this.maxToolCalls },
     });
   }
 
@@ -477,26 +564,50 @@ class LocalWorldController implements LocalWorld {
 }
 
 /**
- * Creates one retained local world from repository source and a drill scenario.
+ * Creates one retained local world from a baseline, named scenario, or drill scenario.
  * The caller owns the agent; this control handle owns only the synthetic world.
  */
-export async function createLocalWorld(options: CreateLocalWorldOptions): Promise<LocalWorld> {
+export async function createLocalWorld(options: CreateLocalWorldOptions = {}): Promise<LocalWorld> {
   const root = resolve(options.root ?? process.cwd());
-  const drillId = StableIdSchema.safeParse(options.drill);
-  if (!drillId.success) {
-    throw new FiredrillProjectError("framework.INVALID_ARGUMENT", "drill must be a valid Firedrill id");
+  if (options.drill !== undefined && options.scenario !== undefined) {
+    throw new FiredrillProjectError(
+      "framework.INVALID_ARGUMENT",
+      "select either drill or scenario, not both",
+    );
   }
+  const drillId = options.drill === undefined ? undefined : StableIdSchema.safeParse(options.drill);
+  const scenarioId = options.scenario === undefined ? undefined : StableIdSchema.safeParse(options.scenario);
+  if (drillId?.success === false || scenarioId?.success === false)
+    throw new FiredrillProjectError(
+      "framework.INVALID_ARGUMENT",
+      "drill and scenario must be valid Firedrill ids",
+    );
+  const budgetOverride = positiveInteger(options.maxToolCalls, "maxToolCalls", 1_000_000);
   const seed = options.seed === undefined ? undefined : SeedSchema.safeParse(options.seed);
   if (seed !== undefined && !seed.success) {
     throw new FiredrillProjectError("framework.INVALID_ARGUMENT", "seed must be an unsigned 64-bit integer");
   }
   const prepared = await prepareExecutableBuild(root, options.buildHash);
-  const drill = prepared.build.worldIr.drills.find((candidate) => candidate.id === drillId.data);
-  if (drill === undefined) {
+  const drill =
+    drillId === undefined
+      ? undefined
+      : prepared.build.worldIr.drills.find((candidate) => candidate.id === drillId.data);
+  if (drillId !== undefined && drill === undefined) {
     throw new FiredrillProjectError("framework.DRILL_NOT_FOUND", `no drill named ${drillId.data} exists`, {
       details: { available: prepared.build.worldIr.drills.map((candidate) => candidate.id) },
     });
   }
+  if (
+    scenarioId !== undefined &&
+    !prepared.build.worldIr.scenarios.some((candidate) => candidate.id === scenarioId.data)
+  ) {
+    throw new FiredrillProjectError(
+      "framework.SCENARIO_NOT_FOUND",
+      `no scenario named ${scenarioId.data} exists`,
+      { details: { available: prepared.build.worldIr.scenarios.map((candidate) => candidate.id) } },
+    );
+  }
+  const maxToolCalls = budgetOverride ?? drill?.timeline.maxToolCalls ?? 1_000;
 
   const suffix = executionSuffix();
   const directoryPath = resolve(root, options.directory ?? join(".firedrill", "worlds", `world_${suffix}`));
@@ -513,15 +624,21 @@ export async function createLocalWorld(options: CreateLocalWorldOptions): Promis
   const worldInstanceId: WorldInstanceId = WorldInstanceIdSchema.parse(`world_${suffix}`);
 
   try {
-    const created = createDrillWorld({
+    const input = {
       build: prepared.build,
-      drillId: drillId.data,
       filePath: worldFilePath,
       worldInstanceId,
       correlationId: CorrelationIdSchema.parse(`corr_create_${suffix}`),
       ...(seed?.success ? { seed: seed.data as Seed } : {}),
-      maxToolCalls: drill.timeline.maxToolCalls,
-    });
+      maxToolCalls,
+    };
+    const created =
+      drillId === undefined
+        ? createScenarioWorld({
+            ...input,
+            ...(scenarioId === undefined ? {} : { scenarioId: scenarioId.data }),
+          })
+        : createDrillWorld({ ...input, drillId: drillId.data });
     try {
       created.store.createSnapshot(baselineFilePath, CorrelationIdSchema.parse(`corr_baseline_${suffix}`));
       return new LocalWorldController({
@@ -532,6 +649,7 @@ export async function createLocalWorld(options: CreateLocalWorldOptions): Promis
         diagnostics: prepared.diagnostics,
         build: prepared.build,
         materialized: created.materialized,
+        maxToolCalls,
         store: created.store,
         kernel: created.kernel,
         clients: created.clients,

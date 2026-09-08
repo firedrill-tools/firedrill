@@ -45,6 +45,8 @@ export type Route =
   | "/personas"
   | "/scenarios"
   | "/tools"
+  | "/environment"
+  | "/connect"
   | "/drills"
   | "/runs";
 

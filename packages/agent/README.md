@@ -6,6 +6,10 @@ The package is not required to define worlds or run drills. It never owns verdic
 
 Running it invokes Anthropic through the Claude Agent SDK and may send repository content selected during the session to Anthropic under Anthropic's applicable terms. It does not send source to Firedrill. The wrapper is Apache-2.0; the Claude Agent SDK dependency is distributed under Anthropic's own terms.
 
+Packages are pre-release and not published yet. The commands below describe the
+installed-package workflow; today use a source checkout or reviewed packed
+artifacts as described in the [local environment guide](../../docs/local-environment.md).
+
 ```sh
 pnpm add -D @firedrill/cli @firedrill/agent
 export ANTHROPIC_API_KEY=your_key
@@ -14,6 +18,23 @@ firedrill agent
 ```
 
 Each invocation defaults to at most 40 turns, $2 of model spend, and a 15-minute wall-clock deadline. See `firedrill agent --help` for explicit overrides.
+
+## Environment first
+
+The default `workflow: "environment"` prepares tools, their deterministic behavior,
+starting data and actor access. It does not require scenarios, targets or drills.
+After the SDK session, Firedrill independently compiles and starts the selected
+backend before returning `readiness.status: "ready"`. The temporary check closes
+its listeners; use `firedrill serve` to keep the backend available.
+
+`readiness.agentTested` is always false: listener startup is not an agent test,
+and it does not prove the fake service's fidelity. Invalid source, unloaded
+behavior or missing access returns a failed result even if the model says done.
+In source-only mode the check returns `source-validated` without importing code.
+
+Use `firedrill agent --workflow drill` (or `workflow: "drill"` in the API) when
+authoring a repeatable agent test. The skill then follows the real runner and
+report loop. A model response by itself never establishes a passing test.
 
 ## Source-only authoring
 

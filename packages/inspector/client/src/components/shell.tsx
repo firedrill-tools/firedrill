@@ -1,11 +1,13 @@
 import {
   Activity,
+  ChevronDown,
   Database,
   FileStack,
   FlaskConical,
   Globe,
   Menu,
   Moon,
+  Plug,
   RefreshCw,
   Sun,
   TestTubeDiagonal,
@@ -28,23 +30,31 @@ const navigation: ReadonlyArray<{
   }>;
 }> = [
   {
-    id: "world",
-    label: "World",
+    id: "local",
+    label: "Local environment",
     items: [
-      { route: "/world", label: "Synthetic world", icon: Globe },
-      { route: "/schema", label: "Schema", icon: FileStack },
-      { route: "/data", label: "Data", icon: Database },
       { route: "/tools", label: "Tools", icon: Wrench },
-      { route: "/personas", label: "Personas & actors", icon: Users },
+      { route: "/environment", label: "State & activity", icon: Activity },
+      { route: "/connect", label: "Connect agent", icon: Plug },
     ],
   },
   {
     id: "testing",
     label: "Testing",
     items: [
-      { route: "/scenarios", label: "Scenarios", icon: FlaskConical },
       { route: "/drills", label: "Drills", icon: TestTubeDiagonal },
-      { route: "/runs", label: "Runs", icon: Activity },
+      { route: "/runs", label: "Results", icon: Activity },
+    ],
+  },
+  {
+    id: "source",
+    label: "Source definitions",
+    items: [
+      { route: "/world", label: "World setup", icon: Globe },
+      { route: "/schema", label: "Schema", icon: FileStack },
+      { route: "/data", label: "Starting data", icon: Database },
+      { route: "/personas", label: "Actors & permissions", icon: Users },
+      { route: "/scenarios", label: "Scenarios", icon: FlaskConical },
     ],
   },
 ];
@@ -72,6 +82,12 @@ export function AppShell({
 }) {
   const [theme, setTheme] = useState<"light" | "dark">(storedTheme);
   const [mobileOpen, setMobileOpen] = useState(false);
+  const sourceSelected =
+    navigation.find((group) => group.id === "source")?.items.some((item) => item.route === route) ?? false;
+  const [sourceExpanded, setSourceExpanded] = useState(sourceSelected);
+  useEffect(() => {
+    if (sourceSelected) setSourceExpanded(true);
+  }, [sourceSelected]);
   const [compact, setCompact] = useState(() => window.matchMedia("(max-width: 1023px)").matches);
   useEffect(() => {
     const query = window.matchMedia("(max-width: 1023px)");
@@ -148,24 +164,43 @@ export function AppShell({
           <nav aria-label="Local inspector">
             {navigation.map((group) => (
               <section className="fd-nav-group" key={group.id} aria-labelledby={`nav-${group.id}`}>
-                <h2 id={`nav-${group.id}`} className="fd-sidebar__label">
-                  {group.label}
-                </h2>
-                {group.items.map((item) => {
-                  const Icon = item.icon;
-                  return (
-                    <button
-                      type="button"
-                      key={item.route}
-                      className="fd-nav-item"
-                      aria-current={route === item.route ? "page" : undefined}
-                      onClick={() => navigate(item.route)}
-                    >
-                      <Icon size={18} aria-hidden="true" />
-                      <span>{item.label}</span>
-                    </button>
-                  );
-                })}
+                {group.id === "source" ? (
+                  <button
+                    type="button"
+                    id={`nav-${group.id}`}
+                    className="fd-sidebar__disclosure"
+                    aria-expanded={sourceExpanded}
+                    aria-controls="source-navigation"
+                    onClick={() => setSourceExpanded((value) => !value)}
+                  >
+                    {group.label}
+                    <ChevronDown size={13} aria-hidden="true" />
+                  </button>
+                ) : (
+                  <h2 id={`nav-${group.id}`} className="fd-sidebar__label">
+                    {group.label}
+                  </h2>
+                )}
+                <div
+                  id={group.id === "source" ? "source-navigation" : undefined}
+                  hidden={group.id === "source" && !sourceExpanded}
+                >
+                  {group.items.map((item) => {
+                    const Icon = item.icon;
+                    return (
+                      <button
+                        type="button"
+                        key={item.route}
+                        className="fd-nav-item"
+                        aria-current={route === item.route ? "page" : undefined}
+                        onClick={() => navigate(item.route)}
+                      >
+                        <Icon size={18} aria-hidden="true" />
+                        <span>{item.label}</span>
+                      </button>
+                    );
+                  })}
+                </div>
               </section>
             ))}
           </nav>

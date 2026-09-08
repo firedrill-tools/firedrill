@@ -27,6 +27,29 @@ beforeEach(() => {
 });
 
 describe("Firedrill Agent runtime", () => {
+  it("cannot claim a ready environment from model prose without valid repository source", async () => {
+    mocked.query.mockReturnValueOnce(
+      stream([
+        {
+          type: "result",
+          subtype: "success",
+          session_id: "session_unverified",
+          is_error: false,
+          num_turns: 1,
+          duration_ms: 1,
+          total_cost_usd: 0,
+          result: "Everything is ready and your agent passed.",
+        } as unknown as SDKMessage,
+      ]),
+    );
+    const result = await runFiredrillAgent({
+      root: process.cwd(),
+      environment: { ANTHROPIC_API_KEY: "test-key" },
+    });
+    expect(result.status).toBe("failed");
+    expect(result.readiness).toMatchObject({ status: "failed", agentTested: false });
+    expect(result.errors.length).toBeGreaterThan(0);
+  });
   it("removes repository execution from SDK permissions and describes the authoring-only handoff", async () => {
     mocked.query.mockImplementationOnce((call: Record<string, unknown>) => {
       mocked.calls.push(call);
@@ -47,6 +70,7 @@ describe("Firedrill Agent runtime", () => {
       root: process.cwd(),
       environment: { ANTHROPIC_API_KEY: "test-key" },
       allowRepositoryExecution: false,
+      workflow: "drill",
     });
     expect(result.status).toBe("completed");
     const call = mocked.calls.at(-1) as {
@@ -146,6 +170,7 @@ describe("Firedrill Agent runtime", () => {
     const result = await runFiredrillAgent({
       root: process.cwd(),
       prompt: "Validate this repository.",
+      workflow: "drill",
       model: "sonnet",
       environment: {
         ANTHROPIC_API_KEY: "test-key",

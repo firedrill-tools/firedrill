@@ -155,7 +155,7 @@ describe("exact run navigation", () => {
     navigateInspector(scenarioHref("/world", undefined), history.port, true);
     expect(history.port.location.search).toBe("");
     expect(readInspectorLocation({ pathname: "/unknown", search: "?run=bad" })).toEqual({
-      route: "/world",
+      route: "/tools",
       search: "",
     });
   });

@@ -21,9 +21,11 @@ import { Client, StreamableHTTPClientTransport } from "@modelcontextprotocol/cli
 import { afterEach, describe, expect, it } from "vitest";
 import {
   createDrillWorld,
+  createScenarioWorld,
   DrillSetupError,
   DrillTrialCoordinator,
   materializeDrillScenario,
+  materializeWorldScenario,
   runDrill,
   runDrillTrial,
 } from "../src/index.js";
@@ -412,6 +414,47 @@ describe("drill scenario materialization", () => {
       },
     ]);
     expect(first.initialEvents[0]?.actorBindingId).toBe(actorBindingId);
+  });
+
+  it("materializes standalone baseline and named scenarios without changing drill evidence", () => {
+    const build = loadedBuild();
+    const baseline = materializeWorldScenario(build);
+    expect(baseline.virtualTimeUs).toBe(50);
+    expect(baseline).not.toHaveProperty("drill");
+    expect(baseline).not.toHaveProperty("scenarioId");
+    const { drill: _drill, ...drillScenario } = materializeDrillScenario(build, "release-ready-parcel");
+    expect(materializeWorldScenario(build, "ready-for-release")).toEqual(drillScenario);
+    expect(() => materializeWorldScenario(build, "missing")).toThrow("build has no scenario missing");
+    const directory = temporaryDirectory();
+    const shared = { build, worldInstanceId: "world_same001", correlationId: "corr_same001", seed: "81" };
+    const drill = createDrillWorld({
+      ...shared,
+      drillId: "release-ready-parcel",
+      filePath: join(directory, "drill.sqlite"),
+    });
+    const standalone = createScenarioWorld({
+      ...shared,
+      scenarioId: "ready-for-release",
+      filePath: join(directory, "standalone.sqlite"),
+    });
+    try {
+      for (const created of [drill, standalone]) {
+        created.clients
+          .get("dispatcher")
+          ?.invoke(
+            { packageId: "parcel-service", operationId: "parcels.release" },
+            { parcelId: "parcel-a" },
+            { idempotencyKey: "same-call" },
+          );
+        created.kernel.advanceTime(120, { correlationId: "corr_clock001" });
+      }
+      expect(standalone.store.readEvidence()).toEqual(drill.store.readEvidence());
+      expect(standalone.store.metadata()).toEqual(drill.store.metadata());
+      expect(standalone.store.listScheduledEvents()).toEqual(drill.store.listScheduledEvents());
+    } finally {
+      standalone.store.close();
+      drill.store.close();
+    }
   });
 
   it("creates state, faults, actors, clock, and initial timers atomically in one world", () => {

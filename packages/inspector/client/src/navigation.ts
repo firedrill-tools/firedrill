@@ -27,11 +27,29 @@ export function readInspectorLocation(location: {
     route === "/data" ||
     route === "/personas" ||
     route === "/scenarios" ||
-    route === "/tools"
+    route === "/tools" ||
+    route === "/environment" ||
+    route === "/connect"
   ) {
     return { route, search: location.search };
   }
-  return { route: "/world", search: "" };
+  return { route: "/tools", search: "" };
+}
+
+export type ToolTab = "behavior" | "data" | "test" | "source";
+
+export function toolHref(id: string, tab: ToolTab = "behavior"): string {
+  return `/tools?${new URLSearchParams({ tool: id, tab }).toString()}`;
+}
+
+export function readToolSelection(search: string): { id: string | undefined; tab: ToolTab } {
+  const params = new URLSearchParams(search);
+  const ids = params.getAll("tool");
+  const tab = params.get("tab");
+  return {
+    id: ids.length === 0 ? undefined : ids.length === 1 ? ids[0] : "",
+    tab: tab === "data" || tab === "test" || tab === "source" ? tab : "behavior",
+  };
 }
 
 export function navigateInspector(

@@ -1,30 +1,41 @@
 ---
 name: firedrill
-description: Set up, author, validate, run, reproduce, or debug Firedrill synthetic worlds and agent drills in a software repository. Use when an agent must inspect an AI agent's real tool boundary, model deterministic Tool behavior and state, externally bind the existing agent through direct/HTTP/MCP/CLI/command/module seams, write *.drill.yaml tests or suites, iterate on Firedrill diagnostics, and produce local evidence reports.
+description: Set up or edit Firedrill synthetic tools and data for an existing agent, or author and debug repeatable agent drills. Inspect real interfaces, preserve production logic, validate repo-owned source and use local backend or test workflows according to the user's task.
 ---
 
-# Build and run agent drills
+# Create synthetic tools and run agent drills
 
-Give the existing AI agent a deterministic, stateful world to act inside. Keep the agent process customer-owned and its production logic unchanged. Reconfigure one existing dependency seam or add a separate test-only harness, run drills locally, and assert on consequences rather than model wording.
+Give the existing AI agent controlled tools and data. Keep the agent process customer-owned and its production logic unchanged. Match the user's task: they may want only a synthetic backend, or a repeatable drill that checks their agent's actions. A backend does not require a target, task, or assertions. Read [references/backend.md](references/backend.md) for tool-first setup; use the drill workflow below when the request includes testing an agent.
+
+For a fresh setup, prefer tools → starting data/behavior → local startup → existing
+agent connection. Do not make users choose frameworks, scenarios and tests before
+they can try a useful tool. Existing detected dependencies are hints, not proof
+of an agent's interface. Inspect actual inputs, responses and side effects.
 
 ## Definition of done
 
-Do not stop at generated files. Finish only when all applicable checks hold:
+Common authoring checks:
 
 - `firedrill.json` and repository-owned world source exist.
 - `firedrill format --check --json` reports no pending source changes.
 - `firedrill validate --json` returns success with no error diagnostics.
 - At least one real Tool operation is supplied by an approved selected package or repository-owned deterministic behavior.
+- Keep `firedrill.json` and `firedrill/` in version control; keep generated `.firedrill/` state and reports ignored.
+- Report the files, verified commands, implemented behavior, connection instructions, and remaining limitations.
+
+For a **synthetic backend** request, validate the source and exercise an actual operation when execution is authorized and available. A running listener is not proof of correct tool behavior. Verify state changes, declared errors, and reset using the public SDK when those capabilities are requested. If your tools cannot launch or call the backend, report source validation and exact handoff commands; do not fabricate runtime proof. Do not invent a drill just to satisfy this skill.
+
+For a **drill/testing** request, also verify:
+
 - The existing agent is externally bound at one declared target/binding seam without Firedrill logic inside its production behavior.
 - The agent's ordinary non-Firedrill entry point keeps its existing input, output, logging, and failure contract.
 - At least one representative drill passes.
 - A deliberately broken expectation produces exit code `1` and a verified local HTML report, then the source is restored.
 - The passing drill is rerun after restoration.
 - Every newly authored reusable Tool passes `firedrill tool test <tool-id> --json` through an ordinary conformance suite.
-- Report the commands, files, selected target/binding, pass/fail evidence paths, and any fidelity limitations.
-- Keep `firedrill.json` and `firedrill/` in version control; keep generated `.firedrill/` state and reports ignored.
+- Report the selected target/binding and pass/fail evidence paths. Backend behavior alone is not evidence that the real agent was tested.
 
-## Execute one checked workflow
+## Drill workflow
 
 Treat “one shot” as this verified loop, not one blind generation pass.
 
@@ -54,6 +65,8 @@ Module and external targets may execute concurrently in one process. Their adapt
 ### 3. Select or author the smallest useful Tool surface
 
 Inspect `firedrill.json`, project dependencies, and existing Tool source before writing behavior. Reuse a compatible approved package already selected under `toolPackages`. Inspect it first with `firedrill tool inspect <tool-id> --json`; do not edit dependency files or infer capabilities that its manifest does not declare.
+
+Use `firedrill tool add <installed-package>` to select an approved dependency or `firedrill tool create <tool-id>` for a stateful starter. These reuse the same tool contract; no service catalog or separate twin runtime is required.
 
 If no selected package matches the agent's actual seam, author a repository Tool. Do not force a generic example or near-match onto the project. Read [references/authoring.md](references/authoring.md) for both paths.
 

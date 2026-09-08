@@ -63,6 +63,16 @@ describe("local inspector server", () => {
     const route = await fetch(`${server.url}/runs`);
     expect(route.status).toBe(200);
     expect(await route.text()).toBe(html);
+    for (const path of [
+      "/connect",
+      "/environment",
+      "/tools?tool=workspace&tab=test",
+      "/runs?runId=run_example",
+    ]) {
+      const deepLink = await fetch(`${server.url}${path}`);
+      expect(deepLink.status).toBe(200);
+      expect(await deepLink.text()).toBe(html);
+    }
 
     const script = await fetch(`${server.url}/assets/app.js`);
     expect(script.headers.get("content-type")).toBe("text/javascript; charset=utf-8");

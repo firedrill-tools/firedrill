@@ -15,6 +15,7 @@ import type {
   CorrelationId,
   DrillDefinition,
   InitialEvent,
+  InlineScenarioDefinition,
   JsonObject,
   OperationRef,
   PackageId,
@@ -61,9 +62,8 @@ export interface MaterializedInitialEvent {
   readonly actorBindingId: ActorBindingId;
 }
 
-export interface MaterializedDrillScenario {
+export interface MaterializedWorldScenario {
   readonly schemaVersion: 1;
-  readonly drill: DrillDefinition;
   readonly scenarioId?: StableId;
   readonly virtualTimeUs: VirtualTime;
   readonly actors: readonly MaterializedActor[];
@@ -71,6 +71,10 @@ export interface MaterializedDrillScenario {
   readonly activeFaults: readonly { readonly packageId: PackageId; readonly faultId: StableId }[];
   readonly initialEvents: readonly MaterializedInitialEvent[];
   readonly toolOverrides?: readonly ResolvedToolOverride[];
+}
+
+export interface MaterializedDrillScenario extends MaterializedWorldScenario {
+  readonly drill: DrillDefinition;
 }
 
 export interface CreateDrillWorldOptions {
@@ -84,11 +88,20 @@ export interface CreateDrillWorldOptions {
   readonly onToolCallBudgetExceeded?: (usage: WorldKernelUsage) => void;
 }
 
-export interface CreatedDrillWorld {
-  readonly materialized: MaterializedDrillScenario;
+export type CreateScenarioWorldOptions = Omit<CreateDrillWorldOptions, "drillId"> & {
+  /** Omit to materialize the compiled world baseline. */
+  readonly scenarioId?: StableId;
+};
+
+export interface CreatedScenarioWorld {
+  readonly materialized: MaterializedWorldScenario;
   readonly store: SqliteWorldStore;
   readonly kernel: WorldKernel;
   readonly clients: ReadonlyMap<ActorId, BoundWorldClient>;
+}
+
+export interface CreatedDrillWorld extends CreatedScenarioWorld {
+  readonly materialized: MaterializedDrillScenario;
 }
 
 function actorBindingId(actorId: ActorId): ActorBindingId {
@@ -146,16 +159,7 @@ function scenarioForDrill(build: LoadedWorldBuild, drill: DrillDefinition) {
   return scenario;
 }
 
-export function materializeDrillScenario(
-  build: LoadedWorldBuild,
-  drillIdInput: StableId,
-): MaterializedDrillScenario {
-  const drillId = StableIdSchema.parse(drillIdInput);
-  const drill = build.worldIr.drills.find((candidate) => candidate.id === drillId);
-  if (drill === undefined) {
-    throw new DrillSetupError("framework.DRILL_NOT_FOUND", `build has no drill ${drillId}`);
-  }
-  const scenario = scenarioForDrill(build, drill);
+function materializeScenarioBody(scenario: InlineScenarioDefinition): MaterializedWorldScenario {
   const actors = scenario.actors.map((actor) => ({
     actorId: actor.id,
     bindingId: actorBindingId(actor.id),
@@ -163,26 +167,13 @@ export function materializeDrillScenario(
     grants: actor.grants,
   }));
   const bindings = new Map(actors.map((actor) => [actor.actorId, actor.bindingId]));
-  for (const interaction of drill.timeline.interactions) {
-    if (bindings.has(interaction.actorId)) continue;
-    throw new DrillSetupError(
-      "framework.ACTOR_NOT_FOUND",
-      `drill ${drill.id} interaction ${interaction.id} references unavailable actor ${interaction.actorId}`,
-    );
-  }
   return {
     schemaVersion: 1,
-    drill,
-    ...(drill.scenarioId === undefined ? {} : { scenarioId: drill.scenarioId }),
     virtualTimeUs: scenario.virtualTimeUs,
     actors,
     state: finalState(scenario.state),
     activeFaults: scenario.faults,
-    ...(scenario.toolOverrides === undefined && drill.toolOverrides === undefined
-      ? {}
-      : {
-          toolOverrides: mergeToolOverrides(scenario.toolOverrides, drill.toolOverrides),
-        }),
+    ...(scenario.toolOverrides === undefined ? {} : { toolOverrides: scenario.toolOverrides }),
     initialEvents: scenario.initialEvents.map((event) => {
       const bindingId = bindings.get(event.actorId);
       if (bindingId === undefined) {
@@ -201,6 +192,45 @@ export function materializeDrillScenario(
   };
 }
 
+export function materializeWorldScenario(
+  build: LoadedWorldBuild,
+  scenarioIdInput?: StableId,
+): MaterializedWorldScenario {
+  if (scenarioIdInput === undefined) return materializeScenarioBody(build.worldIr.baseline);
+  const scenarioId = StableIdSchema.parse(scenarioIdInput);
+  const scenario = build.worldIr.scenarios.find((candidate) => candidate.id === scenarioId);
+  if (scenario === undefined)
+    throw new DrillSetupError("framework.SCENARIO_NOT_FOUND", `build has no scenario ${scenarioId}`);
+  return { ...materializeScenarioBody(scenario), scenarioId };
+}
+
+export function materializeDrillScenario(
+  build: LoadedWorldBuild,
+  drillIdInput: StableId,
+): MaterializedDrillScenario {
+  const drillId = StableIdSchema.parse(drillIdInput);
+  const drill = build.worldIr.drills.find((candidate) => candidate.id === drillId);
+  if (drill === undefined)
+    throw new DrillSetupError("framework.DRILL_NOT_FOUND", `build has no drill ${drillId}`);
+  const materialized = materializeScenarioBody(scenarioForDrill(build, drill));
+  const actors = new Set(materialized.actors.map((actor) => actor.actorId));
+  for (const interaction of drill.timeline.interactions) {
+    if (actors.has(interaction.actorId)) continue;
+    throw new DrillSetupError(
+      "framework.ACTOR_NOT_FOUND",
+      `drill ${drill.id} interaction ${interaction.id} references unavailable actor ${interaction.actorId}`,
+    );
+  }
+  return {
+    ...materialized,
+    drill,
+    ...(drill.scenarioId === undefined ? {} : { scenarioId: drill.scenarioId }),
+    ...(materialized.toolOverrides === undefined && drill.toolOverrides === undefined
+      ? {}
+      : { toolOverrides: mergeToolOverrides(materialized.toolOverrides, drill.toolOverrides) }),
+  };
+}
+
 function removeCreatedDatabase(filePath: string): void {
   rmSync(filePath, { force: true });
   rmSync(`${filePath}-wal`, { force: true });
@@ -208,7 +238,18 @@ function removeCreatedDatabase(filePath: string): void {
 }
 
 export function createDrillWorld(input: CreateDrillWorldOptions): CreatedDrillWorld {
-  const materialized = materializeDrillScenario(input.build, input.drillId);
+  return createMaterializedWorld(input, materializeDrillScenario(input.build, input.drillId));
+}
+
+/** Creates a baseline or named-scenario world without manufacturing a drill or target. */
+export function createScenarioWorld(input: CreateScenarioWorldOptions): CreatedScenarioWorld {
+  return createMaterializedWorld(input, materializeWorldScenario(input.build, input.scenarioId));
+}
+
+function createMaterializedWorld<Scenario extends MaterializedWorldScenario>(
+  input: Omit<CreateDrillWorldOptions, "drillId">,
+  materialized: Scenario,
+): Omit<CreatedScenarioWorld, "materialized"> & { readonly materialized: Scenario } {
   const filePath = input.filePath;
   const store = SqliteWorldStore.create({
     filePath,

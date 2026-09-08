@@ -361,6 +361,36 @@ summary:focus-visible {
   background: var(--canvas);
 }
 
+.fd-sidebar__disclosure {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 12px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-tertiary);
+  font: 500 11px / 16px var(--font-sans);
+  text-align: left;
+  cursor: pointer;
+}
+.fd-sidebar__disclosure:hover {
+  background: var(--sidebar-hover);
+  color: var(--text);
+}
+.fd-sidebar__disclosure svg {
+  transition: transform 140ms ease-out;
+}
+.fd-sidebar__disclosure[aria-expanded="false"] svg {
+  transform: rotate(-90deg);
+}
+@media (max-width: 759px) {
+  .fd-sidebar__disclosure {
+    min-height: 44px;
+  }
+}
+
 .fd-page {
   display: flex;
   flex-direction: column;

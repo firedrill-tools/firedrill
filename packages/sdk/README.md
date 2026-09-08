@@ -1,6 +1,35 @@
 # `@firedrill/sdk`
 
-The repository-level TypeScript API for Firedrill's complete local loop. It compiles source, creates an isolated world per trial, invokes the declared agent target, evaluates consequences, and writes and verifies every report format.
+The repository-level TypeScript API for Firedrill's complete local loop. Start synthetic Tools and baseline data with `createLocalWorld()`; run actual agent tests with `runDrills()`. Both use the same world runtime. The testing API creates an isolated world per trial, invokes the declared agent target, evaluates consequences, and writes and verifies every report format.
+
+## Run a standalone synthetic environment
+
+No scenario, drill, target, or agent is required:
+
+```ts
+import { createLocalWorld } from "@firedrill/sdk";
+
+const world = await createLocalWorld({ root: process.cwd() });
+const binding = await world.listen({ actorId: "operator", protocols: ["http", "mcp"] });
+try {
+  await useExistingClient(binding.environment);
+} finally {
+  await binding.close();
+  world.close();
+}
+```
+
+The repository must declare the selected actor and its operation grants. Omit `actorId` only when exactly one actor exists. `listen()` defaults to HTTP, MCP, and Firedrill CLI on available loopback ports; use `httpPort`, `mcpPort`, or `cliPort` to choose a selected protocol's port. Connection tokens stay local and private. Firedrill starts the synthetic interfaces, not the agent, and never falls back to production.
+
+Omit `scenario` and `drill` to use world baseline data, select a named `scenario`, or select a `drill` to use its starting situation without running it. At most one may be supplied. The default operation budget is 1,000 without a drill; `maxToolCalls` overrides it. `describe()` includes the running build, optional scenario/drill IDs, actors, Tool `operationContracts` and `stateContracts`, and reset `generation`.
+
+The handle can call a Tool as a declared actor, inspect current state and causal evidence, advance virtual time, and reset the whole initial world or selected Tool packages. `world.call()` records operator/control activity; listener activity records actor-scoped operation outcomes. Neither is an agent-test verdict. Use `state({ packageId, namespace, afterRowId, limit })` and `evidence({ fromSequence, limit })` for paginated reads. These SDK values are unredacted.
+
+`world.reset()` restores baseline state, clock, randomness, and journal; activity after baseline is removed. `world.reset({ packages: ["record-store"] })` preserves global time, earlier evidence, and unselected Tool state. Every successful reset advances `describe().generation`; restart state and evidence cursors when it changes. Listener URLs and tokens survive resets without widening grants. Reset authority is never passed through the listener binding.
+
+`world.close()` revokes access immediately and begins socket cleanup; await `binding.close()` to finish closing listeners. Closing a binding does not close its world. World files remain under `.firedrill/worlds/` unless a new `directory` is supplied. See [local world control](../../docs/local-world-control.md) for reset boundaries, lifecycle, and the inspector's borrowed-world integration.
+
+## Run an agent drill
 
 ```ts
 import { runDrills } from "@firedrill/sdk";
@@ -110,5 +139,3 @@ Tool authors and consumers use `inspectTool()` to inspect a selected repository 
 `prepareToolContribution()` is limited to Tool source owned by the current repository. It requires an explicit Apache-2.0/source-rights/customer-data attestation, successful conformance, and a clean source scan. It writes a new local review bundle and never overwrites, uploads, or opens a pull request.
 
 Each returned trial includes the sealed result, ordered evidence, retained SQLite path, and terminal/JSON/JSONL/JUnit/HTML report locations. By default they stay under `<project>/.firedrill/`, which should remain Git-ignored because evidence may contain synthetic records and agent output. No account or hosted service is involved. Lower-level packages remain public for custom composition, but ordinary test code should start here.
-
-For a custom harness or debugger, `createLocalWorld()` creates one retained world from a drill scenario without starting the agent. The returned handle can call a Tool as a declared actor, inspect state and causal evidence, advance virtual time, and restore either the whole initial world or selected Tool packages. Whole-world reset restores clock and deterministic randomness; scoped reset deliberately preserves global time, prior evidence, and unselected Tool state. Reset is control authority and is never passed to the agent. See [local world control](../../docs/local-world-control.md).

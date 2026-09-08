@@ -14,7 +14,7 @@ agent through its declared target, then verifies state and tool-call consequence
 
 Usage:
   firedrill cloud <command> [options]  (optional destination extension)
-  firedrill agent [--prompt <task>] [--model <model>] [--effort <level>] [--max-turns <count>] [--max-budget-usd <amount>] [--timeout-ms <milliseconds>] [--json] [--root <path>]
+  firedrill agent [--workflow <environment|drill>] [--prompt <task>] [--model <model>] [--effort <level>] [--max-turns <count>] [--max-budget-usd <amount>] [--timeout-ms <milliseconds>] [--json] [--root <path>]
   firedrill [run] [drill-id] [--suite <id>] [--tag <tag>] [--filter <text>] [--shard <index>/<total>] [--trials <count>] [--retries <count>] [--concurrency <count>] [--seed <seed>] [--build-hash <hash>] [--report-dir <path>] [--callback-receiver <id>=<origin>] [--callback-secret-env <id>=<variable>] [--watch] [--json] [--root <path>]
   firedrill validate [--json] [--root <path>]
   firedrill plan [--json] [--root <path>]
@@ -22,8 +22,11 @@ Usage:
   firedrill format [--check] [--json] [--root <path>]
   firedrill compare <baseline-report> <candidate-report> [--json]
   firedrill report verify <report-directory> [--json]
-  firedrill init [--path <firedrill-agent|coding-agent|template|manual>] [--json] [--root <path>]
+  firedrill init [--tool <package-or-catalog-id> | --custom <tool-id> | --search <text> | --path <path>] [--install] [--authoring <manual|firedrill-agent|coding-agent>] [--allow-agent] [--start] [--no-open] [--json] [--root <path>]
   firedrill inspect [--port <port>] [--no-open] [--json] [--root <path>]
+  firedrill serve [--scenario <id>] [--actor <id>] [--seed <seed>] [--port <port>] [--mcp-port <port>] [--cli-port <port>] [--no-open] [--json] [--root <path>]
+  firedrill tool create <tool-id> [--template <stateful|stateless>] [--json] [--root <path>]
+  firedrill tool add <installed-package> [--json] [--root <path>]
   firedrill tool inspect <tool-id> [--json] [--root <path>]
   firedrill tool validate <tool-id> [--json] [--root <path>]
   firedrill tool test <tool-id> [--suite <id>] [--seed <seed>] [--callback-receiver <id>=<origin>] [--callback-secret-env <id>=<variable>] [--json] [--root <path>]
@@ -34,6 +37,7 @@ Usage:
 Commands:
   agent     Author or repair Firedrill source with the optional local Firedrill Agent
   run       Run every drill, or one named drill; this is the default command
+  serve     Start a local Tool backend without an agent, target, or drill
   validate  Parse and validate source without writing a build
   plan      Show the exact semantic build that source would produce
   build     Materialize and verify an immutable executable world build
@@ -68,9 +72,16 @@ Tool contribution options:
 
 Init options:
   --path <path>         Use firedrill-agent, coding-agent, template, or manual
+  --tool <package|id>   Select a ready-made Tool; repeat to compose several
+  --custom <tool-id>    Create your own stateful Tool; no key required
+  --search <text>       Search the bundled catalog without writing or installing
+  --install             Authorize a pinned catalog package install, scripts disabled
+  --authoring <mode>    Optional manual, firedrill-agent, or coding-agent help
+  --allow-agent         Authorize the optional Anthropic-backed authoring session
+  --start               Start selected Tools and their inspector in the foreground
 
 Bare init is guided only in an interactive terminal. JSON, CI, and piped use is
-read-only unless --path explicitly selects a setup.
+read-only unless --tool, --custom, or --path explicitly selects a setup.
 ```
 
 ## `firedrill agent`
@@ -79,7 +90,7 @@ read-only unless --path explicitly selects a setup.
 Author or repair this repository with the optional Firedrill Agent
 
 Usage:
-  firedrill agent [--prompt <task>] [--model <model>] [--effort <level>]
+  firedrill agent [--workflow <environment|drill>] [--prompt <task>] [--model <model>] [--effort <level>]
                   [--max-turns <count>] [--max-budget-usd <amount>]
                   [--timeout-ms <milliseconds>]
                   [--json] [--root <path>]
@@ -193,14 +204,30 @@ who authored it.
 ## `firedrill init`
 
 ```text
-Choose a clear starting path for this repository
+Choose a clear starting path for this repository's local fake tools
 
 Usage:
-  firedrill init [--path <firedrill-agent|coding-agent|template|manual>] [--json] [--root <path>]
+  firedrill init [--tool <package-or-catalog-id> | --custom <tool-id> | --search <text>]
+                [--install] [--authoring <manual|firedrill-agent|coding-agent>]
+                [--allow-agent] [--start] [--no-open] [--json] [--root <path>]
+  firedrill init --path <firedrill-agent|coding-agent|template|manual> [--allow-agent] [--start] [--json]
 
-In an interactive terminal, bare init confirms detected context, asks for the
-first outcome, and lets you choose one of four paths. In JSON, CI, or another
-non-interactive caller, bare init remains a read-only inspection:
+Interactive init lets you pick/search a ready-made Tool or create your own,
+optionally customize it, and start local HTTP, MCP, CLI and inspector interfaces.
+No account, model key, agent target, scenario, or drill is needed. Catalog entries
+show only their declared operations and limitations, not full-service emulation.
+Missing catalog packages require installation consent (--install without a TTY).
+Installation pins the catalog version and disables lifecycle scripts; unpublished
+packages may require a separately supplied local package archive.
+
+Bare JSON, CI, and piped init remains read-only. --search is always read-only.
+--tool selects an installed package (or catalog id); --custom creates a stateful
+get/set Tool scaffold. --start explicitly runs selected Tool code until Ctrl+C.
+The Agent is optional: --authoring firedrill-agent --allow-agent uses your shell's
+ANTHROPIC_API_KEY. Never put key text in command arguments. Missing keys leave a
+resumable setup. --authoring coding-agent installs the canonical skill and brief.
+
+The existing --path alternatives remain available:
   firedrill-agent Install the skill and brief for Firedrill's optional local agent
   coding-agent  Install the canonical skill and a bounded repository brief
   template      Install a complete neutral world, Tool, target, and passing drill
@@ -227,12 +254,36 @@ process that supplies the agent callback when you need to run them from the UI.
 Use --no-open for terminal-only launch. JSON mode never opens a browser.
 ```
 
+## `firedrill serve`
+
+```text
+Start a standalone local Tool backend
+
+Usage:
+  firedrill serve [--scenario <id>] [--actor <id>] [--seed <seed>]
+                 [--port <port>] [--mcp-port <port>] [--cli-port <port>]
+                 [--no-open] [--json] [--root <path>]
+
+Uses the repository world baseline, or a named scenario, without executing an
+agent or any tests. Starts HTTP, MCP, and Firedrill CLI interfaces on loopback.
+Opens the inspector on the same running world; --no-open skips browser launch.
+Ports default to 0 (choose available ports); --port sets the HTTP interface.
+The single available actor is selected automatically; use --actor when needed.
+
+Connection environment values include scoped local tokens: keep them private.
+The command stays in the foreground until Ctrl+C. It does not modify .env files.
+JSON mode emits a ready event with actual endpoints, then a stopped or failed
+event on shutdown. Each launch creates a fresh retained world under .firedrill/.
+```
+
 ## `firedrill tool`
 
 ```text
-Inspect and prove selected Tool behavior
+Create, select, inspect, and prove Tool behavior
 
 Usage:
+  firedrill tool create <tool-id> [--template <stateful|stateless>] [--json] [--root <path>]
+  firedrill tool add <installed-package> [--json] [--root <path>]
   firedrill tool inspect <tool-id> [--json] [--root <path>]
   firedrill tool validate <tool-id> [--json] [--root <path>]
   firedrill tool test <tool-id> [--suite <id>] [--seed <seed>]
@@ -240,12 +291,45 @@ Usage:
             [--json] [--root <path>]
   firedrill tool contribute <tool-id> --accept-apache-2.0 [--output <path>]
 
+create writes editable behavior and a declaration; it defaults to stateful.
+add selects an already-installed package. It does not install dependencies or
+execute their behavior. Existing actor grants are left unchanged.
 A selected Tool can come from this repository or from an installed package named
 once in firedrill.json under toolPackages. inspect never executes behavior.
 validate and test execute the selected module locally with your authority. test
 runs ordinary conformance drills twice and checks coverage and determinism.
 Callback Tools use the same explicit local receiver bindings as firedrill run.
 contribute is only for source owned by this repository; it never uploads source.
+```
+
+## `firedrill tool create`
+
+```text
+Create an editable repository Tool
+
+Usage:
+  firedrill tool create <tool-id> [--template <stateful|stateless>] [--json] [--root <path>]
+
+Creates an actual local behavior module and its Tool declaration without
+executing behavior. --template defaults to stateful; stateless provides a plain
+function. Existing files are never overwritten. A missing Firedrill project is
+initialized with a minimal backend world, not an agent target or test drill.
+Existing actor permissions are not expanded; follow the printed grant guidance.
+Use firedrill serve when ready to connect a client to the local backend.
+```
+
+## `firedrill tool add`
+
+```text
+Select an already-installed Tool package
+
+Usage:
+  firedrill tool add <installed-package> [--json] [--root <path>]
+
+Reads the installed package's Tool metadata and adds its exact package name to
+firedrill.json under toolPackages. Install it with your package manager first.
+This command does not contact a registry, run package scripts, or execute Tool
+behavior. Repeating the command is safe; existing actor permissions stay intact.
 ```
 
 ## `firedrill tool inspect`
@@ -310,7 +394,8 @@ Usage:
   firedrill world call <tool-id> <operation-id> [--input <json-object>]
             [--idempotency-key <key>] [--json]
 
-This command is available inside an agent target whose bindings include cli.
+Use the environment printed by firedrill serve, or run this command inside an
+agent target whose bindings include cli.
 It discovers or invokes the same typed Tool operations used by HTTP, MCP, and
 direct bindings. It does not create a world or run a drill by itself.
 ```

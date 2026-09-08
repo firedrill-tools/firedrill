@@ -6,7 +6,7 @@ export const FIREDRILL_CLI_URL = "FIREDRILL_CLI_URL";
 export const FIREDRILL_CLI_TOKEN = "FIREDRILL_CLI_TOKEN";
 
 export interface StartCliWorldBindingOptions {
-  readonly client: BoundWorldClient;
+  readonly client: Pick<BoundWorldClient, "invoke">;
   readonly tools: readonly ToolDefinition[];
   readonly hostname?: "127.0.0.1" | "::1";
   readonly port?: number;

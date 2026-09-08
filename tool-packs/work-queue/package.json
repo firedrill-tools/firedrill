@@ -26,6 +26,7 @@
   "files": [
     "dist",
     "work-queue.tool.yaml",
+    "starter.json",
     "README.md"
   ],
   "publishConfig": {
@@ -34,6 +35,7 @@
   "firedrill": {
     "layer": "tool-pack",
     "tool": "work-queue.tool.yaml",
+    "starter": "starter.json",
     "lifecycle": "active",
     "conformance": "work-queue-conformance"
   },

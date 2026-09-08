@@ -16,7 +16,7 @@ const EXPLICIT_IDEMPOTENCY_KEY = "dev.firedrill/idempotency-key";
 const MAX_BODY_BYTES = 1024 * 1024;
 
 export interface StartMcpWorldBindingOptions {
-  readonly client: BoundWorldClient;
+  readonly client: Pick<BoundWorldClient, "invoke">;
   readonly tools: readonly ToolPackageManifest[];
   readonly hostname?: "127.0.0.1" | "::1";
   readonly port?: number;
@@ -114,7 +114,7 @@ function toolError(value: JsonObject): CallToolResult {
 }
 
 function buildServer(
-  client: BoundWorldClient,
+  client: Pick<BoundWorldClient, "invoke">,
   registered: readonly RegisteredOperation[],
   bindingScope: string,
 ): McpServer {
@@ -231,6 +231,7 @@ function listen(server: Server, port: number, hostname: string): Promise<void> {
 function closeServer(server: Server): Promise<void> {
   return new Promise((resolve, reject) => {
     server.close((error) => (error === undefined ? resolve() : reject(error)));
+    server.closeAllConnections();
   });
 }
 
@@ -307,7 +308,7 @@ export async function startMcpWorldBinding(options: StartMcpWorldBindingOptions)
   }
   const displayHost = hostname === "::1" ? "[::1]" : hostname;
   const url = `http://${displayHost}:${address.port}/mcp`;
-  let closed = false;
+  let closing: Promise<void> | undefined;
   return {
     kind: "mcp",
     url,
@@ -316,17 +317,18 @@ export async function startMcpWorldBinding(options: StartMcpWorldBindingOptions)
       FIREDRILL_MCP_URL: url,
       FIREDRILL_MCP_TOKEN: token,
     }),
-    async close() {
-      if (closed) return;
-      closed = true;
-      try {
-        // Closing the MCP handler terminates active Streamable HTTP/SSE
-        // sessions. The TCP server can then drain instead of waiting forever
-        // on a client-held stream.
-        await handler.close();
-      } finally {
-        await closeServer(server);
-      }
+    close() {
+      closing ??= (async () => {
+        try {
+          // Closing the MCP handler terminates active Streamable HTTP/SSE
+          // sessions. The TCP server can then drain instead of waiting forever
+          // on a client-held stream.
+          await handler.close();
+        } finally {
+          await closeServer(server);
+        }
+      })();
+      return closing;
     },
   };
 }

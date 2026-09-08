@@ -3,6 +3,7 @@ import { compileWorld, formatWorldSources } from "@firedrill/compiler";
 import { FIREDRILL_FRAMEWORK_VERSION } from "@firedrill/contracts";
 import { FiredrillProjectError, inspectTool, runDrills, testTool, validateTool } from "@firedrill/sdk";
 import { z } from "zod";
+import { checkFiredrillEnvironment } from "./environment-check.js";
 import { listRepositoryFiles, searchRepository } from "./repository-inspection.js";
 
 const MAX_TOOL_TEXT = 120_000;
@@ -80,6 +81,18 @@ export function createFiredrillAuthoringTools(repositoryRoot: string, policy: Fi
     throw new TypeError("allowRepositoryExecution must be a boolean");
   }
   const tools = [
+    tool(
+      "environment_check",
+      "Verify selected tools and local backend startup without running the customer's agent or inventing tool arguments. In source-only mode, compile only.",
+      {},
+      async () => {
+        const result = await checkFiredrillEnvironment(
+          repositoryRoot,
+          policy.allowRepositoryExecution !== false,
+        );
+        return textResult(result, result.status === "failed");
+      },
+    ),
     tool(
       "repository_files",
       "List ordinary repository files without traversing secrets, generated evidence, dependencies, or symlinks.",

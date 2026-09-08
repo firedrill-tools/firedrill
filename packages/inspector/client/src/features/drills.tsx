@@ -128,8 +128,8 @@ function RunDialog({
         </IconButton>
       </div>
       <p className="fd-dialog__lead">
-        Start the agent with the task and synthetic data defined in your files. Results appear under Runs.
-        Your agent’s model usage may incur costs.
+        Start the agent with the task and synthetic data defined in your files. Open Results to see the
+        outcome. Your agent’s model usage may incur costs.
       </p>
       <details
         className="fd-run-advanced"

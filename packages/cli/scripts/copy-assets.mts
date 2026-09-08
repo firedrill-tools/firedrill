@@ -5,6 +5,10 @@ import { fileURLToPath } from "node:url";
 const packageRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const repositoryRoot = resolve(packageRoot, "../..");
 const assets = [
+  {
+    source: resolve(repositoryRoot, "registry/index.json"),
+    destination: resolve(packageRoot, "dist/registry/index.json"),
+  },
   { source: resolve(repositoryRoot, "skills/firedrill"), destination: resolve(packageRoot, "dist/skill") },
   {
     source: resolve(repositoryRoot, "templates/minimal"),

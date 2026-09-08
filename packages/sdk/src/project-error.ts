@@ -12,6 +12,7 @@ export type FiredrillProjectErrorCode =
   | "framework.NO_DRILLS_SELECTED"
   | "framework.REPORT_INVALID"
   | "framework.SOURCE_INVALID"
+  | "framework.SCENARIO_NOT_FOUND"
   | "framework.SUITE_NOT_FOUND"
   | "framework.TOOL_CONFORMANCE_FAILED"
   | "framework.TOOL_CONFORMANCE_SUITE_REQUIRED"

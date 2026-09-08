@@ -8,6 +8,7 @@ import {
   LocalSimulationSupervisor,
   type LocalSimulationSupervisorOptions,
 } from "@firedrill/simulation";
+import { createLocalEnvironmentRequestHandler, type LocalInspectorEnvironment } from "./environment.js";
 
 const KNOWN_ROUTES = new Set([
   "/",
@@ -19,6 +20,8 @@ const KNOWN_ROUTES = new Set([
   "/tools",
   "/drills",
   "/runs",
+  "/environment",
+  "/connect",
 ]);
 const CONTENT_TYPES: Readonly<Record<string, string>> = {
   ".css": "text/css; charset=utf-8",
@@ -34,6 +37,7 @@ interface StaticAsset {
 }
 
 export interface StartLocalInspectorOptions extends LocalSimulationSupervisorOptions {
+  readonly environment?: LocalInspectorEnvironment;
   readonly hostname?: "127.0.0.1" | "::1";
   readonly port?: number;
 }
@@ -119,6 +123,7 @@ function listen(server: Server, port: number, hostname: string): Promise<void> {
 function closeServer(server: Server): Promise<void> {
   return new Promise((resolvePromise, reject) => {
     server.close((error) => (error === undefined ? resolvePromise() : reject(error)));
+    server.closeAllConnections();
   });
 }
 
@@ -137,7 +142,24 @@ export async function startLocalInspectorWithAssets(
   }
   const assets = staticAssets(assetDirectory);
   const token = options.token ?? randomBytes(32).toString("base64url");
+  if (token.length < 24 || token.length > 256 || !/^[A-Za-z0-9._~-]+$/.test(token)) {
+    throw new TypeError("local inspector token must contain 24 through 256 HTTP-header-safe characters");
+  }
+  if (hostname !== "127.0.0.1" && hostname !== "::1") throw new TypeError("hostname must be loopback");
+  if (
+    options.environment?.binding !== undefined &&
+    options.environment.binding.worldInstanceId !== options.environment.world.metadata().worldInstanceId
+  ) {
+    throw new TypeError("the inspector binding must belong to the supplied live world");
+  }
   const supervisor = await LocalSimulationSupervisor.create(options);
+  if (
+    options.environment !== undefined &&
+    options.environment.world.repositoryRoot !== supervisor.repositoryRoot
+  ) {
+    await supervisor.close();
+    throw new TypeError("the inspector and live environment must use the same repository");
+  }
   const handler = createLocalSimulationRequestHandler(
     supervisor,
     token,
@@ -160,7 +182,10 @@ export async function startLocalInspectorWithAssets(
       writeStatic(response, 200, { body, contentType: "text/html; charset=utf-8" }, head);
     },
   );
-  const server = createServer(handler);
+  const environmentHandler = createLocalEnvironmentRequestHandler(options.environment, token);
+  const server = createServer(async (request, response) => {
+    if (!(await environmentHandler(request, response))) await handler(request, response);
+  });
   try {
     await listen(server, port, hostname);
   } catch (error) {
@@ -174,15 +199,19 @@ export async function startLocalInspectorWithAssets(
     throw new Error("local inspector has no TCP address");
   }
   const host = hostname === "::1" ? `[${hostname}]` : hostname;
-  let closed = false;
+  let closing: Promise<void> | undefined;
   return {
     url: `http://${host}:${address.port}`,
     supervisor,
-    async close() {
-      if (closed) return;
-      closed = true;
-      await closeServer(server);
-      await supervisor.close();
+    close() {
+      closing ??= (async () => {
+        try {
+          await closeServer(server);
+        } finally {
+          await supervisor.close();
+        }
+      })();
+      return closing;
     },
   };
 }

@@ -1,6 +1,32 @@
 # Local world control
 
-`runDrills()` is the normal testing API: it creates an isolated world per trial, invokes the existing agent, evaluates assertions, and writes reports. Use `createLocalWorld()` when a custom test harness, debugger, or local inspector needs to control the world between agent actions.
+`createLocalWorld()` starts one synthetic environment from the repository's world baseline, with no required scenario, drill, target, or agent. Use it to develop Tools, connect an existing client, or control a world from a custom harness. `runDrills()` is the testing API: it creates an isolated world per trial, invokes the existing agent, evaluates assertions, and writes reports. Starting a world or calling a Tool manually does not establish that an agent was tested.
+
+## Start from baseline data
+
+```ts
+import { createLocalWorld } from "@firedrill/sdk";
+
+const world = await createLocalWorld({ root: process.cwd() });
+const binding = await world.listen(); // Exactly one source-defined actor is required when actorId is omitted.
+
+try {
+  // Pass binding.environment to your existing client's configuration seam.
+  // Keep its local bearer tokens private; these are not provider credentials.
+  await useExistingClient(binding.environment);
+} finally {
+  await binding.close();
+  world.close();
+}
+```
+
+The world supplies initial state, actors and explicit grants, faults, scheduled events, virtual time, and seed. No actor or permission is invented. To select an actor explicitly, use `world.listen({ actorId: "support-agent" })`. A world without actors can still be inspected but cannot listen for actor-scoped calls.
+
+`listen()` starts HTTP, MCP, and Firedrill CLI listeners by default. Select a non-empty subset with `protocols: ["http", "mcp"]`. `httpPort`, `mcpPort`, and `cliPort` accept a fixed port or `0` for an available port; a port option requires its protocol to be selected. Every listener is loopback-only. The returned binding exposes `worldInstanceId`, `actorId`, `environment`, selected `{ url, token }` endpoints, and `close()`. No agent process is launched and no fallback calls production. These protocols expose the same declared operations and actor grants; they do not imply complete compatibility with an arbitrary external service.
+
+`createLocalWorld({ scenario: "busy-inbox" })` uses a named starting situation. `createLocalWorld({ drill: "refund-dispute" })` uses a drill's scenario without executing the drill. Select at most one of `scenario` or `drill`; omitting both uses the baseline. `seed` overrides the world seed, `buildHash` loads an immutable build, and `maxToolCalls` defaults to the selected drill's budget or 1,000 without a drill.
+
+## Operator controls
 
 ```ts
 import { createLocalWorld } from "@firedrill/sdk";
@@ -27,7 +53,11 @@ try {
 }
 ```
 
-The selected drill supplies the scenario: initial Tool state, actors and grants, faults, scheduled events, virtual time, and seed. `describe()` lists the selected build, actors, Tools, operations, state namespaces, events, and faults. `state()`, `evidence()`, `scheduledEvents()`, and `callbacks()` provide bounded inspection without exposing the storage handle. The customer's agent and application database remain outside this control plane.
+`describe()` identifies the immutable running build, the optional selected scenario/drill, and the current reset `generation`. Each Tool includes operation IDs and complete `operationContracts`, state namespaces and `stateContracts`, event IDs, and fault IDs. These describe the build that is running, not later edits to repository files.
+
+`world.call()` is a developer control call made as the specified actor; it still enforces that actor's grants. Its journal correlation identifies operator activity separately from listener calls. Neither category is a drill verdict or proof of which external application made the call. The customer's agent and application database remain outside this control plane.
+
+Use `state({ packageId, namespace, afterRowId, limit })` and `evidence({ fromSequence, limit })` for bounded reads. Row cursors are exclusive; evidence sequence cursors are inclusive. `scheduledEvents()`, `callbacks()`, and `faults()` inspect pending work and active failures without exposing a storage handle. SDK values and retained SQLite files are unredacted; review them before sharing.
 
 ## Runtime fault controls
 
@@ -68,8 +98,12 @@ Whole-world reset also restores initial Tool override counts. Neither reset chan
 
 A reset fails without changing the world while a relevant callback request is in flight. Its external outcome is unknown until delivery settles, so silently rewinding would make a duplicate side effect possible.
 
-The control handle revokes its previous actor clients after every reset. Reset authority is held by the developer's harness; it is never included in a binding supplied to the agent under test.
+Every successful reset increments `describe().generation` and revokes the previous actor clients. Existing `listen()` URLs and tokens remain stable, but each invocation resolves the current actor client. Permissions do not widen during a reset. Restart state/evidence pagination when the generation changes: a whole-world reset returns the journal to baseline and may reuse earlier sequence numbers. Scoped reset retains prior evidence but also advances the cursor epoch.
+
+Reset authority is held by the developer's harness; it is never included in an actor-scoped listener binding. The local inspector requires the exact running `worldInstanceId` before resetting and rejects a control request if the world resets while its body is uploading.
 
 ## Local artifacts
 
-By default, each controlled world is retained beneath `<project>/.firedrill/worlds/` as `world.sqlite` plus `baseline.sqlite`. Both files may contain complete synthetic state and unredacted evidence. Keep `.firedrill/` ignored by Git. `close()` releases the database but deliberately does not delete it, so a local inspector or debugger can open the retained artifact.
+By default, each controlled world is retained beneath `<project>/.firedrill/worlds/` as `world.sqlite` plus `baseline.sqlite`. Both files may contain complete synthetic state and unredacted evidence. Keep `.firedrill/` ignored by Git. `world.close()` immediately revokes world access, starts listener shutdown, and releases the database; await `binding.close()` for completed socket cleanup. Closing one binding alone leaves its world and other bindings available. A failed multi-protocol startup closes any listeners it already opened. Neither close method deletes retained world files.
+
+The inspector can borrow a running world with `startLocalInspector({ root, environment: { world, binding } })` from `@firedrill/inspector`. Its `close()` stops only the inspector and its drill supervisor; the caller continues to own the supplied world and binding. Keep the supplied binding open while advertising its connection values. See the [inspector guide](../packages/inspector/README.md).

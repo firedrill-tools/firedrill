@@ -1,0 +1,387 @@
+.fd-local-frame {
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  flex-direction: column;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--surface);
+}
+.fd-local-toolbar,
+.fd-local-tabs,
+.fd-local-contract-summary {
+  display: flex;
+  flex: none;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--border-subtle);
+}
+.fd-local-toolbar .fd-search {
+  flex: 1 1 220px;
+  max-width: 420px;
+}
+.fd-local-count {
+  margin-right: auto;
+  color: var(--text-secondary);
+  font-size: 12px;
+}
+.fd-local-tabs {
+  gap: 4px;
+  padding-block: 6px;
+}
+.fd-local-tabs .fd-button {
+  min-height: 36px;
+  border-radius: 6px;
+}
+.fd-local-tabs .fd-button[aria-pressed="true"] {
+  color: var(--action-text);
+  background: var(--surface-selected);
+}
+.fd-local-contract-summary {
+  color: var(--text-secondary);
+  font-size: 12px;
+}
+.fd-local-contract-summary > .fd-button {
+  margin-left: auto;
+}
+.fd-tool-directory {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+  padding: 20px;
+}
+.fd-tool-directory__item {
+  display: flex;
+  min-width: 0;
+  align-items: flex-start;
+  gap: 14px;
+  padding: 20px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  text-align: left;
+  background: var(--surface);
+  transition:
+    border-color 140ms ease-out,
+    background 140ms ease-out;
+}
+.fd-tool-directory__item:hover {
+  background: var(--surface-tonal);
+  border-color: var(--border-strong);
+}
+.fd-tool-directory__item > svg {
+  flex: none;
+  margin-top: 3px;
+  color: var(--text-secondary);
+}
+.fd-tool-directory__item > div {
+  flex: 1;
+  min-width: 0;
+}
+.fd-tool-directory__item h2 {
+  margin: 0 0 3px;
+  color: var(--text);
+  font-size: 15px;
+  line-height: 21px;
+  font-weight: 650;
+}
+.fd-tool-directory__item code {
+  color: var(--text-secondary);
+  overflow-wrap: anywhere;
+}
+.fd-tool-directory__item p {
+  margin: 12px 0;
+  color: var(--text-secondary);
+  font-size: 13px;
+  line-height: 20px;
+}
+.fd-tool-directory__item span {
+  color: var(--text-tertiary);
+  font-size: 12px;
+}
+.fd-tool-directory__metadata {
+  display: block;
+  margin-top: 10px;
+}
+.fd-tool-detail-header {
+  min-height: 108px;
+}
+.fd-tool-detail-header > div {
+  min-width: 0;
+  padding-block: 10px;
+}
+.fd-tool-detail-header h1 {
+  overflow-wrap: anywhere;
+}
+.fd-local-note {
+  flex: none;
+  margin: 0;
+  padding: 12px 16px;
+  color: var(--text-secondary);
+  font-size: 13px;
+  line-height: 20px;
+}
+.fd-local-source-note {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 16px;
+  padding-top: 12px;
+  color: var(--text-secondary);
+  font-size: 12px;
+}
+.fd-local-source-note p {
+  flex: 1;
+  margin: 0;
+}
+.fd-local-record-summary {
+  display: block;
+  max-width: 60ch;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.fd-environment-banner {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 14px;
+  margin-bottom: 16px;
+  padding: 14px 16px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface);
+}
+.fd-environment-banner > div {
+  flex: 1;
+  min-width: 0;
+}
+.fd-environment-banner p {
+  margin: 4px 0 0;
+  color: var(--text-secondary);
+  font-size: 12px;
+  line-height: 18px;
+}
+.fd-local-document {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  flex-direction: column;
+  overflow: hidden;
+}
+.fd-local-section {
+  padding: 20px;
+}
+.fd-local-section h2 {
+  margin: 0 0 8px;
+  font-size: 15px;
+  font-weight: 650;
+}
+.fd-local-section h3 {
+  margin: 0 0 8px;
+  font-size: 13px;
+  font-weight: 600;
+}
+.fd-local-section p {
+  margin: 0 0 16px;
+  color: var(--text-secondary);
+  line-height: 20px;
+  max-width: 75ch;
+}
+.fd-local-section + .fd-local-section {
+  border-top: 1px solid var(--border-subtle);
+}
+.fd-local-form {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+.fd-local-form-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+}
+.fd-local-field {
+  display: flex;
+  flex: 1 1 220px;
+  min-width: 0;
+  flex-direction: column;
+  gap: 7px;
+  color: var(--text-secondary);
+  font-size: 12px;
+}
+.fd-local-field .fd-select {
+  width: 100%;
+}
+.fd-local-field select {
+  width: 100%;
+}
+.fd-local-input {
+  width: 100%;
+  min-height: 180px;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--text);
+  caret-color: var(--action-text);
+  font: 12px / 20px var(--font-mono);
+  resize: vertical;
+}
+.fd-local-input:focus {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: -1px;
+}
+.fd-local-form-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+}
+.fd-local-form-actions p {
+  margin: 0;
+}
+.fd-local-result {
+  margin-top: 20px;
+}
+.fd-local-result > .fd-document-code {
+  max-height: 400px;
+}
+.fd-local-state-layout {
+  display: grid;
+  flex: 1;
+  min-height: 0;
+  grid-template-columns: 220px minmax(0, 1fr);
+}
+.fd-local-state-layout .fd-workspace-rail {
+  min-height: 0;
+  border-right: 1px solid var(--border-subtle);
+}
+.fd-local-state-layout .fd-workspace-main {
+  min-height: 0;
+}
+.fd-local-page-controls {
+  display: flex;
+  flex: none;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 12px;
+  padding: 12px 16px;
+  border-top: 1px solid var(--border-subtle);
+  color: var(--text-secondary);
+  font-size: 12px;
+}
+.fd-local-page-controls > div {
+  display: flex;
+  gap: 8px;
+}
+.fd-reset-field {
+  display: grid;
+  gap: 8px;
+  margin: 20px 24px;
+  color: var(--text-secondary);
+  font-size: 13px;
+}
+.fd-local-connection-value {
+  overflow-wrap: anywhere;
+}
+.fd-connection-endpoint {
+  display: grid;
+  gap: 12px;
+  margin: 0 0 20px;
+}
+.fd-connection-endpoint > div {
+  display: grid;
+  grid-template-columns: 112px minmax(0, 1fr);
+  align-items: baseline;
+  gap: 12px;
+}
+.fd-connection-endpoint dt {
+  color: var(--text-secondary);
+  font-size: 12px;
+}
+.fd-connection-endpoint dd {
+  min-width: 0;
+  margin: 0;
+}
+.fd-connection-endpoint__scroll {
+  min-width: 0;
+  overflow-x: auto;
+  padding-bottom: 4px;
+}
+.fd-connection-endpoint__scroll code {
+  white-space: nowrap;
+  overflow-wrap: normal;
+}
+.fd-connection-setup > .fd-document-code {
+  max-height: 340px;
+}
+.fd-local-section .fd-connection-setup__hint {
+  margin-top: 12px;
+  font-size: 12px;
+}
+.fd-local-connection-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-bottom: 16px;
+}
+@media (max-width: 1100px) {
+  .fd-tool-directory {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+@media (max-width: 759px) {
+  .fd-connection-endpoint > div {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 4px;
+  }
+  .fd-local-toolbar,
+  .fd-environment-banner,
+  .fd-local-source-note {
+    align-items: flex-start;
+    flex-wrap: wrap;
+  }
+  .fd-environment-banner > div {
+    flex-basis: calc(100% - 40px);
+  }
+  .fd-local-tabs .fd-button {
+    min-height: 44px;
+  }
+  .fd-local-tabs {
+    gap: 2px;
+    padding-inline: 8px;
+  }
+  .fd-tool-directory {
+    gap: 12px;
+    padding: 12px;
+  }
+  .fd-tool-directory__item {
+    padding: 16px;
+  }
+  .fd-local-state-layout {
+    display: flex;
+    flex-direction: column;
+    overflow: auto;
+  }
+  .fd-local-state-layout .fd-workspace-rail {
+    flex: none;
+    max-height: 240px;
+    border-right: 0;
+    border-bottom: 1px solid var(--border-subtle);
+  }
+  .fd-local-state-layout .fd-workspace-main {
+    flex: 1 0 380px;
+    overflow: visible;
+  }
+  .fd-local-section {
+    padding: 16px;
+  }
+  .fd-local-source-note > p {
+    flex-basis: 100%;
+  }
+}

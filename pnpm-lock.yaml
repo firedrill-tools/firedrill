@@ -242,6 +242,9 @@ importers:
 
   packages/inspector:
     dependencies:
+      '@firedrill/sdk':
+        specifier: workspace:*
+        version: link:../sdk
       '@firedrill/simulation':
         specifier: workspace:*
         version: link:../simulation
@@ -400,6 +403,15 @@ importers:
       '@firedrill/drills':
         specifier: workspace:*
         version: link:../drills
+      '@firedrill/protocol-cli':
+        specifier: workspace:*
+        version: link:../protocol-cli
+      '@firedrill/protocol-http':
+        specifier: workspace:*
+        version: link:../protocol-http
+      '@firedrill/protocol-mcp':
+        specifier: workspace:*
+        version: link:../protocol-mcp
       '@firedrill/reporters':
         specifier: workspace:*
         version: link:../reporters

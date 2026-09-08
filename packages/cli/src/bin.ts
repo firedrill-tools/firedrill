@@ -45,10 +45,13 @@ const interactive =
   process.env.CI === undefined &&
   process.stdin.isTTY === true &&
   process.stdout.isTTY === true;
-const guidedInit = arguments_.includes("init") && !arguments_.includes("--path") && interactive;
+const guidedInit = arguments_.includes("init") && interactive;
 const terminal = guidedInit
   ? createInterface({ input: process.stdin, output: process.stdout, terminal: true })
   : undefined;
+// readline owns terminal SIGINT while the wizard remains attached to serve.
+// Forward it through the same cancellation signal as ordinary foreground runs.
+terminal?.on("SIGINT", onSigint);
 
 try {
   const exitCode = await runCli(arguments_, {
@@ -67,9 +70,11 @@ try {
   });
   process.exitCode = signalExitCode ?? exitCode;
 } catch {
-  process.stderr.write("Firedrill failed internally. No report was produced.\n");
+  if (!cancellation.signal.aborted)
+    process.stderr.write("Firedrill failed internally. No report was produced.\n");
   process.exitCode = signalExitCode ?? 1;
 } finally {
+  terminal?.removeListener("SIGINT", onSigint);
   terminal?.close();
   process.removeListener("SIGINT", onSigint);
   process.removeListener("SIGTERM", onSigterm);

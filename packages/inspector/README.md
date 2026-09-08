@@ -6,9 +6,78 @@ from one origin. It does not contact a hosted service or supply a customer agent
 drills still invoke the repository's declared module, command, HTTP, or
 caller-owned target through the normal public runner.
 
-Use `firedrill inspect` for the normal CLI experience. Embedders that own an
+Use `firedrill serve` for a live synthetic environment with connection values,
+current data, and Tool activity. It requires no drill or scenario. Use
+`firedrill inspect` to inspect repository source and saved drill reports without
+starting a standalone environment. Embedders that own an
 external agent callback can call `startLocalInspector({ root, agent })` so that
 external targets remain in their process.
+
+## Borrow an existing live environment
+
+```ts
+import { startLocalInspector } from "@firedrill/inspector";
+import { createLocalWorld } from "@firedrill/sdk";
+
+const root = process.cwd();
+const world = await createLocalWorld({ root });
+const binding = await world.listen(); // Select actorId explicitly when the world has several actors.
+const inspector = await startLocalInspector({ root, environment: { world, binding } });
+try {
+  await useExistingClient({ environment: binding.environment, inspectorUrl: inspector.url });
+} finally {
+  await inspector.close();
+  await binding.close();
+  world.close();
+}
+```
+
+The inspector and world must belong to the same repository. The inspector borrows
+the supplied `LocalWorld` and optional `LocalWorldBinding`: closing the inspector
+does not close either one. The caller must keep a supplied binding open while its
+connection values are shown. There is no account, upload, remote deployment, or
+ambient production fallback. Starting Tools or using **Test tool** is manual
+operator activity, not a passing agent test.
+
+Live operation contracts and current data come from the running world's immutable
+build and SQLite state. Repository source views remain separate and may describe
+later source edits. The live activity page reads canonical journal entries, not
+an HTTP access log: operation outcomes and world changes are included;
+unauthenticated requests, discovery, and health checks are not. An operation
+arriving through a binding does not identify or prove the customer's agent.
+
+### Local environment API
+
+These additive routes use the same bearer token as the inspector UI. All require
+the listener's loopback host; browser origins must match exactly. Mutation bodies
+must be JSON and are capped at 64 KiB. The token is not accepted in a query string.
+
+| Route | Result or input |
+| --- | --- |
+| `GET /api/environment` | `available: false`, or running metadata, description, token-free connections, and `agentTested: false` |
+| `GET /api/environment/tools` | Running build's Tool operation and state contracts |
+| `GET /api/environment/state` | `packageId`, `namespace`, optional `afterRowId`, `limit` (1–1,000); returns records and optional exclusive `nextRowId` |
+| `GET /api/environment/activity` | Optional inclusive `fromSequence`, `limit` (1–1,000); returns journal entries and `nextSequence` |
+| `POST /api/environment/call` | `{ actorId, packageId, operationId, arguments?, idempotencyKey? }`; uses canonical actor grants and labels the result `initiator: "operator"` |
+| `POST /api/environment/reset` | `{ worldInstanceId, packages? }`; exact running identity required; omitted packages resets the complete world |
+| `GET /api/environment/connections` | Explicit credential reveal: connection tokens and environment variables |
+
+Live pages include a `generation` cursor epoch, also available as
+`description.generation` in status. Pass `generation` with paginated reads;
+a mismatch returns `409 framework.ENVIRONMENT_RESET`. Reload status and restart
+pagination after a reset. Full reset restores baseline SQLite state and journal,
+removing activity after baseline. Package reset retains earlier evidence and
+unselected Tool state. Both advance the generation without changing listener
+URLs or tokens. A reset while a control request uploads rejects that request
+instead of applying it to the new generation. A relevant in-flight callback
+prevents reset through the canonical SDK's safety checks.
+
+Status never reveals connection tokens; only the explicit connections route does.
+Live state, activity, and manual-call results redact conservative sensitive field
+names, schema-declared write-only/password fields, and known local connection
+credentials. This is presentation redaction, not a guarantee that arbitrary text
+contains no secrets. Retained SQLite files and direct SDK reads are unredacted.
+Keep generated `.firedrill/` files private and review content before sharing.
 
 If a test harness writes artifacts to custom folders, pass the same `runDirectory`
 and `reportDirectory` options to `startLocalInspector()`. Relative paths resolve
@@ -19,17 +88,19 @@ queries then report that the world artifact is missing.
 
 ## What you are looking at
 
-The sidebar groups the environment under **World** (Synthetic world, Schema,
-Data, Tools, Personas & actors), and the test workflow under **Testing**
-(Scenarios, Drills, Runs). These are navigation groups, not separate runtimes.
+The sidebar opens on **Tools**. **Local environment** groups Tools, State &
+activity, and Connect agent; **Testing** groups Drills and Results. The collapsed
+**Source definitions** group contains World setup, Schema, Starting data,
+Actors & permissions, and Scenarios. These are navigation groups, not separate
+runtimes. Opening a source/report-only inspector does not start a live world.
 
-- **Synthetic world**: the environment defined by the project's source files.
-- **Schema / Data**: declared tool record schemas and starting records. Choose a
+- **World setup**: the environment defined by the project's source files.
+- **Schema / Starting data**: declared tool record schemas and starting records. Choose a
   scenario to see its resolved starting data; this is not a running database.
   Data rows have a **View record** button pinned to the right during horizontal
   scrolling. Record IDs and cell values remain ordinary selectable text; the
   button opens the complete record in the existing full-width JSON viewer.
-- **Personas & actors**: source-defined identities, attributes and permissions.
+- **Actors & permissions**: source-defined identities, attributes and permissions.
   Customer records stay under Data; an actor is not assumed to be a human persona.
   Actors may include an optional plain-text `description` (1–500 characters).
   It appears below the identity in this page and in world/scenario setup, and is
@@ -37,26 +108,34 @@ Data, Tools, Personas & actors), and the test workflow under **Testing**
   placeholder. This is documentation, not a model prompt or permission setting.
 - **Scenarios**: starting situations for the agent to encounter. Each scenario
   includes its recorded **Runs**, with results and an **Open run** link to the
-  exact execution on Runs. History is matched to the scenario saved with the
+  exact execution in Results. History is matched to the scenario saved with the
   run, not today's drill definition. Earlier runs may use an older definition.
   Five runs appear per page; **Load older runs** searches further through saved
   project history when earlier batches have not loaded yet.
-- **Tools**: choose **Operations** for inputs, responses and declared errors,
-  **Implementation** for the executable TypeScript/JavaScript, or **Declaration**
-  for the complete compiled contract. Implementation opens in the main workspace,
-  not a narrow detail panel. It starts at the actual entry module and lets you
+- **Tools**: choose **Behavior** for inputs, responses and declared errors,
+  **Starting data** for source-defined records, **Test tool** for a manual call
+  to the live environment, or **Source** for executable TypeScript/JavaScript.
+  **Full contract** opens the complete compiled declaration from Behavior.
+  Source opens in the main workspace, not a narrow detail panel. It starts at the actual entry module and lets you
   select imported helper files, with line numbers, syntax coloring, wrapping and copy.
-  **Available interfaces** stays visible in every Tool view: MCP, HTTP API,
+  **Available interfaces** in Behavior lists MCP, HTTP API,
   Firedrill CLI and direct function. These are adapters for declared operations,
   not a single exclusive Tool type or a live-connection indicator. The target's
   bindings and actor permissions determine access. HTTP includes generic operation
   calls even without custom routes; separately displayed route counts are declared
   routes, not observed traffic. CLI means `firedrill world`, not arbitrary native
   command interception; direct function uses the supplied binding/test adapter.
+- **State & activity**: **Live state** reads current records; **Activity** reads
+  journaled Tool operations and world changes. Neither view substitutes source
+  seed rows when no live world exists. Full reset requires typing the exact world
+  identity and clearly states that post-baseline state and activity are removed.
+- **Connect agent**: token-free endpoint descriptions appear first. **Reveal
+  connection values** is an explicit action that exposes copyable local binding
+  credentials. Connecting a client is separate from running an agent drill.
 - **Drills**: read the agent's task, starting scenario and checks, then run the
   drill. Repeated workloads and task inputs come from the same source files.
   Execution limits stay under settings; raw check definitions open in a wide viewer.
-- **Runs**: actual attempts, checks, events and retained data after execution.
+- **Results**: actual attempts, checks, events and retained data after execution.
   Check values appear inline as an expected/actual diff, and recorded data changes
   show before/after together. Changed lines use minus/plus markers; check conditions
   still determine the verdict (a threshold check can pass with different values).
@@ -94,8 +173,9 @@ keyboard access and a **More below** action; wide tables show **More columns**
 above the table. These controls appear only for actual overflow and become return
 actions at the end. Selecting a different definition resets its content position.
 
-Content lists use shared Previous/Next controls: up to 25 entries in navigation,
-catalogs and activity, and 10 in definition/detail lists. Controls appear only
+Content lists use shared Previous/Next controls: the Tools directory uses 12 per
+page and live state/activity use 50 per page. Other source/report lists use up to
+25 entries, with 10 in definition/detail lists. Controls appear only
 when another page is needed. Search filters the complete loaded collection before
 paging; changing a filter or definition resets its page, and refreshed shorter
 lists cannot leave an empty trailing page. Check numbering continues across pages.
@@ -113,7 +193,7 @@ structured data in a wide, line-numbered viewer. Copy and line wrapping work the
 same way for data and source files. Single documents do not expand inside narrow
 table cells; paired check values and recorded data changes use the inline diff.
 Operation names open their contract, including declared errors, fidelity and
-idempotency. The Tool's Declaration view also retains full capabilities, state,
+idempotency. The Tool's Full contract view also retains full capabilities, state,
 events, faults, subscriptions, callbacks and HTTP definitions. Run details retain identifiers, seed, and execution metadata without
 repeating them throughout the workspace. Reports that cannot be opened stay
 listed under Runs with their verification errors; they are not silently omitted.

@@ -2,6 +2,10 @@ export { packWorldBuildArtifact, type WorldBuildArchive, WorldBuildArchiveError 
 export { compileWorld, FIREDRILL_COMPILER_VERSION } from "./compile.js";
 export { formatWorldSources } from "./format.js";
 export {
+  inspectInstalledToolPackage,
+  type InspectInstalledToolPackageResult,
+} from "./inspect-tool-package.js";
+export {
   ProjectConfigSchema,
   ScenarioSourceSchema,
   TargetSourceSchema,

@@ -457,6 +457,11 @@ try {
     );
   }
   const installedPackCli = join(installedPackProject, "node_modules", ".bin", "firedrill");
+  writeFileSync(
+    join(consumer, "tool-first.mjs"),
+    readFileSync(join(root, "tooling", "packed-tool-first.mjs")),
+  );
+  run("node", ["tool-first.mjs", installedPackProject], consumer);
   mkdirSync(join(installedPackProject, "world"), { recursive: true });
   writeFileSync(
     join(installedPackProject, "firedrill.json"),

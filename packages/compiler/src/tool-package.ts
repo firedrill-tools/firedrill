@@ -23,6 +23,7 @@ const InstalledToolPackageManifestSchema = z
       .object({
         layer: z.literal("tool-pack"),
         tool: SourcePathSchema,
+        starter: SourcePathSchema.optional(),
         lifecycle: z.enum(["active", "deprecated", "revoked"]),
       })
       .passthrough(),
@@ -35,6 +36,7 @@ export interface InstalledToolPackage {
   readonly lifecycle: "active" | "deprecated" | "revoked";
   readonly root: string;
   readonly declaration: ResolvedRepositoryPath;
+  readonly starter?: ResolvedRepositoryPath;
 }
 
 type ToolPackageResolution =
@@ -92,6 +94,7 @@ function resolveInsidePackage(input: {
   readonly baseDirectory: string;
   readonly path: string;
   readonly purpose: string;
+  readonly rejectSymlinks?: boolean;
 }): ToolPackagePathResolution {
   const absolutePath = resolve(input.baseDirectory, input.path);
   const unresolvedLabel = packageLabel(input.packageName, input.packageRoot, absolutePath);
@@ -103,6 +106,16 @@ function resolveInsidePackage(input: {
     });
   }
   try {
+    if (input.rejectSymlinks) {
+      let component = input.packageRoot;
+      for (const segment of relative(input.packageRoot, absolutePath).split(sep)) {
+        component = join(component, segment);
+        if (lstatSync(component).isSymbolicLink())
+          throw new TypeError("starter paths must not contain symlinks");
+      }
+      const info = lstatSync(absolutePath);
+      if (info.size > MAX_PACKAGE_MANIFEST_BYTES) throw new TypeError("starter exceeds 1 MiB");
+    }
     const realPath = realpathSync(absolutePath);
     if (!contained(input.packageRoot, realPath)) {
       return failure({
@@ -198,6 +211,18 @@ export function resolveInstalledToolPackage(
     purpose: "Tool declaration",
   });
   if (declaration.status === "failed") return declaration;
+  const starter =
+    parsed.data.firedrill.starter === undefined
+      ? undefined
+      : resolveInsidePackage({
+          packageName: requestedName,
+          packageRoot,
+          baseDirectory: packageRoot,
+          path: parsed.data.firedrill.starter,
+          purpose: "Tool starter",
+          rejectSymlinks: true,
+        });
+  if (starter?.status === "failed") return starter;
   return {
     status: "success",
     package: {
@@ -206,6 +231,7 @@ export function resolveInstalledToolPackage(
       lifecycle: parsed.data.firedrill.lifecycle,
       root: packageRoot,
       declaration: declaration.path,
+      ...(starter === undefined ? {} : { starter: starter.path }),
     },
   };
 }

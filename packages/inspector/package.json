@@ -33,6 +33,7 @@
     "test": "vitest run"
   },
   "dependencies": {
+    "@firedrill/sdk": "workspace:*",
     "@firedrill/simulation": "workspace:*"
   },
   "devDependencies": {

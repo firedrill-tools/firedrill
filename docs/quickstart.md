@@ -4,7 +4,17 @@ This guide explains Firedrill's repository contract. The files belong beside the
 
 The npm packages are still an unpublished release candidate. After an authorized publication, the normal project-local installation will be `npm install --save-dev @firedrill/cli`, followed by `npx firedrill init`. Until then, use a reviewed packed release artifact or the source-checkout commands in the root README. The exact available flags are generated from the executable in the [CLI reference](cli-reference.md).
 
-The shortest complete path is:
+For your existing agent, start with [local tools](local-environment.md):
+
+```sh
+firedrill init
+firedrill serve
+```
+
+Choose or create tools, inspect their data and behavior, then connect the existing
+agent. No scenario or test is required to get a usable backend.
+
+To learn the complete **testing** loop through an explicit example instead:
 
 ```sh
 firedrill init --path template
@@ -21,17 +31,30 @@ Individual run folders remain portable evidence bundles. The central index is ju
 
 ## 1. Pick a verified starting path
 
-In an interactive terminal, `firedrill init` performs a bounded inspection, shows the frameworks, data systems, agent seams, and coding-agent conventions it found, then asks what the first drill should prove and which of four setup paths to use. Nothing is written until that final choice. In JSON, CI, or piped use, bare `firedrill init` remains a read-only inspection; pass `--path` to select a setup deterministically.
+In an interactive terminal, `firedrill init` guides tool selection, optional
+authoring, and local startup. A catalog package requires installation consent if
+missing; custom tools need no key or account. The wizard does not require you to
+invent a test task before starting the backend. In JSON, CI, or piped use, bare
+`init` remains read-only. Use `--tool`, `--custom`, or a legacy `--path` to make an
+explicit setup selection; `--start` opts into foreground execution.
 
 ```sh
 firedrill init
 firedrill init --path firedrill-agent
+firedrill init --custom my-tool --json
+firedrill init --tool @scope/firedrill-tool
 firedrill init --path coding-agent
 # or: firedrill init --path template
 # or: firedrill init --path manual
 ```
 
-The Firedrill Agent and coding-agent paths install the same canonical skill and repository-specific brief under `.agents/` without creating application or world source. The first uses the separately installed `@firedrill/agent` package and the developer's `ANTHROPIC_API_KEY`; the second leaves execution to an existing coding agent. The template path creates a complete runnable Tool, target, scenario, and drill. The manual path creates only a valid world shell and deterministic probe Tool. Existing source files are never replaced. Every selected path also ensures `.firedrill/` is present in the repository's `.gitignore`, appending only that rule when necessary.
+The explicit `--path firedrill-agent` and `--path coding-agent` forms install the
+same skill and repository brief under `.agents/`. Firedrill Agent uses the
+separately installed `@firedrill/agent` and your `ANTHROPIC_API_KEY`; its default
+task is preparing tools, not inventing a test suite. The template path remains an
+explicit complete runnable example. The legacy manual path creates a world shell
+and probe tool; prefer `--custom <id>` for an editable stateful backend. Existing
+files are never silently replaced. Setup ensures `.firedrill/` is Git-ignored.
 
 Alternatively, copy `examples/quickstart` into a temporary directory or inspect it in place. It contains one intentionally plain agent and one Tool so the framework concepts stay visible.
 
@@ -148,7 +171,13 @@ const result = await runDrills({
 
 The `setup` object is serialized, normalized, hashed, and compiled into a derived immutable build. It may add or replace starting state rows and actors, set virtual time, activate declared faults, append initial events, select installed Tool packages, point one declared Tool at a repository-owned behavior module, and map temporary bindings onto names the agent already understands. It never writes those choices back to YAML, JSON, or SQLite behind the report. Command targets receive binding aliases automatically; caller-owned targets pass `binding.environment` through the agent's existing configuration seam. Unsupported protocol mappings fail before agent execution. Full details are in the [`@firedrill/sdk` guide](../packages/sdk/README.md#per-test-synthetic-data-and-tools).
 
-HTTP-bound agents can discover their granted operations at `GET $FIREDRILL_HTTP_URL/v1/tools` and call one at `POST /v1/operations/{packageId}/{operationId}` with bearer authentication. MCP-bound agents use the supplied Streamable HTTP URL and token; discovered names are `{packageId}.{operationId}`. CLI-bound agents call `firedrill world tools --json` and `firedrill world call <tool-id> <operation-id> --input '{...}' --json`. The protocol package READMEs define the exact request and response envelopes.
+HTTP-bound agents can discover loaded operations at `GET $FIREDRILL_HTTP_URL/v1/tools`
+and call one at `POST /v1/operations/{packageId}/{operationId}` with bearer
+authentication. Discovery is not an access grant: the kernel checks actor
+permissions on invocation. MCP-bound agents use the supplied Streamable HTTP URL
+and token; discovered names are `{packageId}.{operationId}`. CLI-bound agents call
+`firedrill world tools --json` and `firedrill world call <tool-id> <operation-id>
+--input '{...}' --json`. The protocol READMEs define the exact envelopes.
 
 ## 4. Run and diagnose
 

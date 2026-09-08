@@ -27,6 +27,7 @@
   "files": [
     "dist",
     "github-issues.tool.yaml",
+    "starter.json",
     "README.md"
   ],
   "publishConfig": {
@@ -35,6 +36,7 @@
   "firedrill": {
     "layer": "tool-pack",
     "tool": "github-issues.tool.yaml",
+    "starter": "starter.json",
     "lifecycle": "active",
     "conformance": "github-issues-conformance"
   },
