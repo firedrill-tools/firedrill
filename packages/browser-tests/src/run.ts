@@ -40,6 +40,8 @@ export interface RunBrowserTestOptions {
   readonly headless?: boolean;
   /** Browser application origins only. Model-provider traffic belongs to the optional driver. */
   readonly allowedOrigins?: readonly string[];
+  /** Optional caller-owned per-connection DNS policy. The proxy connects to the returned address. */
+  readonly resolveAddress?: (hostname: string) => Promise<{ address: string; family: 4 | 6 }>;
   readonly allowRemote?: boolean;
   readonly timeoutMs?: number;
   readonly stepTimeoutMs?: number;
@@ -304,6 +306,7 @@ export async function runBrowserTest(options: RunBrowserTestOptions): Promise<Br
   try {
     emit("started", "Starting an isolated browser context");
     proxy = await startBrowserProxy({
+      ...(options.resolveAddress ? { resolveAddress: options.resolveAddress } : {}),
       origins,
       timeoutMs,
       blocked: (message) => {

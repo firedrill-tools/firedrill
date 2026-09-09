@@ -6,7 +6,7 @@ import {
   type IncomingMessage,
 } from "node:http";
 import { request as httpsRequest } from "node:https";
-import { connect, type Socket } from "node:net";
+import { connect, type LookupFunction, type Socket } from "node:net";
 import type { Duplex } from "node:stream";
 
 export interface BrowserProxy {
@@ -20,7 +20,22 @@ export async function startBrowserProxy(options: {
   readonly origins: ReadonlySet<string>;
   readonly timeoutMs: number;
   readonly blocked: (message: string) => void;
+  readonly resolveAddress?: (hostname: string) => Promise<{ address: string; family: 4 | 6 }>;
 }): Promise<BrowserProxy> {
+  const lookup: LookupFunction | undefined = options.resolveAddress
+    ? (hostname, lookupOptions, callback) => {
+        options.resolveAddress?.(hostname).then(
+          (resolved) =>
+            lookupOptions.all
+              ? callback(null, [resolved])
+              : callback(null, resolved.address, resolved.family),
+          () => {
+            options.blocked("Browser destination was denied by network policy");
+            callback(new Error("Browser network policy denied destination"), "", 4);
+          },
+        );
+      }
+    : undefined;
   const username = "firedrill";
   const password = randomBytes(32).toString("base64url");
   const credential = Buffer.from(`Basic ${Buffer.from(`${username}:${password}`).toString("base64")}`);
@@ -74,7 +89,12 @@ export async function startBrowserProxy(options: {
     }
     const upstream = (url.protocol === "https:" ? httpsRequest : httpRequest)(
       url,
-      { method: request.method, headers: requestHeaders(request.headers, url), timeout: options.timeoutMs },
+      {
+        method: request.method,
+        headers: requestHeaders(request.headers, url),
+        timeout: options.timeoutMs,
+        ...(lookup ? { lookup } : {}),
+      },
       (remote) => {
         const headers = { ...remote.headers };
         delete headers["proxy-authenticate"];
@@ -161,7 +181,11 @@ export async function startBrowserProxy(options: {
         return;
       }
       const upstream = track(
-        connect({ host: target.hostname.replace(/^\[|\]$/g, ""), port: Number(target.port || 443) }),
+        connect({
+          host: target.hostname.replace(/^\[|\]$/g, ""),
+          port: Number(target.port || 443),
+          ...(lookup ? { lookup } : {}),
+        }),
       );
       upstream.setTimeout(options.timeoutMs, () => upstream.destroy());
       upstream.once("connect", () => {
@@ -197,6 +221,7 @@ export async function startBrowserProxy(options: {
       method: request.method,
       headers: requestHeaders(request.headers, url),
       timeout: options.timeoutMs,
+      ...(lookup ? { lookup } : {}),
     });
     upstreamRequest.on("socket", track);
     upstreamRequest.on("upgrade", (response, remote, remoteHead) => {

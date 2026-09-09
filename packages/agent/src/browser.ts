@@ -1,7 +1,7 @@
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { createSdkMcpServer, query, tool } from "@anthropic-ai/claude-agent-sdk";
+import { createSdkMcpServer, query, type SDKUserMessage, tool } from "@anthropic-ai/claude-agent-sdk";
 import {
   BrowserStepSchema,
   type BrowserTestDriver,
@@ -15,6 +15,9 @@ export interface BrowserAgentOptions {
   readonly model?: string;
   readonly maxTurns?: number;
   readonly maxBudgetUsd?: number;
+  /** Explicit interactive stream. Closing it ends input; each item is a user follow-up, never page content. */
+  readonly messages?: AsyncIterable<string>;
+  readonly onTurnCompleted?: () => void;
 }
 /** Optional task driver; model narration never supplies browser or world verdicts. */
 export function createBrowserAgentDriver(options: BrowserAgentOptions = {}): BrowserTestDriver {
@@ -99,8 +102,28 @@ export function createBrowserAgentDriver(options: BrowserAgentOptions = {}): Bro
     let completed = false;
     let resultError = false;
     try {
+      const interactive = async function* (): AsyncGenerator<SDKUserMessage> {
+        const userMessage = (content: string): SDKUserMessage => ({
+          type: "user",
+          message: { role: "user", content },
+          parent_tool_use_id: null,
+          session_id: "",
+        });
+        yield userMessage(context.task);
+        let count = 0;
+        if (options.messages)
+          for await (const message of options.messages) {
+            context.signal.throwIfAborted();
+            if (++count > 50 || !message.trim() || message.length > 20000)
+              throw new BrowserTestError(
+                "agent.INVALID_MESSAGE",
+                "Browser follow-ups are limited to 50 messages of 1–20000 characters.",
+              );
+            yield userMessage(message);
+          }
+      };
       const stream = query({
-        prompt: context.task,
+        prompt: options.messages ? interactive() : context.task,
         options: {
           cwd: home,
           env: {
@@ -151,6 +174,7 @@ export function createBrowserAgentDriver(options: BrowserAgentOptions = {}): Bro
         if (message.type === "result") {
           completed = true;
           resultError = message.subtype !== "success" || message.is_error;
+          options.onTurnCompleted?.();
         }
       if (!completed || resultError)
         throw new BrowserTestError(

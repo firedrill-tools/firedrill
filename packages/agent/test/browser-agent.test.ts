@@ -1,5 +1,5 @@
 import { existsSync } from "node:fs";
-import type { Query, SDKMessage } from "@anthropic-ai/claude-agent-sdk";
+import type { Query, SDKMessage, SDKUserMessage } from "@anthropic-ai/claude-agent-sdk";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocked = vi.hoisted(() => ({ query: vi.fn() }));
@@ -22,8 +22,35 @@ const context = () => ({
   observe: async () => ({ url: "http://127.0.0.1:3000", snapshot: "button Test" }),
   step: async () => {},
 });
-beforeEach(() => mocked.query.mockReset());
+beforeEach(() => {
+  mocked.query.mockReset();
+});
 describe("optional browser Agent SDK driver", () => {
+  it("uses the SDK user-message stream for bounded interactive follow-ups", async () => {
+    const received: string[] = [];
+    mocked.query.mockImplementation(({ prompt }: { prompt: AsyncIterable<SDKUserMessage> }) =>
+      (async function* () {
+        for await (const message of prompt) received.push(String(message.message.content));
+        yield { type: "result", subtype: "success", is_error: false } as SDKMessage;
+      })(),
+    );
+    await createBrowserAgentDriver({
+      environment: { ANTHROPIC_API_KEY: "test" },
+      messages: (async function* () {
+        yield "Now open the receipt";
+        yield "Check the confirmation";
+      })(),
+    })(context());
+    expect(received).toEqual(["Click the test button", "Now open the receipt", "Check the confirmation"]);
+    await expect(
+      createBrowserAgentDriver({
+        environment: { ANTHROPIC_API_KEY: "test" },
+        messages: (async function* () {
+          yield "x".repeat(20001);
+        })(),
+      })(context()),
+    ).rejects.toMatchObject({ code: "agent.INVALID_MESSAGE" });
+  });
   it("requires BYOK and valid limits before calling the model", () => {
     expect(() => createBrowserAgentDriver({ environment: {} })).toThrow(/ANTHROPIC_API_KEY/);
     expect(() =>
