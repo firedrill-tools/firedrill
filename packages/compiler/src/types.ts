@@ -33,6 +33,10 @@ export interface BundledTool {
   readonly entryPath: string;
   /** Exact repository-relative source closure used to produce the locked artifact. */
   readonly sourcePaths: readonly string[];
+  readonly ui?: {
+    readonly assets: readonly { readonly artifactPath: string; readonly bytes: Uint8Array }[];
+    readonly sourcePaths: readonly string[];
+  };
 }
 
 export interface ToolSourceSet {
@@ -41,6 +45,8 @@ export interface ToolSourceSet {
   /** Compiler-resolved entry module, using the same labels as behaviorPaths. */
   readonly entryPath?: string;
   readonly behaviorPaths: readonly string[];
+  /** Exact static UI closure, separate from executable Tool behavior. */
+  readonly uiPaths?: readonly string[];
   readonly origin: ToolSourceOrigin;
 }
 

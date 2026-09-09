@@ -9,6 +9,7 @@ import type {
 } from "./browser-types";
 import type {
   EnvironmentActivityPage,
+  EnvironmentAppLink,
   EnvironmentCall,
   EnvironmentCallResult,
   EnvironmentConnections,
@@ -205,6 +206,10 @@ export const browserApi = {
 
 export const inspectorApi = {
   environment: () => request<EnvironmentStatus>("/api/environment"),
+  environmentApp: (packageId: string, signal?: AbortSignal) =>
+    request<EnvironmentAppLink>(`/api/environment/apps/${encodeURIComponent(packageId)}`, {
+      ...(signal === undefined ? {} : { signal }),
+    }),
   environmentConnections: () => request<EnvironmentConnections>("/api/environment/connections"),
   environmentState: (packageId: string, namespace: string, generation: number, afterRowId?: string) => {
     const query = new URLSearchParams({ packageId, namespace, generation: String(generation), limit: "50" });

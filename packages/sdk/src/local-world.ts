@@ -524,6 +524,20 @@ class LocalWorldController implements LocalWorld {
       worldInstanceId: this.store.metadata().worldInstanceId,
       actorId: selectedActorId,
       tools: this.build.tools,
+      toolUis: this.build.toolUis,
+      getRevision: () => {
+        this.assertOpen();
+        return {
+          generation: this.generation,
+          evidenceSequence: this.store.latestEvidenceSequence([
+            "state_change",
+            "clock",
+            "fault_control",
+            "lifecycle",
+            "event",
+          ]),
+        };
+      },
       client,
       options,
       onClosed: () => this.bindings.delete(session),

@@ -35,6 +35,17 @@ errors for expected failures, transactions for effects, virtual time for delays,
 and events for cross-tool consequences. Backend-only means no provider UI is
 needed; it does not mean a static response or an automatically cloned API.
 
+If the user needs a tool's interactive app, add optional top-level
+`ui: { root: "app", entry: "index.html" }` to that Tool declaration. Keep static
+HTML/CSS/JS and bundled fonts/images in that declaration-relative directory.
+Import `getContext` and `invoke` from `/_firedrill/client.js`; invoke only declared
+operation IDs and render their canonical outcomes. UI actions must call the real
+Tool behavior, not maintain a parallel fake database. Use stable idempotency keys
+for mutation retries and confirm destructive actions. The runtime serves immutable
+assets with a same-origin CSP: no inline scripts/styles or external dependencies.
+Never expose an inspector/control token in app code. Do not add a UI to a backend
+request that does not need one.
+
 ## Connect and verify
 
 `firedrill serve --json` starts the baseline and returns actual local HTTP, MCP
@@ -42,6 +53,10 @@ and CLI connection variables. `--scenario <id>` selects named starting condition
 `--actor <id>` selects one identity when multiple exist. It is a foreground process:
 keep it alive while the customer's application uses the returned bindings. The
 same startup returns the inspector URL for live tools, records and activity.
+Its `apps` array contains live app links for selected UI-backed Tools; a Tool
+without a UI has no app entry. Check UI changes through a second protocol and
+check backend changes through the UI, not just whether a page renders. App links
+are actor-scoped local credentials; do not commit them or put them in reports.
 Human `serve` opens it automatically; `--no-open` leaves opening to the caller.
 `inspect` alone browses source/results and must not be mistaken for a running
 backend. Do not start a long-lived process from an agent tool that cannot retain

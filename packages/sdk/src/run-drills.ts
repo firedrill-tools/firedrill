@@ -50,12 +50,15 @@ import { verifyLocalReport, writeLocalReport, writeReportIndex } from "@firedril
 import type { LoadedWorldBuild } from "@firedrill/world-build";
 import type { BoundWorldClient } from "@firedrill/world-kernel";
 import { LocalCaptureManager, type RunCaptureOptions, validateCaptureOptions } from "./capture.js";
+import type { LocalWorldApp } from "./local-world-bindings.js";
 import { prepareExecutableBuild } from "./project-build.js";
 import { FiredrillProjectError } from "./project-error.js";
 
 export interface AgentBinding {
   /** Environment variables understood by subprocesses and standard protocol clients. */
   readonly environment: Readonly<Record<string, string>>;
+  /** Optional Tool apps started for this attempt, using the same actor and world. */
+  readonly apps: readonly LocalWorldApp[];
   /** Present only when the selected target explicitly declares a direct binding. */
   readonly world?: BoundWorldClient;
 }
@@ -735,6 +738,7 @@ function agentHandler(input: {
       },
       binding: {
         environment: invocation.bindingEnvironment,
+        apps: context.binding?.apps ?? [],
         ...(context.world === undefined ? {} : { world: context.world }),
       },
       signal: context.signal,

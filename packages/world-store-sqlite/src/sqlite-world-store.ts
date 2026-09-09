@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { latestEvidenceSequence } from "./evidence-head.js";
 import { copyFileSync, existsSync, mkdirSync, renameSync, rmSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import type {
@@ -393,14 +394,9 @@ export class SqliteWorldStore implements WorldStore {
     return rows.map((row) => EvidenceEntrySchema.parse(JSON.parse(row.payload_json)));
   }
 
-  latestEvidenceSequence(): number {
+  latestEvidenceSequence(kinds?: readonly EvidenceEntry["kind"][]): number {
     this.assertOpen();
-    const row = this.database
-      .prepare("SELECT COALESCE(MAX(sequence), 0) AS sequence FROM evidence")
-      .get() as {
-      sequence: number;
-    };
-    return decodeStoredCount(String(row.sequence), "latest evidence sequence");
+    return latestEvidenceSequence(this.database, kinds);
   }
 
   nextScheduledEvent(atOrBeforeUs?: VirtualTime): ScheduledEvent | null {

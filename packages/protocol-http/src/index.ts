@@ -1,5 +1,6 @@
 export * from "./callbacks.js";
 export * from "./server.js";
+export * from "./tool-ui.js";
 export type {
   HttpWireAuthority,
   HttpWireInvoke,

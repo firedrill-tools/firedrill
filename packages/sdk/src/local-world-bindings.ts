@@ -1,6 +1,6 @@
 import type { ActorId, WorldInstanceId } from "@firedrill/contracts";
 import { startCliWorldBinding } from "@firedrill/protocol-cli";
-import { startHttpWorldBinding } from "@firedrill/protocol-http";
+import { startHttpWorldBinding, startToolUiBinding, type ToolUiRevision } from "@firedrill/protocol-http";
 import { startMcpWorldBinding } from "@firedrill/protocol-mcp";
 import type { LoadedWorldBuild } from "@firedrill/world-build";
 import type { BoundWorldClient } from "@firedrill/world-kernel";
@@ -10,7 +10,7 @@ export type LocalWorldProtocol = "http" | "mcp" | "cli";
 export interface LocalWorldListenOptions {
   /** Omit only when the selected world has exactly one actor. */
   readonly actorId?: string;
-  /** Defaults to HTTP, MCP, and CLI. All listeners bind only to loopback. */
+  /** Defaults to HTTP, MCP, and CLI. Declared Tool apps start independently of this selection. */
   readonly protocols?: readonly LocalWorldProtocol[];
   /** Defaults to an ephemeral port. Zero also selects an ephemeral port. */
   readonly httpPort?: number;
@@ -24,10 +24,19 @@ export interface LocalWorldBinding {
   readonly http?: { readonly url: string; readonly token: string };
   readonly mcp?: { readonly url: string; readonly token: string };
   readonly cli?: { readonly url: string; readonly token: string };
+  /** Optional Tool UIs, each on its own origin with a package- and actor-scoped credential. */
+  readonly apps: readonly LocalWorldApp[];
   /** Resolved per-package recipes. Values may include tokens; apply explicitly in a test process only. */
   readonly connections?: readonly LocalWorldConnection[];
   /** Revokes this listener immediately, then waits for all its sockets to close. */
   close(): Promise<void>;
+}
+
+export interface LocalWorldApp {
+  readonly packageId: string;
+  readonly title: string;
+  /** Scoped credential for an explicit browser/agent connection. Never persist it in logs or reports. */
+  readonly url: string;
 }
 
 export interface LocalWorldConnection {
@@ -87,6 +96,8 @@ export class LocalWorldBindingSession {
   readonly #worldInstanceId: WorldInstanceId;
   readonly #actorId: ActorId;
   readonly #tools: LoadedWorldBuild["tools"];
+  readonly #toolUis: LoadedWorldBuild["toolUis"];
+  readonly #getRevision: () => ToolUiRevision;
   readonly #client: Pick<BoundWorldClient, "invoke">;
   readonly #protocols: readonly LocalWorldProtocol[];
   readonly #options: LocalWorldListenOptions;
@@ -101,6 +112,8 @@ export class LocalWorldBindingSession {
     readonly worldInstanceId: WorldInstanceId;
     readonly actorId: ActorId;
     readonly tools: LoadedWorldBuild["tools"];
+    readonly toolUis: LoadedWorldBuild["toolUis"];
+    readonly getRevision: () => ToolUiRevision;
     readonly client: Pick<BoundWorldClient, "invoke">;
     readonly options: LocalWorldListenOptions;
     readonly onClosed: () => void;
@@ -108,6 +121,11 @@ export class LocalWorldBindingSession {
     this.#worldInstanceId = input.worldInstanceId;
     this.#actorId = input.actorId;
     this.#tools = input.tools;
+    this.#toolUis = input.toolUis;
+    this.#getRevision = () => {
+      this.#assertOpen();
+      return input.getRevision();
+    };
     this.#protocols = validateLocalWorldListenOptions(input.options);
     this.#options = { ...input.options };
     this.#onClosed = input.onClosed;
@@ -131,7 +149,8 @@ export class LocalWorldBindingSession {
       mcp?: { url: string; token: string };
       cli?: { url: string; token: string };
     } = {};
-    let current: LocalWorldProtocol | undefined;
+    const apps: LocalWorldApp[] = [];
+    let current: LocalWorldProtocol | "tool-ui" | undefined;
     try {
       for (const protocol of this.#protocols) {
         current = protocol;
@@ -154,6 +173,23 @@ export class LocalWorldBindingSession {
           token: listener.token,
         });
         Object.assign(environment, listener.environment);
+      }
+      for (const ui of this.#toolUis) {
+        current = "tool-ui";
+        this.#assertOpen();
+        const tool = this.#tools.find((candidate) => candidate.manifest.id === ui.packageId);
+        if (tool === undefined) throw new Error("A Tool UI requires its loaded Tool");
+        const listener = await startToolUiBinding({
+          client: this.#client,
+          tool,
+          ui,
+          worldInstanceId: this.#worldInstanceId,
+          actorId: this.#actorId,
+          getRevision: this.#getRevision,
+        });
+        this.#listeners.push(listener);
+        this.#assertOpen();
+        apps.push(Object.freeze({ packageId: listener.packageId, title: listener.title, url: listener.url }));
       }
       const connections: LocalWorldConnection[] = [];
       for (const tool of this.#tools) {
@@ -181,6 +217,7 @@ export class LocalWorldBindingSession {
         worldInstanceId: this.#worldInstanceId,
         actorId: this.#actorId,
         environment: Object.freeze(environment),
+        apps: Object.freeze(apps),
         ...endpoints,
         ...(connections.length === 0 ? {} : { connections: Object.freeze(connections) }),
         close: () => this.close(),

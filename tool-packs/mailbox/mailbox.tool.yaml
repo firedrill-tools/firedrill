@@ -1,5 +1,8 @@
 schemaVersion: 1
 module: ./dist/behavior.js
+ui:
+  root: dist/ui
+  entry: index.html
 manifest:
   schemaVersion: 1
   id: mailbox

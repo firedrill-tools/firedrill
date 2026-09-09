@@ -1,13 +1,14 @@
-import { FIREDRILL_ENGINE_VERSION, NodePackageNameSchema, type Diagnostic } from "@firedrill/contracts";
 import { readFileSync } from "node:fs";
+import { type Diagnostic, FIREDRILL_ENGINE_VERSION, NodePackageNameSchema } from "@firedrill/contracts";
 import { CanonicalWorldIrSchema } from "@firedrill/world-ir";
 import { satisfies, validRange } from "semver";
+import { bundleToolUi } from "./bundle-tool-ui.js";
 import { diagnostic, schemaDiagnostics } from "./diagnostics.js";
-import { parseSource } from "./parse.js";
-import { ToolSourceSchema, WorldSourceSchema, type ToolSource, type WorldSource } from "./source-schemas.js";
 import { normalizeManifest } from "./normalize.js";
-import { validateWorldData } from "./validate-world-data.js";
+import { parseSource } from "./parse.js";
+import { type ToolSource, ToolSourceSchema, type WorldSource, WorldSourceSchema } from "./source-schemas.js";
 import { resolveInstalledToolModule, resolveInstalledToolPackage } from "./tool-package.js";
+import { validateWorldData } from "./validate-world-data.js";
 import { authoredSourceVersionDiagnostic } from "./versioning.js";
 
 export type InspectInstalledToolPackageResult =
@@ -107,6 +108,18 @@ export function inspectInstalledToolPackage(options: {
   }
   const module = resolveInstalledToolModule(installed, source.data.module);
   if (module.status === "failed") return module;
+  if (source.data.ui !== undefined) {
+    const ui = bundleToolUi({
+      packageId: manifest.id,
+      declarationPath: installed.declaration.absolutePath,
+      declarationLabel: installed.declaration.repositoryPath,
+      sourceRoot: installed.root,
+      provenanceRoot: installed.root,
+      provenancePrefix: `npm/${installed.name}`,
+      ui: source.data.ui,
+    });
+    if (ui.status === "failed") return ui;
+  }
   let starter: Pick<WorldSource, "schemaVersion" | "virtualTimeUs" | "state"> | undefined;
   if (installed.starter !== undefined) {
     try {

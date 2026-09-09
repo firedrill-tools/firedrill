@@ -18,3 +18,4 @@ export * from "./setup.js";
 export * from "./suite.js";
 export * from "./target.js";
 export * from "./tool-overrides.js";
+export * from "./tool-ui.js";

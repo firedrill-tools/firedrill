@@ -9,6 +9,7 @@ import { plural, titleFromId } from "../format";
 import { type ToolTab, toolHref } from "../navigation";
 import type { SimulationProject, SimulationTool } from "../types";
 import { recordCell, startingRecords } from "./catalog-data";
+import { type LiveToolApps, OpenToolApp } from "./tool-app";
 import { ToolImplementation } from "./tool-implementation";
 import { ToolInterfaces } from "./tool-interfaces";
 import { OperationTable } from "./world";
@@ -139,12 +140,14 @@ export function ToolsView({
   selection,
   onVisit,
   runtimeSummary,
+  liveApps,
   testTool,
 }: {
   readonly project: SimulationProject;
   readonly selection: { readonly id: string | undefined; readonly tab: ToolTab };
   readonly onVisit: (href: string) => void;
   readonly runtimeSummary?: ReactNode;
+  readonly liveApps?: LiveToolApps;
   readonly testTool: (tool: SimulationTool) => ReactNode;
 }) {
   const [query, setQuery] = useState("");
@@ -155,6 +158,16 @@ export function ToolsView({
   );
   const pagination = usePagination(filtered, `${project.world.buildHash}:${query}`, 12);
   const tool = project.tools.find((item) => item.id === selection.id);
+  const appAction = (packageId: string) => {
+    const app = liveApps?.apps.find((candidate) => candidate.packageId === packageId);
+    return app === undefined || liveApps === undefined ? null : (
+      <OpenToolApp
+        key={`${liveApps.worldInstanceId}:${app.url}`}
+        app={app}
+        worldInstanceId={liveApps.worldInstanceId}
+      />
+    );
+  };
   if (selection.id !== undefined && tool === undefined)
     return (
       <section className="fd-page">
@@ -183,10 +196,13 @@ export function ToolsView({
               <code>{tool.id}</code> · v{tool.version}
             </p>
           </div>
-          <Button onClick={() => onVisit("/environment")}>
-            Live state & activity
-            <ArrowRight size={15} />
-          </Button>
+          <div className="fd-tool-detail-actions">
+            {appAction(tool.id)}
+            <Button onClick={() => onVisit("/environment")}>
+              Live state & activity
+              <ArrowRight size={15} />
+            </Button>
+          </div>
         </header>
         <div className="fd-local-frame">
           <nav className="fd-local-tabs" aria-label="Tool detail views">
@@ -264,24 +280,23 @@ export function ToolsView({
           ) : (
             <div className="fd-tool-directory">
               {pagination.items.map((item) => (
-                <RowButton
-                  className="fd-tool-directory__item"
-                  key={item.id}
-                  onClick={() => onVisit(toolHref(item.id))}
-                >
-                  <Wrench size={19} aria-hidden="true" />
-                  <div>
-                    <h2>{titleFromId(item.id)}</h2>
-                    <code>{item.id}</code>
-                    {item.operations[0]?.description === undefined ? null : (
-                      <p>{item.operations[0].description}</p>
-                    )}
-                    <span className="fd-tool-directory__metadata">
-                      {plural(item.operations.length, "operation")} ·{" "}
-                      {plural(item.stateNamespaces.length, "state table")} · v{item.version}
-                    </span>
-                  </div>
-                </RowButton>
+                <div className="fd-tool-directory__card" key={item.id}>
+                  <RowButton className="fd-tool-directory__item" onClick={() => onVisit(toolHref(item.id))}>
+                    <Wrench size={19} aria-hidden="true" />
+                    <div>
+                      <h2>{titleFromId(item.id)}</h2>
+                      <code>{item.id}</code>
+                      {item.operations[0]?.description === undefined ? null : (
+                        <p>{item.operations[0].description}</p>
+                      )}
+                      <span className="fd-tool-directory__metadata">
+                        {plural(item.operations.length, "operation")} ·{" "}
+                        {plural(item.stateNamespaces.length, "state table")} · v{item.version}
+                      </span>
+                    </div>
+                  </RowButton>
+                  {appAction(item.id)}
+                </div>
               ))}
             </div>
           )}

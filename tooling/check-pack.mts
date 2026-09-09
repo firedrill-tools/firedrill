@@ -469,6 +469,8 @@ try {
     readFileSync(join(root, "tooling", "packed-mailbox-storage.mjs")),
   );
   run("node", ["mailbox-storage.mjs", installedPackProject], consumer);
+  writeFileSync(join(consumer, "tool-apps.mjs"), readFileSync(join(root, "tooling", "packed-tool-apps.mjs")));
+  run("node", ["tool-apps.mjs", installedPackProject], consumer);
   mkdirSync(join(installedPackProject, "world"), { recursive: true });
   writeFileSync(
     join(installedPackProject, "firedrill.json"),

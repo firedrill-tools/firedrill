@@ -1,7 +1,20 @@
+import type {
+  AssertionDefinition,
+  EventRef,
+  InlineScenarioDefinition,
+  OperationRef,
+  ResolvedToolOverride,
+  ToolPackageManifest,
+} from "@firedrill/contracts";
 import {
+  compareStableStrings,
   DrillDefinitionSchema,
   DrillSuiteDefinitionSchema,
+  httpRoutesOverlap,
   InlineScenarioDefinitionSchema,
+  MAX_TOOL_UI_ASSET_BYTES,
+  MAX_TOOL_UI_ASSETS,
+  MAX_TOOL_UI_BYTES,
   NodePackageNameSchema,
   PackageIdSchema,
   RunSetupRecordSchema,
@@ -14,16 +27,9 @@ import {
   StableIdSchema,
   TargetDescriptorSchema,
   ToolPackageManifestSchema,
-  compareStableStrings,
-  httpRoutesOverlap,
-} from "@firedrill/contracts";
-import type {
-  AssertionDefinition,
-  EventRef,
-  InlineScenarioDefinition,
-  OperationRef,
-  ToolPackageManifest,
-  ResolvedToolOverride,
+  ToolUiMediaTypeSchema,
+  ToolUiPathSchema,
+  toolUiMediaType,
 } from "@firedrill/contracts";
 import { z } from "zod";
 import { semanticHash } from "./hash.js";
@@ -434,6 +440,56 @@ const BaseToolArtifactSourceSchema = z.discriminatedUnion("kind", [
     .strict(),
 ]);
 
+export const ToolUiAssetLockSchema = z
+  .object({
+    path: ToolUiPathSchema,
+    artifactPath: SourcePathSchema,
+    artifactHash: Sha256Schema,
+    bytes: z.number().int().min(0).max(MAX_TOOL_UI_ASSET_BYTES),
+    mediaType: ToolUiMediaTypeSchema,
+  })
+  .strict()
+  .superRefine((asset, context) => {
+    if (toolUiMediaType(asset.path) !== asset.mediaType)
+      context.addIssue({
+        code: "custom",
+        path: ["mediaType"],
+        message: "UI media type must match its allowlisted extension",
+      });
+  });
+
+export const ToolUiLockSchema = z
+  .object({
+    entry: ToolUiPathSchema,
+    assets: z.array(ToolUiAssetLockSchema).min(1).max(MAX_TOOL_UI_ASSETS),
+  })
+  .strict()
+  .superRefine((ui, context) => {
+    duplicateOrOrderIssues(
+      context,
+      "assets",
+      ui.assets.map((asset) => asset.path),
+    );
+    if (new Set(ui.assets.map((asset) => asset.path.toLowerCase())).size !== ui.assets.length)
+      context.addIssue({
+        code: "custom",
+        path: ["assets"],
+        message: "UI asset paths must be case-insensitively distinct for portable builds",
+      });
+    if (!ui.assets.some((asset) => asset.path === ui.entry && asset.mediaType === "text/html; charset=utf-8"))
+      context.addIssue({
+        code: "custom",
+        path: ["entry"],
+        message: "UI entry must name a locked HTML asset",
+      });
+    if (ui.assets.reduce((total, asset) => total + asset.bytes, 0) > MAX_TOOL_UI_BYTES)
+      context.addIssue({
+        code: "custom",
+        path: ["assets"],
+        message: "UI assets exceed the per-Tool byte limit",
+      });
+  });
+
 export const ToolArtifactLockSchema = z
   .object({
     packageId: PackageIdSchema,
@@ -441,6 +497,7 @@ export const ToolArtifactLockSchema = z
     manifestHash: Sha256Schema,
     artifactHash: Sha256Schema,
     artifactPath: SourcePathSchema,
+    ui: ToolUiLockSchema.optional(),
     exportName: z
       .string()
       .regex(/^(?:default|[$A-Z_a-z][$\w]*)$/)
@@ -457,7 +514,17 @@ export const ToolArtifactLockSchema = z
         .strict(),
     ]),
   })
-  .strict();
+  .strict()
+  .superRefine((lock, context) => {
+    for (const [index, asset] of (lock.ui?.assets ?? []).entries()) {
+      if (asset.artifactPath !== `tools/${lock.packageId}-ui/${asset.artifactHash.slice(7)}/${asset.path}`)
+        context.addIssue({
+          code: "custom",
+          path: ["ui", "assets", index, "artifactPath"],
+          message: "UI artifact path must be content-addressed under its own Tool directory",
+        });
+    }
+  });
 
 export const PackageLockSchema = z
   .object({
@@ -597,6 +664,8 @@ export const WorldIrSchemas = {
 
 export type CanonicalWorldIr = z.infer<typeof CanonicalWorldIrSchema>;
 export type ToolArtifactLock = z.infer<typeof ToolArtifactLockSchema>;
+export type ToolUiAssetLock = z.infer<typeof ToolUiAssetLockSchema>;
+export type ToolUiLock = z.infer<typeof ToolUiLockSchema>;
 export type PackageLock = z.infer<typeof PackageLockSchema>;
 export type BuildIdentity = z.infer<typeof BuildIdentitySchema>;
 export type BuildProvenanceEntry = z.infer<typeof BuildProvenanceEntrySchema>;

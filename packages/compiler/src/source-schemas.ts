@@ -1,11 +1,11 @@
 import {
+  ActorDefinitionSchema,
   ActorIdSchema,
   AssertionDefinitionSchema,
-  ActorDefinitionSchema,
+  AuthoredInlineScenarioDefinitionSchema,
   DrillTaskSchema,
   DrillTimelineSchema,
   FaultActivationSchema,
-  AuthoredInlineScenarioDefinitionSchema,
   InitialEventSchema,
   NodePackageNameSchema,
   SeedSchema,
@@ -13,10 +13,11 @@ import {
   StableIdSchema,
   StateSetupSchema,
   TargetDescriptorSchema,
-  ToolPackageManifestSchema,
   ToolOverridesSchema,
-  VirtualTimeSchema,
+  ToolPackageManifestSchema,
+  ToolUiSourceSchema,
   TrialPolicySchema,
+  VirtualTimeSchema,
 } from "@firedrill/contracts";
 import { z } from "zod";
 
@@ -73,6 +74,7 @@ export const ToolSourceSchema = z
   .object({
     schemaVersion: z.literal(1),
     module: SourcePathSchema,
+    ui: ToolUiSourceSchema.optional(),
     exportName: z
       .string()
       .regex(/^(?:default|[$A-Z_a-z][$\w]*)$/)

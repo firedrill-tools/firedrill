@@ -47,12 +47,14 @@ function repository(): string {
       count: { type: "integer" },
       password: { type: "string" },
       privateNote: { type: "string", writeOnly: true },
+      label: { type: "string" },
     },
     additionalProperties: false,
   };
   json(join(root, "world/counter.tool.json"), {
     schemaVersion: 1,
     module: "./counter.js",
+    ui: { root: "counter-ui" },
     manifest: {
       schemaVersion: 1,
       id: "counter",
@@ -69,6 +71,11 @@ function repository(): string {
       })),
     },
   });
+  mkdirSync(join(root, "world/counter-ui"));
+  writeFileSync(
+    join(root, "world/counter-ui/index.html"),
+    "<!doctype html><title>Counter app</title><h1>Counter</h1>",
+  );
   writeFileSync(
     join(root, "world/counter.js"),
     'export default { operations: { set(input, context) { context.state.put("records", "a", input); return input; }, blocked(input) { return input; } } };\n',
@@ -123,6 +130,44 @@ afterEach(async () => {
 });
 
 describe("live inspector environment", () => {
+  it("lists public app locations but reveals credentials only through the guarded explicit app route", async () => {
+    const { world, binding, server } = await environment();
+    const app = binding.apps[0];
+    if (app === undefined) throw new Error("Expected compiled counter app");
+    const appUrl = new URL(app.url);
+    const appToken = new URLSearchParams(appUrl.hash.slice(1)).get("token");
+    if (appToken === null) throw new Error("Expected scoped app token");
+    appUrl.hash = "";
+    const status = await get(server, "");
+    expect(status.body).toMatchObject({
+      apps: [{ packageId: "counter", title: app.title, url: appUrl.href }],
+    });
+    expect(JSON.stringify(status.body)).not.toContain(appToken);
+    const route = `${server.url}/api/environment/apps/counter`;
+    expect((await fetch(route)).status).toBe(401);
+    for (const extra of [{ origin: "https://untrusted.example" }, { "sec-fetch-site": "cross-site" }])
+      expect((await fetch(route, { headers: { ...headers, ...extra } })).status).toBe(421);
+    expect((await post(server, "/apps/counter", {})).status).toBe(404);
+    expect((await get(server, "/apps/missing")).status).toBe(404);
+    expect((await get(server, "/apps/%63ounter")).status).toBe(400);
+    expect((await get(server, "/apps/counter?url=http://untrusted.example")).status).toBe(400);
+    const revealed = await fetch(route, { headers });
+    expect(revealed.status).toBe(200);
+    expect(revealed.headers.get("cache-control")).toBe("no-store");
+    expect(revealed.headers.get("referrer-policy")).toBe("no-referrer");
+    expect(await revealed.json()).toMatchObject({ worldInstanceId: world.metadata().worldInstanceId, app });
+    expect((await fetch(app.url)).status).toBe(200);
+    await post(server, "/call", {
+      actorId: "operator",
+      packageId: "counter",
+      operationId: "set",
+      arguments: { count: 1, label: `embedded ${appToken}` },
+    });
+    const state = await get(server, "/state?packageId=counter&namespace=records");
+    expect(JSON.stringify(state.body)).not.toContain(appToken);
+    expect(JSON.stringify(state.body)).toContain("[REDACTED]");
+    expect(JSON.stringify((await get(server, "/activity")).body)).not.toContain(appToken);
+  });
   it("previews redacted scenario data, confirms sensitive source writes, and rejects stale captures", async () => {
     const { root, world, server } = await environment();
     const input = { worldInstanceId: world.metadata().worldInstanceId, id: "current-data" };

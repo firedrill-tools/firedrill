@@ -31,7 +31,7 @@ function bindingFor(outcome: OperationOutcome = { status: "ok", value: { changed
     namespace: "mock-tool-test",
   });
   const invoke = vi.spyOn(world, "invoke");
-  const binding: AgentBinding = { environment: {}, world };
+  const binding: AgentBinding = { environment: {}, apps: [], world };
   return { binding, world, invoke, kernelInvoke };
 }
 
@@ -141,7 +141,7 @@ describe("mockTool", () => {
   });
 
   it("fails at factory setup when a direct binding is missing, including async mode", () => {
-    const binding: AgentBinding = { environment: { FIREDRILL_HTTP_URL: "http://127.0.0.1:1" } };
+    const binding: AgentBinding = { environment: { FIREDRILL_HTTP_URL: "http://127.0.0.1:1" }, apps: [] };
     const input = vi.fn(() => ({}));
     expect(() => mockTool(binding, { mode: "sync", operation, input })).toThrow("direct world binding");
     expect(() => mockTool(binding, { mode: "async", operation, input })).toThrow("direct world binding");

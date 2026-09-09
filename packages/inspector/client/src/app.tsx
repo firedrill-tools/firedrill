@@ -459,6 +459,14 @@ export function App() {
             selection={readToolSelection(location.search)}
             onVisit={visit}
             runtimeSummary={<EnvironmentBanner environment={environment} onVisit={visit} />}
+            {...(environment.error === undefined && environment.status?.available
+              ? {
+                  liveApps: {
+                    worldInstanceId: environment.status.metadata.worldInstanceId,
+                    apps: environment.status.apps,
+                  },
+                }
+              : {})}
             testTool={(tool) => (
               <TestTool
                 key={`${tool.id}:${environment.status?.available ? `${environment.status.metadata.worldInstanceId}:${environment.status.description.generation}` : "source"}`}

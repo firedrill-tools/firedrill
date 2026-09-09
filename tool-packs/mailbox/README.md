@@ -27,6 +27,16 @@ Writes require an `Idempotency-Key` HTTP header. A draft body is `{"from":"write
 
 An omitted `ifVersion` permits replacement of the current draft; `0` requires absence, and a positive version must match. Replacement increments the version and resets `read` to false. Only drafts may be replaced or sent. Send does not contact a network service or create a recipient mailbox message. Missing records return `tool.NOT_FOUND` (HTTP 404); optimistic conflicts and invalid lifecycle transitions return `tool.CONFLICT` / `tool.INVALID_STATE` (409). Malformed/filter-mismatched cursors return `tool.INVALID_CURSOR` (400). Input validation and idempotency misuse return framework errors.
 
+## Local app
+
+`firedrill serve` starts the included Mailbox app alongside the selected protocol
+bindings. Open its printed app link or choose **Open app** in the inspector.
+Browse folders, read messages, compose, save drafts, send synthetic messages, and
+delete with confirmation. The app uses the same actor-scoped operations, version
+checks, faults, and SQLite state as HTTP and MCP. It does not deliver real email.
+App assets are packaged locally; no CDN, Docker, account, or extra server setup is
+required. See the developer guide's Tool apps chapter for custom app authoring.
+
 ## Pagination and fidelity limits
 
 Lists default to 50 headers, maximum 100, in lexicographic state-row order. A page filters at most 1,000 actor-prefixed rows, plus one continuation lookahead. Sparse filters can produce an empty page with `nextCursor`: keep following that cursor until it is absent. Cursors are bound to the actor and exact folder filter, and are opaque continuation data, not authentication credentials. Pagination is live, not a snapshot; concurrent insertions before a cursor require a fresh listing.

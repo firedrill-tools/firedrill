@@ -108,6 +108,8 @@ In the inspector:
 
 - **Tools:** open a tool to read its inputs, outputs and implemented behavior,
   inspect starting data, and try an operation against the running backend.
+  If the pack includes a UI, **Open app** opens its usable interface in a new tab.
+  It shares the backend's live state; see [Tool apps](tool-apps.md).
 - **Live data and activity:** see current records and recorded calls. Manual
   playground calls are operator checks, not agent test results.
 - **Connect:** explicitly reveal/copy the actual HTTP, MCP or CLI connection

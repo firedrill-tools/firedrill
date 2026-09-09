@@ -1,7 +1,6 @@
 import { join, resolve } from "node:path";
-import { compileWorld } from "@firedrill/compiler";
 import type { ToolSourceSet } from "@firedrill/compiler";
-import { PackageIdSchema, compareStableStrings } from "@firedrill/contracts";
+import { compileWorld } from "@firedrill/compiler";
 import type {
   Diagnostic,
   EvidenceEntry,
@@ -11,12 +10,13 @@ import type {
   StableId,
   ToolPackageManifest,
 } from "@firedrill/contracts";
-import { loadWorldBuild } from "@firedrill/world-build";
-import type { LoadedWorldBuild } from "@firedrill/world-build";
+import { compareStableStrings, PackageIdSchema } from "@firedrill/contracts";
 import type { CallbackReceiver } from "@firedrill/drills";
+import type { LoadedWorldBuild } from "@firedrill/world-build";
+import { loadWorldBuild } from "@firedrill/world-build";
 import { FiredrillProjectError } from "./project-error.js";
-import { runDrills } from "./run-drills.js";
 import type { AgentCallback, RunDrillsResult } from "./run-drills.js";
+import { runDrills } from "./run-drills.js";
 
 export interface ToolInspection {
   readonly schemaVersion: 1;
@@ -25,8 +25,10 @@ export interface ToolInspection {
   readonly diagnostics: readonly Diagnostic[];
   readonly toolId: PackageId;
   readonly sourcePath: string;
-  /** Declaration followed by the exact selected behavior dependency closure. */
+  /** Declaration, exact behavior dependency closure and optional browser assets. */
   readonly sourceFiles: readonly string[];
+  /** Exact UI source closure in artifact.ui.assets order; empty for backend-only Tools. */
+  readonly uiSourceFiles: readonly string[];
   readonly origin: ToolSourceSet["origin"];
   readonly buildHash: Sha256;
   readonly packageLockHash: Sha256;
@@ -36,6 +38,7 @@ export interface ToolInspection {
     readonly artifactPath: string;
     readonly exportName: string;
     readonly moduleFormat: "esm";
+    readonly ui?: NonNullable<LoadedWorldBuild["packageLock"]["packages"][number]["ui"]>;
   };
   readonly manifest: ToolPackageManifest;
 }
@@ -194,7 +197,9 @@ function inspectionFromBuild(
     sourceFiles: [
       sourceSet.declarationPath,
       ...sourceSet.behaviorPaths.filter((path) => path !== sourceSet.declarationPath),
+      ...(sourceSet.uiPaths ?? []),
     ],
+    uiSourceFiles: sourceSet.uiPaths ?? [],
     origin: sourceSet.origin,
     buildHash: build.build.manifest.buildHash,
     packageLockHash: build.build.manifest.packageLockHash,
@@ -204,6 +209,7 @@ function inspectionFromBuild(
       artifactPath: lock.artifactPath,
       exportName: lock.exportName,
       moduleFormat: lock.moduleFormat,
+      ...(lock.ui === undefined ? {} : { ui: lock.ui }),
     },
     manifest,
   };

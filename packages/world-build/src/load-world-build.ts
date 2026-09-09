@@ -1,9 +1,8 @@
-import { readFileSync, readdirSync, realpathSync } from "node:fs";
+import { readdirSync, readFileSync, realpathSync } from "node:fs";
 import { isAbsolute, join, relative, resolve, sep } from "node:path";
 import { pathToFileURL } from "node:url";
-import { DiagnosticSchema, FIREDRILL_ENGINE_VERSION } from "@firedrill/contracts";
 import type { Diagnostic, ToolPackageManifest } from "@firedrill/contracts";
-import { defineTool } from "@firedrill/tool-sdk";
+import { DiagnosticSchema, FIREDRILL_ENGINE_VERSION } from "@firedrill/contracts";
 import type {
   ToolBehaviorDefinition,
   ToolCallbackCodec,
@@ -11,6 +10,8 @@ import type {
   ToolOperationHandler,
   ToolSubscriptionHandler,
 } from "@firedrill/tool-sdk";
+import { defineTool } from "@firedrill/tool-sdk";
+import type { ToolArtifactLock } from "@firedrill/world-ir";
 import {
   BUILD_MANIFEST_SCHEMA_VERSION,
   BuildManifestSchema,
@@ -18,13 +19,13 @@ import {
   PACKAGE_LOCK_SCHEMA_VERSION,
   PackageLockSchema,
   ResolvedRunSetupSchema,
-  WORLD_IR_SCHEMA_VERSION,
   semanticHash,
   sha256Text,
+  WORLD_IR_SCHEMA_VERSION,
 } from "@firedrill/world-ir";
-import type { ToolArtifactLock } from "@firedrill/world-ir";
 import { loadToolModule } from "./load-tool-module.js";
-import type { LoadWorldBuildResult } from "./types.js";
+import { loadToolUis } from "./load-tool-uis.js";
+import type { LoadedToolUi, LoadWorldBuildResult } from "./types.js";
 
 function diagnostic(code: string, message: string, path?: string, suggestion?: string): Diagnostic {
   return DiagnosticSchema.parse({
@@ -389,6 +390,7 @@ export async function loadWorldBuild(buildDirectory: string): Promise<LoadWorldB
     manifest.artifacts.packageLock,
     ...(manifest.artifacts.setup === undefined ? [] : [manifest.artifacts.setup]),
     ...packageLock.packages.map((entry) => entry.artifactPath),
+    ...packageLock.packages.flatMap((entry) => (entry.ui?.assets ?? []).map((asset) => asset.artifactPath)),
   ].sort();
   const actualFiles = filesUnder(root);
   if (
@@ -405,6 +407,21 @@ export async function loadWorldBuild(buildDirectory: string): Promise<LoadWorldB
   }
   if (errors.length > 0) return { status: "failed", diagnostics: errors };
 
+  let toolUis: readonly LoadedToolUi[];
+  try {
+    toolUis = loadToolUis(root, packageLock);
+  } catch (error) {
+    return {
+      status: "failed",
+      diagnostics: [
+        diagnostic(
+          "FD1602",
+          `cannot verify locked Tool UI assets: ${error instanceof Error ? error.message : String(error)}`,
+          "packages.lock.json",
+        ),
+      ],
+    };
+  }
   const tools = [];
   for (const lock of packageLock.packages) {
     const manifest_ = manifests.get(lock.packageId);
@@ -423,6 +440,7 @@ export async function loadWorldBuild(buildDirectory: string): Promise<LoadWorldB
       packageLock,
       ...(setup === undefined ? {} : { setup }),
       tools,
+      toolUis,
       directory: root,
     },
   };

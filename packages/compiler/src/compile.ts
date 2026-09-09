@@ -42,6 +42,7 @@ import {
 import { satisfies, validRange } from "semver";
 import type { z } from "zod";
 import { bundleTool } from "./bundle-tool.js";
+import { bundleToolUi } from "./bundle-tool-ui.js";
 import { diagnostic, schemaDiagnostics, sortDiagnostics } from "./diagnostics.js";
 import {
   baselineFromWorld,
@@ -536,7 +537,10 @@ function materializeBuild(input: {
   expected.set("world.ir.json", encode(input.worldIr));
   expected.set("packages.lock.json", encode(input.packageLock));
   if (input.setup !== undefined) expected.set("run-setup.json", encode(input.setup));
-  for (const tool of input.tools) expected.set(tool.lock.artifactPath, tool.bytes);
+  for (const tool of input.tools) {
+    expected.set(tool.lock.artifactPath, tool.bytes);
+    for (const asset of tool.ui?.assets ?? []) expected.set(asset.artifactPath, asset.bytes);
+  }
 
   const buildDirectory = join(outputRoot.path, input.buildHash.replace("sha256:", ""));
   if (existsSync(buildDirectory)) {
@@ -824,7 +828,34 @@ export async function compileWorld(options: CompileWorldOptions): Promise<Compil
       diagnostics.push(...bundled.diagnostics);
       continue;
     }
-    tools.push({ ...source, manifest, bundle: bundled.tool });
+    const ui =
+      source.value.ui === undefined
+        ? undefined
+        : bundleToolUi({
+            packageId: manifest.id,
+            declarationPath: source.document.absolutePath,
+            declarationLabel: source.document.repositoryPath,
+            sourceRoot: source.behaviorRoot,
+            provenanceRoot: source.installedPackage?.root ?? repository.root,
+            ...(source.origin.kind === "npm" ? { provenancePrefix: `npm/${source.origin.packageName}` } : {}),
+            ui: source.value.ui,
+          });
+    if (ui?.status === "failed") {
+      diagnostics.push(...ui.diagnostics);
+      continue;
+    }
+    tools.push({
+      ...source,
+      manifest,
+      bundle:
+        ui === undefined
+          ? bundled.tool
+          : {
+              ...bundled.tool,
+              lock: { ...bundled.tool.lock, ui: ui.ui.lock },
+              ui: { assets: ui.ui.assets, sourcePaths: ui.ui.sourcePaths },
+            },
+    });
   }
   for (const packageId of behaviorOverrides.keys()) {
     if (appliedBehaviorOverrides.has(packageId)) continue;
@@ -1074,6 +1105,7 @@ export async function compileWorld(options: CompileWorldOptions): Promise<Compil
           manifest: tool.manifest,
           artifactHash: tool.bundle.lock.artifactHash,
           exportName: tool.bundle.lock.exportName,
+          ...(tool.bundle.lock.ui === undefined ? {} : { ui: tool.bundle.lock.ui }),
         },
         tool.bundle.lock.source,
       ),
@@ -1178,6 +1210,7 @@ export async function compileWorld(options: CompileWorldOptions): Promise<Compil
         declarationPath: tool.document.repositoryPath,
         entryPath: tool.bundle.entryPath,
         behaviorPaths: tool.bundle.sourcePaths,
+        ...(tool.bundle.ui === undefined ? {} : { uiPaths: tool.bundle.ui.sourcePaths }),
         origin: tool.bundle.lock.source,
       })),
       ...(buildDirectory === undefined ? {} : { buildDirectory }),

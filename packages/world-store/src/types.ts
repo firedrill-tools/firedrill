@@ -288,7 +288,8 @@ export interface WorldReader {
     namespace: StableId,
     options?: StateScanOptions,
   ): readonly StoredStateRecord[];
-  latestEvidenceSequence(): number;
+  /** Omit kinds for the journal head; an empty filter returns zero. Filtering reads only indexed heads. */
+  latestEvidenceSequence(kinds?: readonly EvidenceEntry["kind"][]): number;
   readEvidence(fromSequence?: number, limit?: number): readonly EvidenceEntry[];
   listScheduledEvents(status?: ScheduledEvent["status"]): readonly ScheduledEvent[];
   listCallbackDeliveries(status?: CallbackDelivery["status"]): readonly CallbackDelivery[];

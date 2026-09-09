@@ -328,6 +328,63 @@ describe("SQLite world transactions", () => {
     store.close();
   });
 
+  it("reads bounded per-kind journal heads without letting operation receipts advance a state revision", () => {
+    const store = createStore(temporaryDirectory());
+    const reader = SqliteWorldReader.open(store.filePath);
+    try {
+      const initial = store.latestEvidenceSequence(["state_change", "lifecycle"]);
+      store.transact(CORRELATION, () => ({
+        value: undefined,
+        primary: {
+          kind: "operation",
+          invocation: INVOCATION,
+          outcome: SUCCESS,
+          idempotency: "not_requested",
+        },
+      }));
+      expect(store.latestEvidenceSequence()).toBeGreaterThan(initial);
+      expect(store.latestEvidenceSequence(["state_change", "lifecycle"])).toBe(initial);
+      expect(reader.latestEvidenceSequence(["state_change", "lifecycle"])).toBe(initial);
+      store.transact(CORRELATION, (transaction) => {
+        transaction.putState("calendar", "events", "event_0", { id: "event_0", title: "Changed" });
+        return {
+          value: undefined,
+          primary: {
+            kind: "operation",
+            invocation: INVOCATION,
+            outcome: SUCCESS,
+            idempotency: "not_requested",
+          },
+        };
+      });
+      const changed = store.latestEvidenceSequence(["state_change"]);
+      expect(changed).toBeGreaterThan(initial);
+      expect(reader.latestEvidenceSequence(["state_change"])).toBe(changed);
+      expect(store.latestEvidenceSequence(["state_change", "state_change"])).toBe(changed);
+      expect(reader.latestEvidenceSequence([])).toBe(0);
+      expect(reader.latestEvidenceSequence(["callback"])).toBe(0);
+      expect(() => store.latestEvidenceSequence(["not-a-kind"] as never)).toThrow(/evidence kinds/);
+      expect(() => reader.latestEvidenceSequence(Array(100).fill("operation"))).toThrow(/evidence kinds/);
+      expect(() => reader.latestEvidenceSequence(null as never)).toThrow(/evidence kinds/);
+      const inspect = new Database(store.filePath, { readonly: true });
+      try {
+        const plan = inspect
+          .prepare(
+            "EXPLAIN QUERY PLAN SELECT COALESCE(MAX(sequence), 0) AS sequence FROM evidence WHERE kind = ?",
+          )
+          .all("state_change") as Array<{ detail: string }>;
+        expect(
+          plan.some((row) => row.detail.includes("evidence_kind_idx") && row.detail.includes("SEARCH")),
+        ).toBe(true);
+      } finally {
+        inspect.close();
+      }
+    } finally {
+      reader.close();
+      store.close();
+    }
+  });
+
   it("atomically commits state, random progress, pending work, receipts, and ordered evidence", () => {
     const directory = temporaryDirectory();
     const store = createStore(directory);

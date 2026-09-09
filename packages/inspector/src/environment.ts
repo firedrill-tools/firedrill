@@ -16,6 +16,13 @@ export interface LocalEnvironmentConnection {
   readonly actorId: string;
 }
 
+export interface LocalEnvironmentApp {
+  readonly packageId: string;
+  readonly title: string;
+  /** Public location only. The app credential is revealed separately on explicit request. */
+  readonly url: string;
+}
+
 export type LocalEnvironmentStatus =
   | { readonly schemaVersion: 1; readonly available: false }
   | {
@@ -24,6 +31,7 @@ export type LocalEnvironmentStatus =
       readonly metadata: ReturnType<LocalWorld["metadata"]>;
       readonly description: LocalWorldDescription;
       readonly connections: readonly LocalEnvironmentConnection[];
+      readonly apps: readonly LocalEnvironmentApp[];
       readonly agentTested: false;
       readonly source: "live_environment";
     };
@@ -31,6 +39,17 @@ export type LocalEnvironmentStatus =
 const BASE = "/api/environment";
 const MAX_BODY_BYTES = 64 * 1024;
 const PROTOCOLS = ["http", "mcp", "cli"] as const;
+
+function environmentSecrets(token: string, binding?: LocalWorldBinding): readonly string[] {
+  return [
+    token,
+    ...PROTOCOLS.flatMap((protocol) => binding?.[protocol]?.token ?? []),
+    ...(binding?.apps ?? []).flatMap((app) => {
+      const hash = new URL(app.url).hash.slice(1);
+      return [hash, ...new URLSearchParams(hash).values()].filter((value) => value.length > 0);
+    }),
+  ];
+}
 
 class EnvironmentRequestError extends Error {
   constructor(
@@ -173,7 +192,7 @@ export function createLocalEnvironmentRequestHandler(
         );
       const { world, binding } = environment;
       const description = world.describe();
-      const secrets = [token, ...PROTOCOLS.flatMap((protocol) => binding?.[protocol]?.token ?? [])];
+      const secrets = environmentSecrets(token, binding);
       const redact = (value: unknown) => redactEnvironmentValue(value, description.tools, secrets);
       const metadata = world.metadata();
       const assertCurrentGeneration = () => {
@@ -208,9 +227,33 @@ export function createLocalEnvironmentRequestHandler(
           metadata,
           description: { ...description, actors: redact(description.actors) },
           connections: connections(binding),
+          apps: (binding?.apps ?? []).map((app) => {
+            const location = new URL(app.url);
+            location.hash = "";
+            return { packageId: app.packageId, title: app.title, url: location.href };
+          }),
           agentTested: false,
           source: "live_environment",
         });
+      } else if (request.method === "GET" && url.pathname.startsWith(`${BASE}/apps/`)) {
+        const encodedId = url.pathname.slice(`${BASE}/apps/`.length);
+        let packageId: string;
+        try {
+          packageId = decodeURIComponent(encodedId);
+        } catch {
+          invalid("app package identifier is invalid");
+        }
+        if (encodeURIComponent(packageId) !== encodedId || url.search !== "")
+          invalid("app request must contain only its exact package identifier");
+        const app = binding?.apps.find((candidate) => candidate.packageId === packageId);
+        if (app === undefined)
+          throw new EnvironmentRequestError(
+            404,
+            "framework.TOOL_APP_NOT_FOUND",
+            "this Tool has no app in the running environment",
+          );
+        // Deliberate reveal only, with the same bearer and exact-origin guard as other controls.
+        writeJson(response, 200, { ...common, app });
       } else if (request.method === "GET" && url.pathname === `${BASE}/connections`) {
         // Deliberate reveal only: credentials never appear in status, activity, or error responses.
         writeJson(response, 200, {
@@ -389,10 +432,7 @@ export function createLocalEnvironmentRequestHandler(
             ? 422
             : 500;
       if (status === 401) response.setHeader("www-authenticate", 'Bearer realm="Firedrill local inspector"');
-      const credentials = [
-        token,
-        ...PROTOCOLS.flatMap((protocol) => environment?.binding?.[protocol]?.token ?? []),
-      ];
+      const credentials = environmentSecrets(token, environment?.binding);
       writeJson(
         response,
         status,

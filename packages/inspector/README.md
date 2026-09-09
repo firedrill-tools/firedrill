@@ -60,7 +60,8 @@ must be JSON and are capped at 64 KiB. The token is not accepted in a query stri
 
 | Route | Result or input |
 | --- | --- |
-| `GET /api/environment` | `available: false`, or running metadata, description, token-free connections, and `agentTested: false` |
+| `GET /api/environment` | `available: false`, or running metadata, description, token-free connections and app locations, and `agentTested: false` |
+| `GET /api/environment/apps/:packageId` | Explicit reveal of one running Tool's scoped app link; encode the exact package identifier |
 | `GET /api/environment/tools` | Running build's Tool operation and state contracts |
 | `GET /api/environment/state` | `packageId`, `namespace`, optional `afterRowId`, `limit` (1–1,000); returns records and optional exclusive `nextRowId` |
 | `GET /api/environment/activity` | Optional inclusive `fromSequence`, `limit` (1–1,000); returns journal entries and `nextSequence` |
@@ -85,10 +86,16 @@ URLs or tokens. A reset while a control request uploads rejects that request
 instead of applying it to the new generation. A relevant in-flight callback
 prevents reset through the canonical SDK's safety checks.
 
-Status never reveals connection tokens; only the explicit connections route does.
+Status never reveals connection tokens or app URL fragments. The explicit
+connections route reveals connection credentials; the app route reveals only the
+selected Tool's link. **Open app** is available in the Tools directory and detail
+header only when the supplied live binding has that Tool UI. It opens a separate
+local origin and uses the same world and actor grants as other connections.
+Backend-only Tools have no app control. Browser pop-up blocking and failed or stale
+link requests show a recoverable error instead of substituting another app.
 Live state, activity, and manual-call results redact conservative sensitive field
 names, schema-declared write-only/password fields, and known local connection
-credentials. This is presentation redaction, not a guarantee that arbitrary text
+and app credentials. This is presentation redaction, not a guarantee that arbitrary text
 contains no secrets. Retained SQLite files and direct SDK reads are unredacted.
 Keep generated `.firedrill/` files private and review content before sharing.
 

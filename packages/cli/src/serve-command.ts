@@ -81,6 +81,7 @@ export async function executeServeCommand(input: ServeCommandInput, io: ServeCom
                 environment: binding.environment,
                 ...(binding.connections === undefined ? {} : { connections: binding.connections }),
                 endpoints,
+                apps: binding.apps,
                 url: inspector.url,
                 testsExecuted: false,
               })}\n`,
@@ -101,6 +102,7 @@ export async function executeServeCommand(input: ServeCommandInput, io: ServeCom
             }
             io.stdout.write(`\nThese tokens grant local access as ${binding.actorId}; keep them private.\n`);
             io.stdout.write(`World files: ${world.directoryPath}\nPress Ctrl+C to stop.\n`);
+            for (const app of binding.apps) io.stdout.write(`Tool app (${app.title}): ${app.url}\n`);
             io.stdout.write(`Inspector: ${inspector.url}\n`);
             if (input.noOpen !== true && io.openUrl !== undefined) {
               try {

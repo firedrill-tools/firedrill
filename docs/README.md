@@ -42,6 +42,7 @@ human or another LLM. [See the distinction](world-authoring.md#people-and-permis
 | I want to… | Read |
 | --- | --- |
 | Start fake tools without writing a test yet | [Local environment](local-environment.md) |
+| Use or build a tool with its own interactive app | [Tool apps](tool-apps.md) |
 | Drive an application through its UI | [Optional browser tests](../packages/browser-tests/README.md) |
 | Save changed tool data for another test | [Reusable scenarios](reusable-scenarios.md) |
 | Import selected existing records safely | [Reviewed data imports](data-import.md) |

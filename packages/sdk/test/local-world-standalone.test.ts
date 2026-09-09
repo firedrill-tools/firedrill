@@ -402,6 +402,7 @@ describe("standalone local worlds", () => {
       expect(binding.actorId).toBe("clerk");
       expect(Object.keys(binding).sort()).toEqual([
         "actorId",
+        "apps",
         "cli",
         "close",
         "environment",
@@ -409,6 +410,7 @@ describe("standalone local worlds", () => {
         "mcp",
         "worldInstanceId",
       ]);
+      expect(binding.apps).toEqual([]);
       expect(binding.worldInstanceId).toBe(world.metadata().worldInstanceId);
       expect((await fetch(`${binding.http.url}/v1/tools`)).status).toBe(401);
       expect((await fetch(binding.mcp.url, { method: "POST", body: "{}" })).status).toBe(401);

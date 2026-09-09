@@ -81,6 +81,7 @@ const runtime: RunningEnvironment = {
     actors: [{ actorId: "reader", attributes: {}, grants: [] }],
   },
   connections: [{ protocol: "mcp", url: "http://127.0.0.1:4000/mcp", actorId: "reader" }],
+  apps: [],
 };
 function controls(status: EnvironmentControls["status"] = runtime, error?: string): EnvironmentControls {
   return { status, error, refreshing: false, refresh: async () => undefined };
@@ -135,6 +136,30 @@ describe("tool-first local inspector", () => {
     );
     expect(markup).toContain("This tool is not in the current source");
     expect(markup).not.toContain("Unexpected test form");
+  });
+
+  it("offers sibling app controls only for Tools in the live binding, in directory and detail views", () => {
+    const liveApps = {
+      worldInstanceId: runtime.metadata.worldInstanceId,
+      apps: [{ packageId: tool.id, title: "Observatory", url: "http://127.0.0.1:4001/index.html" }],
+    };
+    const render = (id?: string, apps = liveApps) =>
+      renderToStaticMarkup(
+        <ToolsView
+          project={{ ...project, tools: [...project.tools, { ...tool, id: "backend-only" }] }}
+          selection={{ id, tab: "behavior" }}
+          onVisit={() => undefined}
+          testTool={() => null}
+          liveApps={apps}
+        />,
+      );
+    for (const markup of [render(), render(tool.id)]) {
+      expect(markup.match(/aria-label="Open app for Observatory"/g)).toHaveLength(1);
+      expect(markup).not.toMatch(/<button\b[^>]*>(?:(?!<\/button>)[\s\S])*<button\b/);
+      expect(markup).not.toContain("#token=");
+    }
+    expect(render("backend-only")).not.toContain("Open app");
+    expect(render(undefined, { ...liveApps, apps: [] })).not.toContain("Open app");
   });
 
   it("does not represent source-only setup or failed status as a ready environment", () => {

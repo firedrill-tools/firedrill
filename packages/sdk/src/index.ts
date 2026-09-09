@@ -12,6 +12,7 @@ export * from "./compare-runs.js";
 export * from "./data-import.js";
 export * from "./local-world.js";
 export type {
+  LocalWorldApp,
   LocalWorldBinding,
   LocalWorldConnection,
   LocalWorldListenOptions,

@@ -26,6 +26,16 @@ Percent-encode query values. Writes require an `Idempotency-Key` HTTP header. Th
 
 Omitting `ifVersion` permits replacing the current object. `0` requires absence; a positive value must match the current version. Successful put increments the version and computes UTF-8 `byteLength`. Put and delete emit `object.changed`. Missing reads/deletes return `tool.NOT_FOUND` (HTTP 404), version conflicts `tool.CONFLICT` (409), and malformed/filter-mismatched cursors `tool.INVALID_CURSOR` (400). Input validation and idempotency misuse return framework errors.
 
+## Local app
+
+`firedrill serve` starts the included Object storage app alongside the selected
+protocol bindings. Open its printed app link or choose **Open app** in the
+inspector. Browse a bucket and key prefix, inspect or edit text content, create
+objects, and confirm deletions. The app uses the same actor-scoped operations and
+optimistic version checks as HTTP and MCP. It preserves existing object metadata
+when editing content. Assets are local; no CDN, Docker, account, or additional
+frontend server is required. This remains a text-object tool, not binary storage.
+
 ## Pagination and fidelity limits
 
 Lists default to 50 metadata records, maximum 100, in lexicographic state-row order. Each call filters at most 1,000 actor-prefixed rows, plus one continuation lookahead. An empty filtered page can carry `nextCursor`; continue until it is absent. Cursors bind the actor, bucket, and exact prefix. They are continuation data, not credentials. Pagination is live, not snapshot-isolated; new objects sorting before the cursor require a new listing.

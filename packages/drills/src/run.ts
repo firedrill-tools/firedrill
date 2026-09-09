@@ -21,8 +21,8 @@ import {
   WorldInstanceIdSchema,
 } from "@firedrill/contracts";
 import { startCliWorldBinding } from "@firedrill/protocol-cli";
-import type { CallbackReceiver } from "@firedrill/protocol-http";
-import { CallbackDispatcher, startHttpWorldBinding } from "@firedrill/protocol-http";
+import type { CallbackReceiver, ToolUiRevision } from "@firedrill/protocol-http";
+import { CallbackDispatcher, startHttpWorldBinding, startToolUiBinding } from "@firedrill/protocol-http";
 import { startMcpWorldBinding } from "@firedrill/protocol-mcp";
 import type { LoadedWorldBuild } from "@firedrill/world-build";
 import type { BoundWorldClient } from "@firedrill/world-kernel";
@@ -33,15 +33,16 @@ import {
   DrillTrialCoordinator,
 } from "./coordinator.js";
 import { createDrillWorld, DrillSetupError } from "./scenario.js";
-import type { TargetAttachmentSink, TargetHandler } from "./targets.js";
+import type { DrillExecutionBinding, DrillToolApp, TargetAttachmentSink, TargetHandler } from "./targets.js";
 import { invokeTarget } from "./targets.js";
 
 interface WorldBinding {
-  readonly environment: Readonly<Record<string, string>>;
   close(): Promise<void>;
 }
 
-async function verifyWorldBinding(binding: WorldBinding): Promise<void> {
+async function verifyWorldBinding(binding: {
+  readonly environment: Readonly<Record<string, string>>;
+}): Promise<void> {
   const endpoint =
     binding.environment.FIREDRILL_HTTP_URL ??
     binding.environment.FIREDRILL_MCP_URL ??
@@ -206,13 +207,21 @@ async function worldBindings(
   descriptor: TargetDescriptor,
   build: LoadedWorldBuild,
   client: Parameters<typeof startHttpWorldBinding>[0]["client"],
+  identity: {
+    readonly worldInstanceId: WorldInstanceId;
+    readonly actorId: string;
+    readonly getRevision: () => ToolUiRevision;
+  },
 ): Promise<{
   readonly bindings: readonly WorldBinding[];
+  readonly executionBinding: DrillExecutionBinding;
   readonly environment: Record<string, string>;
   readonly routeVerified: boolean;
 }> {
   const bindings: WorldBinding[] = [];
+  const apps: DrillToolApp[] = [];
   const environment: Record<string, string> = {};
+  let routeVerified = false;
   try {
     for (const kind of descriptor.bindings) {
       if (kind === "direct") continue;
@@ -230,7 +239,17 @@ async function worldBindings(
         environment[name] = value;
       }
       await verifyWorldBinding(binding);
+      routeVerified = true;
     }
+    for (const ui of build.toolUis) {
+      const tool = build.tools.find((candidate) => candidate.manifest.id === ui.packageId);
+      if (tool === undefined) throw new Error("A Tool app requires its loaded Tool");
+      const binding = await startToolUiBinding({ client, tool, ui, ...identity });
+      bindings.push(binding);
+      apps.push(Object.freeze({ packageId: binding.packageId, title: binding.title, url: binding.url }));
+    }
+    const executionBinding = Object.freeze({ apps: Object.freeze(apps) });
+    environment.FIREDRILL_TOOL_APPS = JSON.stringify(apps);
     for (const [targetName, sourceName] of Object.entries(descriptor.bindingEnvironment ?? {})) {
       const value = environment[sourceName];
       if (value === undefined) {
@@ -241,7 +260,7 @@ async function worldBindings(
       }
       environment[targetName] = value;
     }
-    return { bindings, environment, routeVerified: bindings.length > 0 };
+    return { bindings, executionBinding, environment, routeVerified };
   } catch (error) {
     await closeBindings(bindings);
     throw error;
@@ -376,7 +395,20 @@ export async function runDrillTrial(options: RunDrillTrialOptions): Promise<Dril
       }
       const client = actorClient.scope(`${runId}:${pending.interaction.id}`);
       activeClient = client;
-      const exposed = await worldBindings(target, options.build, client);
+      const exposed = await worldBindings(target, options.build, client, {
+        worldInstanceId,
+        actorId: pending.interaction.actorId,
+        getRevision: () => ({
+          generation: 0,
+          evidenceSequence: world.store.latestEvidenceSequence([
+            "state_change",
+            "clock",
+            "fault_control",
+            "lifecycle",
+            "event",
+          ]),
+        }),
+      });
       bindings = exposed.bindings;
       const invocation = TargetInvocationSchema.parse({
         schemaVersion: 1,
@@ -392,6 +424,7 @@ export async function runDrillTrial(options: RunDrillTrialOptions): Promise<Dril
         invocation,
         repositoryRoot: options.repositoryRoot,
         worldClient: client,
+        binding: exposed.executionBinding,
         ...(options.externalHandler === undefined ? {} : { externalHandler: options.externalHandler }),
         ...(options.hostEnvironment === undefined ? {} : { hostEnvironment: options.hostEnvironment }),
         ...(options.allowRemoteHttp === undefined ? {} : { allowRemoteHttp: options.allowRemoteHttp }),

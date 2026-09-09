@@ -12,6 +12,15 @@ export interface EnvironmentConnection {
   readonly url: string;
   readonly actorId: string;
 }
+export interface EnvironmentApp {
+  readonly packageId: string;
+  readonly title: string;
+  readonly url: string;
+}
+export interface EnvironmentAppLink {
+  readonly worldInstanceId: string;
+  readonly app: EnvironmentApp;
+}
 export type EnvironmentStatus =
   | { readonly schemaVersion: 1; readonly available: false }
   | {
@@ -37,6 +46,7 @@ export type EnvironmentStatus =
         }[];
       };
       readonly connections: readonly EnvironmentConnection[];
+      readonly apps: readonly EnvironmentApp[];
       readonly agentTested: false;
       readonly source: "live_environment";
     };

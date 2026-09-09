@@ -11,6 +11,7 @@ import {
   mkdtempSync,
   openSync,
   readFileSync,
+  readSync,
   realpathSync,
   rmSync,
   writeFileSync,
@@ -64,7 +65,7 @@ export async function packWorldBuildArtifact(options: {
   const relativeOutput = relative(root, join(realpathSync(dirname(archivePath)), basename(archivePath)));
   if (relativeOutput === "" || (!relativeOutput.startsWith(`..${sep}`) && relativeOutput !== ".."))
     throw new WorldBuildArchiveError("The archive destination must be outside the immutable build.");
-  const expected = new Map<string, { bytes?: Buffer; hash?: string }>();
+  const expected = new Map<string, { bytes?: Buffer; hash?: string; size?: number }>();
   const encode = (value: unknown) => Buffer.from(`${canonicalJson(value as never)}\n`);
   expected.set("build.json", { bytes: encode(manifest) });
   expected.set("packages.lock.json", { bytes: encode(lock) });
@@ -84,6 +85,11 @@ export async function packWorldBuildArtifact(options: {
     )
       throw new WorldBuildArchiveError("Tool artifact paths must be distinct files inside tools/.");
     expected.set(artifact.artifactPath, { hash: artifact.artifactHash });
+    for (const asset of artifact.ui?.assets ?? []) {
+      if (expected.has(asset.artifactPath))
+        throw new WorldBuildArchiveError("UI assets must be distinct locked files inside tools/.");
+      expected.set(asset.artifactPath, { hash: asset.artifactHash, size: asset.bytes });
+    }
   }
 
   const staged = mkdtempSync(join(tmpdir(), "firedrill-build-archive-"));
@@ -106,13 +112,25 @@ export async function packWorldBuildArtifact(options: {
         const stat = fstatSync(fd);
         if (!stat.isFile() || stat.size > MAX_BUILD_BYTES - total)
           throw new WorldBuildArchiveError("Build artifacts exceed the archive safety bound.");
-        bytes = readFileSync(fd);
+        if (expectation.size !== undefined) {
+          if (stat.size !== expectation.size)
+            throw new WorldBuildArchiveError("Immutable UI artifact size changed; recompile from source.");
+          const bounded = Buffer.alloc(expectation.size + 1);
+          let length = 0;
+          while (length < bounded.length) {
+            const count = readSync(fd, bounded, length, bounded.length - length, null);
+            if (count === 0) break;
+            length += count;
+          }
+          bytes = bounded.subarray(0, length);
+        } else bytes = readFileSync(fd);
       } finally {
         closeSync(fd);
       }
       total += bytes.length;
       if (
         total > MAX_BUILD_BYTES ||
+        (expectation.size !== undefined && bytes.length !== expectation.size) ||
         (expectation.bytes !== undefined && !bytes.equals(expectation.bytes)) ||
         (expectation.hash !== undefined &&
           `sha256:${createHash("sha256").update(bytes).digest("hex")}` !== expectation.hash)

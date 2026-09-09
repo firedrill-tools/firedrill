@@ -16,6 +16,10 @@ agent you already have. The inspector shows what each tool does, its data, and
 the calls it receives. No account, Docker, scenario, or test definition is needed
 to start a backend.
 
+Tools can include their own [interactive apps](docs/tool-apps.md). `serve` starts
+those locally too: browser actions and agent calls use the same synthetic state.
+The inspector's **Open app** action opens the Tool interface in a separate tab.
+
 ```sh
 firedrill init                  # guided tool selection and setup
 firedrill serve                 # start the local tools and open the inspector

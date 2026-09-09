@@ -7,7 +7,7 @@ A command, HTTP, or caller-owned target receives:
 - `FIREDRILL_HTTP_URL` — the per-trial loopback base URL;
 - `FIREDRILL_HTTP_TOKEN` — the per-trial bearer credential.
 
-Every binding retains Firedrill's generic operation routes:
+Every generic HTTP world binding retains Firedrill's operation routes:
 
 | Method and path | Purpose |
 | --- | --- |
@@ -27,6 +27,30 @@ Authenticated requests use `Authorization: Bearer <FIREDRILL_HTTP_TOKEN>`. An op
 Every operation response contains `schemaVersion`, `callId`, `correlationId`, and `outcome`. `outcome.status` is one of `ok`, `denied`, `tool_error`, `unsupported`, or `invalid`; successful values and structured failures use the same public operation contracts regardless of Tool domain.
 
 This is Firedrill's stable generic operation protocol. It does not by itself claim wire compatibility with another REST API. When an existing agent uses a different client shape, point its existing test configuration at a Tool-declared synthetic route or translate through a separate test-only adapter. Production agent logic and Tool-specific protocol core remain unchanged.
+
+## Optional Tool apps
+
+`startToolUiBinding()` serves one Tool's verified build assets on a separate ephemeral `127.0.0.1` origin. The SDK's `world.listen()` composes it automatically for each declared UI. It receives only immutable asset bytes, that Tool's manifest, an actor-bound `invoke` facade, and optional read-only revision metadata. It never reads live source files or exposes generic HTTP, inspector, database, reset, or cross-Tool control routes.
+
+Browser code imports the standard same-origin module from an external JavaScript asset:
+
+```js
+import { getContext, invoke } from "/_firedrill/client.js";
+
+const context = await getContext();
+// Use an operation declared by this Tool and granted to context.actorId.
+const result = await invoke("items.read", { id: "primary" });
+if (result.outcome.status === "ok") renderItem(result.outcome.value);
+else renderOperationError(result.outcome.error);
+```
+
+`getContext()` returns `{ schemaVersion: 1, worldInstanceId, actorId, packageId, title, revision? }`. SDK apps include `revision: { generation, evidenceSequence }`, tracking state changes, events, clock, fault controls and lifecycle changes—not read-only operation receipts. Reading it does not issue a Tool operation or append evidence; compare both fields to detect changes and resets before refreshing displayed data. Evidence sequence can rewind on reset, so never compare that number alone. The hint contains no world state or evidence payload.
+
+`invoke(operationId, arguments, { idempotencyKey? })` returns the same canonical `{ schemaVersion, callId, correlationId, outcome }` envelope as generic HTTP, including denied, invalid and Tool-error outcomes. Transport/authentication failures throw. It does not retry automatically. For operations requiring idempotency, create one key per user intent and retain it after an uncertain transport result; retrying with a fresh key could repeat a committed mutation.
+
+The app URL carries a unique app-scoped token in its fragment. The browser module captures and removes it on first import, then uses origin-local `sessionStorage` for reloads; disabled browser storage retains it only in memory. No cookies, query credentials, generic world tokens, or inspector handles are used. Requests require the exact listener Host, same-origin browser requests, and the app bearer token for APIs. Each invocation is bounded to 1 MiB and may name only an operation declared by that Tool. Static assets use a restrictive CSP: external scripts/styles, inline scripts/styles, frames, workers, remote network calls and forms are not enabled. Put JavaScript and CSS in declared local assets. This is trusted local UI execution, not isolation from malicious local packages or processes.
+
+Closing the listener revokes calls immediately and closes outstanding sockets, including incomplete request bodies. A network failure does not roll back an already committed operation. No account, container or hosted service is involved.
 
 A Tool may also declare repository-owned `http` routes using an OpenAPI-style path template, one supported credential placement, a JSON/form/text/no-body request shape, and explicit success and Tool-error statuses. Its behavior module supplies pure `decode` and `encode` codecs around one declared semantic operation. The route adapter parses and bounds the wire request, verifies the per-trial credential, invokes the operation as the selected scenario actor, and renders the response. It never owns state or consequences.
 
