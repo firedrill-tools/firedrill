@@ -684,6 +684,11 @@ try {
   cpSync(join(root, "examples", "quickstart"), captureProject, { recursive: true });
   writeFileSync(join(consumer, "capture.mjs"), readFileSync(join(root, "tooling", "packed-capture.mjs")));
   run("node", ["capture.mjs", captureProject], consumer);
+  writeFileSync(
+    join(consumer, "browser-tests.mjs"),
+    readFileSync(join(root, "tooling", "packed-browser-tests.mjs")),
+  );
+  run("node", ["browser-tests.mjs", installedPackProject], consumer);
   process.stdout.write(`packed consumer check passed for ${publishable.length} package(s)\n`);
 } finally {
   if (temporary.startsWith(`${tmpdir()}/firedrill-pack-`)) {

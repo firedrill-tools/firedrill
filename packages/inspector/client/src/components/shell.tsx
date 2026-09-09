@@ -6,6 +6,7 @@ import {
   FlaskConical,
   Globe,
   Menu,
+  Monitor,
   Moon,
   Plug,
   RefreshCw,
@@ -43,6 +44,7 @@ const navigation: ReadonlyArray<{
     label: "Testing",
     items: [
       { route: "/drills", label: "Drills", icon: TestTubeDiagonal },
+      { route: "/browser-tests", label: "Browser tests", icon: Monitor },
       { route: "/runs", label: "Results", icon: Activity },
     ],
   },

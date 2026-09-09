@@ -12,9 +12,16 @@ export * from "./compare-runs.js";
 export * from "./local-world.js";
 export type {
   LocalWorldBinding,
+  LocalWorldConnection,
   LocalWorldListenOptions,
   LocalWorldProtocol,
 } from "./local-world-bindings.js";
+export type {
+  ExportLocalScenarioOptions,
+  LocalScenarioExport,
+  LocalScenarioSaveResult,
+  SaveLocalScenarioOptions,
+} from "./local-world-scenario.js";
 export * from "./project-error.js";
 export * from "./run-drills.js";
 export * from "./tool-authoring.js";

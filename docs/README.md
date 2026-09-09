@@ -42,6 +42,10 @@ human or another LLM. [See the distinction](world-authoring.md#people-and-permis
 | I want to… | Read |
 | --- | --- |
 | Start fake tools without writing a test yet | [Local environment](local-environment.md) |
+| Drive an application through its UI | [Optional browser tests](../packages/browser-tests/README.md) |
+| Save changed tool data for another test | [Reusable scenarios](reusable-scenarios.md) |
+| Give a coding agent local Firedrill controls | [Control MCP](control-mcp.md) |
+| Keep existing provider tool names and environment variables | [Tool connections](tool-connections.md) |
 | Use Jest, Vitest, Mocha, or my own script | [TypeScript SDK](../packages/sdk/README.md) |
 | Replace an imported function or SDK method only in a test | [Test-side mocks and overrides](test-mocking.md) |
 | Change fake data or a tool response for one test | [Per-test setup](../packages/sdk/README.md#per-test-synthetic-data-and-tools) |

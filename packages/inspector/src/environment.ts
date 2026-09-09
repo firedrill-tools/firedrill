@@ -324,6 +324,55 @@ export function createLocalEnvironmentRequestHandler(
           result,
           agentTested: false,
         });
+      } else if (
+        request.method === "POST" &&
+        [`${BASE}/scenarios/preview`, `${BASE}/scenarios`].includes(url.pathname)
+      ) {
+        const body = await requestJson(request);
+        assertCurrentGeneration();
+        const saving = url.pathname === `${BASE}/scenarios`;
+        exactKeys(
+          body,
+          saving
+            ? ["worldInstanceId", "id", "title", "sourceHash", "includeSensitiveValues"]
+            : ["worldInstanceId", "id", "title"],
+        );
+        if (body.worldInstanceId !== metadata.worldInstanceId)
+          throw new EnvironmentRequestError(
+            409,
+            "framework.WORLD_CONFIRMATION_REQUIRED",
+            "select the current environment before capturing a scenario",
+          );
+        if (typeof body.id !== "string" || (body.title !== undefined && typeof body.title !== "string"))
+          invalid("id and optional title must be strings");
+        const options = { id: body.id, ...(body.title === undefined ? {} : { title: body.title as string }) };
+        const captured = world.exportScenario(options);
+        const preview = redact(captured.scenario);
+        const containsSensitiveValues = JSON.stringify(preview) !== JSON.stringify(captured.scenario);
+        if (saving) {
+          if (
+            typeof body.sourceHash !== "string" ||
+            !/^sha256:[a-f0-9]{64}$/.test(body.sourceHash) ||
+            (body.includeSensitiveValues !== undefined && typeof body.includeSensitiveValues !== "boolean")
+          )
+            invalid(
+              "sourceHash from the preview and an optional boolean includeSensitiveValues are required",
+            );
+          if (containsSensitiveValues && body.includeSensitiveValues !== true)
+            throw new EnvironmentRequestError(
+              409,
+              "framework.SENSITIVE_VALUES_CONFIRMATION_REQUIRED",
+              "this source contains sensitive values; explicitly confirm including them in the local scenario file",
+            );
+          const result = await world.saveScenario({
+            ...options,
+            expectedSourceHash: body.sourceHash,
+            expectedGeneration: description.generation,
+          });
+          writeJson(response, 201, { ...common, ...result });
+        } else {
+          writeJson(response, 200, { ...common, ...captured, scenario: preview, containsSensitiveValues });
+        }
       } else {
         throw new EnvironmentRequestError(
           404,

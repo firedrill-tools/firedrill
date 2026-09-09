@@ -278,6 +278,22 @@ export const CanonicalWorldIrSchema = z
     );
 
     const indexes = indexTools(world.tools);
+    const mcpNames = new Set(
+      world.tools.flatMap((tool) => tool.operations.map((operation) => `${tool.id}.${operation.id}`)),
+    );
+    for (const [toolIndex, tool] of world.tools.entries()) {
+      for (const [operationIndex, operation] of tool.operations.entries()) {
+        const alias = operation.mcp?.name;
+        if (alias === undefined || alias === `${tool.id}.${operation.id}`) continue;
+        if (mcpNames.has(alias))
+          context.addIssue({
+            code: "custom",
+            path: ["tools", toolIndex, "operations", operationIndex, "mcp", "name"],
+            message: `MCP alias conflicts with another operation: ${alias}`,
+          });
+        mcpNames.add(alias);
+      }
+    }
     const httpRoutes: Array<{
       readonly packageId: string;
       readonly routeId: string;

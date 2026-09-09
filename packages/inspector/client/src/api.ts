@@ -1,9 +1,19 @@
 import type { SimulationReportAttachments as ReportAttachments } from "@firedrill/simulation";
 import type {
+  BrowserAvailability,
+  BrowserReportPage,
+  BrowserRequest,
+  BrowserSavedPage,
+  BrowserTestResult,
+  StartBrowserRequest,
+} from "./browser-types";
+import type {
   EnvironmentActivityPage,
   EnvironmentCall,
   EnvironmentCallResult,
   EnvironmentConnections,
+  EnvironmentScenarioPreview,
+  EnvironmentScenarioSaved,
   EnvironmentStatePage,
   EnvironmentStatus,
 } from "./environment-types";
@@ -151,6 +161,48 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   return (await response.json()) as T;
 }
 
+export const browserApi = {
+  bundle: async (runId: string) => {
+    const response = await fetch(`/api/browser-tests/reports/${encodeURIComponent(runId)}/bundle`, {
+      headers: { authorization: `Bearer ${token()}` },
+    });
+    if (!response.ok) throw new Error("The complete browser report could not be verified or downloaded.");
+    return response.blob();
+  },
+  saveReport: (runId: string, name: string) =>
+    request<{ readonly path: string }>(`/api/browser-tests/reports/${encodeURIComponent(runId)}/save`, {
+      method: "POST",
+      body: JSON.stringify({ id: name }),
+    }),
+  availability: () => request<BrowserAvailability>("/api/browser-tests"),
+  saved: (page = 0) => request<BrowserSavedPage>(`/api/browser-tests/saved?offset=${page * 10}&limit=10`),
+  reports: (page = 0) =>
+    request<BrowserReportPage>(`/api/browser-tests/reports?offset=${page * 10}&limit=10`),
+  report: (runId: string) =>
+    request<BrowserTestResult>(`/api/browser-tests/reports/${encodeURIComponent(runId)}`),
+  start: (body: StartBrowserRequest) =>
+    request<{ readonly requestId: string; readonly status: "running" }>("/api/browser-tests/requests", {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+  status: (id: string) => request<BrowserRequest>(`/api/browser-tests/requests/${encodeURIComponent(id)}`),
+  cancel: (id: string) =>
+    request(`/api/browser-tests/requests/${encodeURIComponent(id)}/cancel`, { method: "POST", body: "{}" }),
+  save: (id: string, name: string) =>
+    request<{ readonly path: string }>(`/api/browser-tests/requests/${encodeURIComponent(id)}/save`, {
+      method: "POST",
+      body: JSON.stringify({ id: name }),
+    }),
+  artifact: async (runId: string, path: string) => {
+    const response = await fetch(
+      `/api/browser-tests/reports/${encodeURIComponent(runId)}/artifacts/${encodeURIComponent(path)}`,
+      { headers: { authorization: `Bearer ${token()}` } },
+    );
+    if (!response.ok) throw new Error("This browser artifact could not be verified or loaded.");
+    return response.blob();
+  },
+};
+
 export const inspectorApi = {
   environment: () => request<EnvironmentStatus>("/api/environment"),
   environmentConnections: () => request<EnvironmentConnections>("/api/environment/connections"),
@@ -171,6 +223,22 @@ export const inspectorApi = {
       body: JSON.stringify({ worldInstanceId }),
     }),
   project: () => request<SimulationProject>("/api/v1/project"),
+  previewEnvironmentScenario: (input: { worldInstanceId: string; id: string; title?: string }) =>
+    request<EnvironmentScenarioPreview>("/api/environment/scenarios/preview", {
+      method: "POST",
+      body: JSON.stringify(input),
+    }),
+  saveEnvironmentScenario: (input: {
+    worldInstanceId: string;
+    id: string;
+    title?: string;
+    sourceHash: string;
+    includeSensitiveValues: boolean;
+  }) =>
+    request<EnvironmentScenarioSaved>("/api/environment/scenarios", {
+      method: "POST",
+      body: JSON.stringify(input),
+    }),
   refreshProject: () => request<SimulationProject>("/api/v1/project/refresh", { method: "POST" }),
   source: (kind: SimulationSourceKind, id: string) =>
     request<SimulationSourceDocument>(`/api/v1/sources/${kind}/${encodeURIComponent(id)}`),

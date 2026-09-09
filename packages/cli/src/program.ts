@@ -1,5 +1,6 @@
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
+import type { Readable, Writable } from "node:stream";
 import type { CompileWorldResult } from "@firedrill/compiler";
 import { compileWorld, formatWorldSources } from "@firedrill/compiler";
 import type { Diagnostic } from "@firedrill/contracts";
@@ -23,10 +24,12 @@ import {
   verifyReport,
 } from "@firedrill/sdk";
 import { loadWorldBuild } from "@firedrill/world-build";
-import { executeCloudCommand } from "./cloud-command.js";
 import { executeAgentCommand } from "./agent-command.js";
+import { executeBrowserCommand } from "./browser-command.js";
+import { executeCloudCommand } from "./cloud-command.js";
 import { executeInitCommand, type InitCommandInput } from "./init-command.js";
 import type { InitPath } from "./init-project.js";
+import { executeMcpCommand } from "./mcp-command.js";
 import { executeServeCommand } from "./serve-command.js";
 import { addToolPackage, createTool, FiredrillToolSetupError } from "./tool-setup.js";
 import { watchFiles } from "./watch-files.js";
@@ -40,6 +43,8 @@ export interface CliIo {
   readonly cwd: string;
   readonly stdout: CliWriter;
   readonly stderr: CliWriter;
+  /** Explicit protocol streams when embedding the standalone MCP command. */
+  readonly stdio?: { readonly input: Readable; readonly output: Writable };
   /** Defaults to process.env. Injectable so embedding test runners do not mutate global state. */
   readonly environment?: Readonly<Record<string, string | undefined>>;
   readonly signal?: AbortSignal;
@@ -128,6 +133,8 @@ Firedrill starts a fresh synthetic world for each trial, connects your existing
 agent through its declared target, then verifies state and tool-call consequences.
 
 Usage:
+  firedrill browser <run|verify> [options]  (optional browser tests)
+  firedrill mcp [--allow-execution] [--root <path>]  (coding-agent control over stdio)
   firedrill cloud <command> [options]  (optional destination extension)
   firedrill agent [--workflow <environment|drill>] [--prompt <task>] [--model <model>] [--effort <level>] [--max-turns <count>] [--max-budget-usd <amount>] [--timeout-ms <milliseconds>] [--json] [--root <path>]
   firedrill [run] [drill-id] [--suite <id>] [--tag <tag>] [--filter <text>] [--shard <index>/<total>] [--trials <count>] [--retries <count>] [--concurrency <count>] [--seed <seed>] [--build-hash <hash>] [--report-dir <path>] [--callback-receiver <id>=<origin>] [--callback-secret-env <id>=<variable>] [--watch] [--json] [--root <path>]
@@ -2085,6 +2092,8 @@ async function inspectCommand(parsed: ParsedArguments, io: CliIo): Promise<numbe
 }
 
 export async function runCli(arguments_: readonly string[], io: CliIo): Promise<number> {
+  if (arguments_[0] === "browser") return executeBrowserCommand(arguments_.slice(1), io);
+  if (arguments_[0] === "mcp") return executeMcpCommand(arguments_.slice(1), io);
   if (arguments_[0] === "cloud") {
     return executeCloudCommand(arguments_.slice(1), io);
   }

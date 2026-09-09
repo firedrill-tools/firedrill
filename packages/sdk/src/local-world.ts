@@ -8,13 +8,14 @@ import type {
   EventId,
   EvidenceEntry,
   JsonObject,
-  OperationId,
   OperationContract,
+  OperationId,
   PackageId,
   Seed,
   Sha256,
   StableId,
   ToolStateContract,
+  ToolConnectionRecipe,
   WorldInstanceId,
 } from "@firedrill/contracts";
 import {
@@ -43,10 +44,17 @@ import type {
   WorldMetadata,
 } from "@firedrill/world-store";
 import type { SqliteWorldStore } from "@firedrill/world-store-sqlite";
+import type { LocalWorldBinding, LocalWorldListenOptions } from "./local-world-bindings.js";
+import { LocalWorldBindingSession, validateLocalWorldListenOptions } from "./local-world-bindings.js";
+import type {
+  ExportLocalScenarioOptions,
+  LocalScenarioExport,
+  LocalScenarioSaveResult,
+  SaveLocalScenarioOptions,
+} from "./local-world-scenario.js";
+import { captureLocalScenario, persistLocalScenario } from "./local-world-scenario.js";
 import { prepareExecutableBuild } from "./project-build.js";
 import { FiredrillProjectError } from "./project-error.js";
-import { LocalWorldBindingSession, validateLocalWorldListenOptions } from "./local-world-bindings.js";
-import type { LocalWorldBinding, LocalWorldListenOptions } from "./local-world-bindings.js";
 
 export interface CreateLocalWorldOptions {
   /** Consumer repository containing firedrill.json. Defaults to process.cwd(). */
@@ -81,6 +89,8 @@ export interface LocalWorldTool {
   readonly stateContracts: readonly ToolStateContract[];
   readonly events: readonly EventId[];
   readonly faults: readonly StableId[];
+  /** Package-authored connection instructions; never execute this display metadata. */
+  readonly connections?: readonly ToolConnectionRecipe[];
 }
 
 export interface LocalWorldDescription {
@@ -155,6 +165,10 @@ export interface LocalWorld {
   setFault(input: LocalWorldFaultControl): FaultControlResult;
   advanceTime(toUs: number, options?: LocalWorldAdvanceOptions): ClockAdvanceResult;
   reset(options?: LocalWorldResetOptions): LocalWorldResetResult;
+  /** Capture reusable Tool data, not a replay checkpoint. Other settings inherit the world baseline. */
+  exportScenario(options: ExportLocalScenarioOptions): LocalScenarioExport;
+  /** Explicitly save current Tool data as a new repository scenario; never overwrite source. */
+  saveScenario(options: SaveLocalScenarioOptions): Promise<LocalScenarioSaveResult>;
   /** Creates actor-scoped loopback listeners; their URLs and tokens survive world resets. */
   listen(options?: LocalWorldListenOptions): Promise<LocalWorldBinding>;
   /** Revokes access immediately and initiates listener cleanup. Await binding.close() for socket closure. */
@@ -245,6 +259,9 @@ class LocalWorldController implements LocalWorld {
             compareStableStrings(left.id, right.id),
           ),
           stateNamespaces: tool.manifest.state.map((state) => state.namespace).sort(compareStableStrings),
+          ...(tool.manifest.connections === undefined
+            ? {}
+            : { connections: structuredClone(tool.manifest.connections) }),
           stateContracts: structuredClone(tool.manifest.state).sort((left, right) =>
             compareStableStrings(left.namespace, right.namespace),
           ),
@@ -258,6 +275,16 @@ class LocalWorldController implements LocalWorld {
   metadata(): WorldMetadata {
     this.assertOpen();
     return this.store.metadata();
+  }
+
+  exportScenario(options: ExportLocalScenarioOptions): LocalScenarioExport {
+    this.assertOpen();
+    return captureLocalScenario(this, this.build.worldIr.baseline, options);
+  }
+
+  saveScenario(options: SaveLocalScenarioOptions): Promise<LocalScenarioSaveResult> {
+    this.assertOpen();
+    return persistLocalScenario(this, this.build, options);
   }
 
   call(input: LocalWorldCall): KernelInvocationResult {

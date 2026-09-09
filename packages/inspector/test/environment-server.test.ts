@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createLocalWorld, type LocalWorld, type LocalWorldBinding } from "@firedrill/sdk";
 import { afterEach, describe, expect, it } from "vitest";
-import { startLocalInspectorWithAssets, type LocalInspectorServer } from "../src/server.js";
+import { type LocalInspectorServer, startLocalInspectorWithAssets } from "../src/server.js";
 
 const directories: string[] = [];
 const servers: LocalInspectorServer[] = [];
@@ -123,6 +123,41 @@ afterEach(async () => {
 });
 
 describe("live inspector environment", () => {
+  it("previews redacted scenario data, confirms sensitive source writes, and rejects stale captures", async () => {
+    const { root, world, server } = await environment();
+    const input = { worldInstanceId: world.metadata().worldInstanceId, id: "current-data" };
+    expect((await post(server, "/scenarios/preview", { ...input, worldInstanceId: "wrong" })).status).toBe(
+      409,
+    );
+    const preview = await post(server, "/scenarios/preview", input);
+    expect(preview.status).toBe(200);
+    const previewBody = preview.body as {
+      containsSensitiveValues: boolean;
+      recordCount: number;
+      sourceHash: string;
+    };
+    expect(previewBody.containsSensitiveValues).toBe(true);
+    expect(JSON.stringify(preview.body)).not.toContain("fixture-password-value");
+    expect(JSON.stringify(preview.body)).not.toContain("declared-sensitive-value");
+    expect(previewBody.recordCount).toBe(3);
+    const confirmed = { ...input, sourceHash: previewBody.sourceHash };
+    expect((await post(server, "/scenarios", confirmed)).status).toBe(409);
+    const saved = await post(server, "/scenarios", { ...confirmed, includeSensitiveValues: true });
+    expect(saved.status).toBe(201);
+    const savedBody = saved.body as { runtimeChanged: boolean; path: string };
+    expect(savedBody.runtimeChanged).toBe(false);
+    expect(readFileSync(join(root, savedBody.path), "utf8")).toContain("fixture-password-value");
+    const stale = await post(server, "/scenarios/preview", { ...input, id: "later-data" });
+    world.call({ actorId: "operator", packageId: "counter", operationId: "set", arguments: { count: 8 } });
+    const rejected = await post(server, "/scenarios", {
+      ...input,
+      id: "later-data",
+      sourceHash: (stale.body as { sourceHash: string }).sourceHash,
+      includeSensitiveValues: true,
+    });
+    expect(rejected.status).toBe(422);
+    expect(rejected.body).toMatchObject({ error: { code: "framework.SCENARIO_CAPTURE_CHANGED" } });
+  });
   it("refuses endpoints from a different world even when the actor and repository match", async () => {
     const { root, world, binding } = await environment();
     const other = await createLocalWorld({ root, buildHash: world.describe().buildHash });

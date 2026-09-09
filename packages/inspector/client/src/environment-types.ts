@@ -77,3 +77,19 @@ export interface EnvironmentConnections {
   readonly connections: readonly (EnvironmentConnection & { readonly token: string })[];
   readonly environment: Readonly<Record<string, string>>;
 }
+
+export interface EnvironmentScenarioPreview {
+  readonly worldInstanceId: string;
+  readonly generation: number;
+  readonly sourceHash: string;
+  readonly scenario: Readonly<Record<string, unknown>>;
+  readonly recordCount: number;
+  readonly deletionCount: number;
+  readonly containsSensitiveValues: boolean;
+}
+
+export interface EnvironmentScenarioSaved {
+  readonly id: string;
+  readonly path: string;
+  readonly runtimeChanged: false;
+}

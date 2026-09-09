@@ -24,8 +24,20 @@ export interface LocalWorldBinding {
   readonly http?: { readonly url: string; readonly token: string };
   readonly mcp?: { readonly url: string; readonly token: string };
   readonly cli?: { readonly url: string; readonly token: string };
+  /** Resolved per-package recipes. Values may include tokens; apply explicitly in a test process only. */
+  readonly connections?: readonly LocalWorldConnection[];
   /** Revokes this listener immediately, then waits for all its sockets to close. */
   close(): Promise<void>;
+}
+
+export interface LocalWorldConnection {
+  readonly packageId: string;
+  readonly id: string;
+  readonly title: string;
+  readonly protocol: LocalWorldProtocol;
+  readonly environment: Readonly<Record<string, string>>;
+  /** Untrusted package-authored help text, not a command to execute. */
+  readonly instructions?: string;
 }
 
 const PROTOCOLS = ["http", "mcp", "cli"] as const;
@@ -143,11 +155,34 @@ export class LocalWorldBindingSession {
         });
         Object.assign(environment, listener.environment);
       }
+      const connections: LocalWorldConnection[] = [];
+      for (const tool of this.#tools) {
+        for (const recipe of tool.manifest.connections ?? []) {
+          if (!this.#protocols.includes(recipe.protocol)) continue;
+          const projected: Record<string, string> = {};
+          for (const [destination, source] of Object.entries(recipe.environment)) {
+            const value = environment[source];
+            if (value === undefined) throw new Error("A connection recipe requires an unavailable protocol");
+            projected[destination] = value;
+          }
+          connections.push(
+            Object.freeze({
+              packageId: tool.manifest.id,
+              id: recipe.id,
+              title: recipe.title,
+              protocol: recipe.protocol,
+              environment: Object.freeze(projected),
+              ...(recipe.instructions === undefined ? {} : { instructions: recipe.instructions }),
+            }),
+          );
+        }
+      }
       return Object.freeze({
         worldInstanceId: this.#worldInstanceId,
         actorId: this.#actorId,
         environment: Object.freeze(environment),
         ...endpoints,
+        ...(connections.length === 0 ? {} : { connections: Object.freeze(connections) }),
         close: () => this.close(),
       });
     } catch (error) {

@@ -8,6 +8,7 @@ import {
   LocalSimulationSupervisor,
   type LocalSimulationSupervisorOptions,
 } from "@firedrill/simulation";
+import { createBrowserTestRequestHandler } from "./browser-tests.js";
 import { createLocalEnvironmentRequestHandler, type LocalInspectorEnvironment } from "./environment.js";
 
 const KNOWN_ROUTES = new Set([
@@ -22,6 +23,7 @@ const KNOWN_ROUTES = new Set([
   "/runs",
   "/environment",
   "/connect",
+  "/browser-tests",
 ]);
 const CONTENT_TYPES: Readonly<Record<string, string>> = {
   ".css": "text/css; charset=utf-8",
@@ -183,17 +185,21 @@ export async function startLocalInspectorWithAssets(
     },
   );
   const environmentHandler = createLocalEnvironmentRequestHandler(options.environment, token);
+  const browserTests = createBrowserTestRequestHandler(supervisor.repositoryRoot, token);
   const server = createServer(async (request, response) => {
-    if (!(await environmentHandler(request, response))) await handler(request, response);
+    if (!(await environmentHandler(request, response)) && !(await browserTests.handle(request, response)))
+      await handler(request, response);
   });
   try {
     await listen(server, port, hostname);
   } catch (error) {
+    await browserTests.close();
     await supervisor.close();
     throw error;
   }
   const address = server.address();
   if (address === null || typeof address === "string") {
+    await browserTests.close();
     await supervisor.close();
     await closeServer(server);
     throw new Error("local inspector has no TCP address");
@@ -208,6 +214,7 @@ export async function startLocalInspectorWithAssets(
         try {
           await closeServer(server);
         } finally {
+          await browserTests.close();
           await supervisor.close();
         }
       })();

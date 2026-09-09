@@ -460,7 +460,8 @@ describe("agent target invocation", () => {
         executable: process.execPath,
         arguments: ["malformed.mjs"],
         environmentFromHost: {},
-        timeoutMs: 100,
+        // This case checks invalid output, not subprocess startup latency.
+        timeoutMs: 5000,
       },
       invocation: invocation(),
       repositoryRoot: root,

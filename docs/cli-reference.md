@@ -13,6 +13,8 @@ Firedrill starts a fresh synthetic world for each trial, connects your existing
 agent through its declared target, then verifies state and tool-call consequences.
 
 Usage:
+  firedrill browser <run|verify> [options]  (optional browser tests)
+  firedrill mcp [--allow-execution] [--root <path>]  (coding-agent control over stdio)
   firedrill cloud <command> [options]  (optional destination extension)
   firedrill agent [--workflow <environment|drill>] [--prompt <task>] [--model <model>] [--effort <level>] [--max-turns <count>] [--max-budget-usd <amount>] [--timeout-ms <milliseconds>] [--json] [--root <path>]
   firedrill [run] [drill-id] [--suite <id>] [--tag <tag>] [--filter <text>] [--shard <index>/<total>] [--trials <count>] [--retries <count>] [--concurrency <count>] [--seed <seed>] [--build-hash <hash>] [--report-dir <path>] [--callback-receiver <id>=<origin>] [--callback-secret-env <id>=<variable>] [--watch] [--json] [--root <path>]
@@ -82,6 +84,139 @@ Init options:
 
 Bare init is guided only in an interactive terminal. JSON, CI, and piped use is
 read-only unless --tool, --custom, or --path explicitly selects a setup.
+```
+
+## `firedrill mcp`
+
+```text
+Firedrill MCP — let a coding agent inspect and operate this project's test environment
+
+Usage:
+  firedrill mcp [--root <path>] [--allow-execution]
+
+Starts a local stdio MCP server. Configure your coding agent to launch this command;
+stdout is reserved for the MCP protocol. No account, model key, or automatic install.
+
+Default: inspect source, validate, preview the build, and browse the Tool catalog.
+--allow-execution also permits trusted repository Tool code, local servers, resets,
+and drill targets. A drill target may contact a model provider using its declared
+environment variables and incur charges. This flag is permission, not a sandbox.
+
+The server is scoped to one root, never changes production agent configuration,
+and closes every environment it owns on disconnect or interrupt. Credentials are
+only returned by environment_connect. Reports remain in the project .firedrill/.
+Guide: docs/control-mcp.md in the installed Firedrill documentation.
+```
+
+## `firedrill browser`
+
+```text
+Optional browser tests for an existing application
+
+Usage:
+  firedrill browser run <test.browser.json> [options]
+  firedrill browser run --url <url> --task <task> --agent --allow-model [options]
+  firedrill browser verify <report-directory> [--root <path>] [--json]
+
+Install once: pnpm add -D @firedrill/browser-tests
+Browser install: pnpm dlx playwright@1.62.1 install chromium
+For the optional task driver: pnpm add -D @firedrill/agent
+
+Options:
+  --root <path>             Project directory; defaults to the current directory
+  --headed                  Show the controlled browser instead of running headless
+  --agent --allow-model     Use Claude Agent SDK with your ANTHROPIC_API_KEY
+  --model <model>           Optional browser agent model
+  --max-budget-usd <amount> Explicit model budget; defaults to $2
+  --timeout-ms <ms>         Entire test deadline; defaults to 120000
+  --step-timeout-ms <ms>    Wait per action/assertion; defaults to 5000, maximum 60000
+  --allow-remote            Permit a remote application you are authorized to test
+  --allow-origin <origin>   Additional application origin; repeat as needed
+  --param-env <name>=<var>  Read a test parameter from a host environment variable
+  --video                   Retain a recording, which may contain sensitive page data
+  --trace                   Retain a Playwright trace, which may contain sensitive data
+  --save <id>               Save observed steps as a new reusable local test
+  --open                    Open the generated local HTML report
+  --json                    Print one machine-readable result
+
+Saved steps need no model key. Independent assertions decide pass or fail.
+Without assertions the outcome is completed, NOT passed; browser results alone
+do not prove synthetic world state. Your app and agent remain caller-owned.
+Local reports stay under .firedrill/browser/ and must not be committed.
+```
+
+## `firedrill browser run`
+
+```text
+Optional browser tests for an existing application
+
+Usage:
+  firedrill browser run <test.browser.json> [options]
+  firedrill browser run --url <url> --task <task> --agent --allow-model [options]
+  firedrill browser verify <report-directory> [--root <path>] [--json]
+
+Install once: pnpm add -D @firedrill/browser-tests
+Browser install: pnpm dlx playwright@1.62.1 install chromium
+For the optional task driver: pnpm add -D @firedrill/agent
+
+Options:
+  --root <path>             Project directory; defaults to the current directory
+  --headed                  Show the controlled browser instead of running headless
+  --agent --allow-model     Use Claude Agent SDK with your ANTHROPIC_API_KEY
+  --model <model>           Optional browser agent model
+  --max-budget-usd <amount> Explicit model budget; defaults to $2
+  --timeout-ms <ms>         Entire test deadline; defaults to 120000
+  --step-timeout-ms <ms>    Wait per action/assertion; defaults to 5000, maximum 60000
+  --allow-remote            Permit a remote application you are authorized to test
+  --allow-origin <origin>   Additional application origin; repeat as needed
+  --param-env <name>=<var>  Read a test parameter from a host environment variable
+  --video                   Retain a recording, which may contain sensitive page data
+  --trace                   Retain a Playwright trace, which may contain sensitive data
+  --save <id>               Save observed steps as a new reusable local test
+  --open                    Open the generated local HTML report
+  --json                    Print one machine-readable result
+
+Saved steps need no model key. Independent assertions decide pass or fail.
+Without assertions the outcome is completed, NOT passed; browser results alone
+do not prove synthetic world state. Your app and agent remain caller-owned.
+Local reports stay under .firedrill/browser/ and must not be committed.
+```
+
+## `firedrill browser verify`
+
+```text
+Optional browser tests for an existing application
+
+Usage:
+  firedrill browser run <test.browser.json> [options]
+  firedrill browser run --url <url> --task <task> --agent --allow-model [options]
+  firedrill browser verify <report-directory> [--root <path>] [--json]
+
+Install once: pnpm add -D @firedrill/browser-tests
+Browser install: pnpm dlx playwright@1.62.1 install chromium
+For the optional task driver: pnpm add -D @firedrill/agent
+
+Options:
+  --root <path>             Project directory; defaults to the current directory
+  --headed                  Show the controlled browser instead of running headless
+  --agent --allow-model     Use Claude Agent SDK with your ANTHROPIC_API_KEY
+  --model <model>           Optional browser agent model
+  --max-budget-usd <amount> Explicit model budget; defaults to $2
+  --timeout-ms <ms>         Entire test deadline; defaults to 120000
+  --step-timeout-ms <ms>    Wait per action/assertion; defaults to 5000, maximum 60000
+  --allow-remote            Permit a remote application you are authorized to test
+  --allow-origin <origin>   Additional application origin; repeat as needed
+  --param-env <name>=<var>  Read a test parameter from a host environment variable
+  --video                   Retain a recording, which may contain sensitive page data
+  --trace                   Retain a Playwright trace, which may contain sensitive data
+  --save <id>               Save observed steps as a new reusable local test
+  --open                    Open the generated local HTML report
+  --json                    Print one machine-readable result
+
+Saved steps need no model key. Independent assertions decide pass or fail.
+Without assertions the outcome is completed, NOT passed; browser results alone
+do not prove synthetic world state. Your app and agent remain caller-owned.
+Local reports stay under .firedrill/browser/ and must not be committed.
 ```
 
 ## `firedrill agent`

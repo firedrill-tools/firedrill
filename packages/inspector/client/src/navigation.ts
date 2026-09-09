@@ -20,6 +20,7 @@ export function readInspectorLocation(location: {
 }): InspectorLocation {
   const route = location.pathname;
   if (
+    route === "/browser-tests" ||
     route === "/world" ||
     route === "/drills" ||
     route === "/runs" ||

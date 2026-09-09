@@ -3,6 +3,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { inspectorApi } from "./api";
 import { Button, IconButton, PageLoader } from "./components/primitives";
 import { AppShell } from "./components/shell";
+import { BrowserTestsView } from "./features/browser-tests";
 import { CatalogView } from "./features/catalog";
 import { DrillsView } from "./features/drills";
 import {
@@ -475,6 +476,7 @@ export function App() {
             environment={environment}
             tab={new URLSearchParams(location.search).get("tab") === "activity" ? "activity" : "state"}
             onVisit={visit}
+            onSourceChanged={refresh}
           />
         ) : null}
         {route === "/connect" ? (
@@ -501,6 +503,7 @@ export function App() {
           />
         ) : null}
         {route === "/drills" ? <DrillsView project={project} starting={starting} onStart={start} /> : null}
+        {route === "/browser-tests" ? <BrowserTestsView /> : null}
         {route === "/runs" ? (
           <RunsView
             project={project}

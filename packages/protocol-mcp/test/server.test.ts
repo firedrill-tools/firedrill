@@ -169,6 +169,31 @@ function postRaw(url: URL, token: string, body: Buffer, contentLength?: number):
 }
 
 describe("MCP world binding", () => {
+  it("rejects canonical/alias and alias/alias collisions before opening a server", async () => {
+    const fixture = world();
+    const first = {
+      ...fixture.tool.manifest,
+      operations: fixture.tool.manifest.operations.map((operation) => ({
+        ...operation,
+        ...(operation.id === "scores.add" ? { mcp: { name: "other.scores.total" } } : {}),
+      })),
+    };
+    const other = { ...fixture.tool.manifest, id: "other" };
+    try {
+      await expect(startMcpWorldBinding({ client: fixture.client, tools: [first, other] })).rejects.toThrow(
+        "duplicate MCP tool name other.scores.total",
+      );
+      const aliases = {
+        ...first,
+        operations: first.operations.map((operation) => ({ ...operation, mcp: { name: "SAME" } })),
+      };
+      await expect(startMcpWorldBinding({ client: fixture.client, tools: [aliases] })).rejects.toThrow(
+        "duplicate MCP tool name SAME",
+      );
+    } finally {
+      fixture.store.close();
+    }
+  });
   it("lists and executes declared operations through the official MCP client", async () => {
     const fixture = world();
     const binding = await startMcpWorldBinding({

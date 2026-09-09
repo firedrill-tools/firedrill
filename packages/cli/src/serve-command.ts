@@ -1,6 +1,6 @@
+import { startLocalInspector } from "@firedrill/inspector";
 import type { LocalWorld, LocalWorldBinding } from "@firedrill/sdk";
 import { createLocalWorld, FiredrillProjectError } from "@firedrill/sdk";
-import { startLocalInspector } from "@firedrill/inspector";
 import type { CliWriter } from "./program.js";
 
 export interface ServeCommandInput {
@@ -79,6 +79,7 @@ export async function executeServeCommand(input: ServeCommandInput, io: ServeCom
                 actorId: binding.actorId,
                 ...(input.scenario === undefined ? {} : { scenario: input.scenario }),
                 environment: binding.environment,
+                ...(binding.connections === undefined ? {} : { connections: binding.connections }),
                 endpoints,
                 url: inspector.url,
                 testsExecuted: false,
@@ -91,6 +92,13 @@ export async function executeServeCommand(input: ServeCommandInput, io: ServeCom
             );
             for (const [name, value] of Object.entries(binding.environment))
               io.stdout.write(`export ${name}=${shellValue(value)}\n`);
+            for (const connection of binding.connections ?? []) {
+              io.stdout.write(
+                `\n${connection.title} (${connection.packageId}/${connection.id}) — optional test-process settings:\n`,
+              );
+              for (const [name, value] of Object.entries(connection.environment))
+                io.stdout.write(`export ${name}=${shellValue(value)}\n`);
+            }
             io.stdout.write(`\nThese tokens grant local access as ${binding.actorId}; keep them private.\n`);
             io.stdout.write(`World files: ${world.directoryPath}\nPress Ctrl+C to stop.\n`);
             io.stdout.write(`Inspector: ${inspector.url}\n`);

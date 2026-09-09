@@ -29,6 +29,12 @@ When ready, add a **drill**: a task for your agent and checks on its consequence
 Use the same tools and data, with your own test runner or `firedrill run`.
 See [the tool-first guide](docs/local-environment.md) for the complete flow.
 
+For agents with a UI, optional [browser tests](packages/browser-tests/README.md)
+open the application, follow saved steps or an explicitly enabled task driver,
+and check the page. The inspector can run these tests, show activity, and download
+the report with its screenshots and recordings. Browser testing is not required
+for MCP, HTTP, CLI, or function-based agents.
+
 Packages are still unpublished; use the source checkout or reviewed packed
 artifacts until a release is available. No npm install is claimed to work today.
 

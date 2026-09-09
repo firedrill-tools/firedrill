@@ -32,6 +32,7 @@ import { compactId, evidenceLabel, json, plural, virtualTime } from "../format";
 import type { SimulationProject, SimulationTool } from "../types";
 import { recordCell } from "./catalog-data";
 import { ConnectionEndpoint, ConnectionSetup } from "./connection-setup";
+import { SaveScenario } from "./save-scenario";
 import "./local-workspace.css";
 
 function message(error: unknown): string {
@@ -871,12 +872,15 @@ export function EnvironmentView({
   environment,
   tab,
   onVisit,
+  onSourceChanged,
 }: {
   readonly project: SimulationProject;
   readonly environment: EnvironmentControls;
   readonly tab: "state" | "activity";
   readonly onVisit: (href: string) => void;
+  readonly onSourceChanged: () => Promise<void>;
 }) {
+  const [capturing, setCapturing] = useState(false);
   const runtime = environment.status?.available ? environment.status : undefined;
   return (
     <section className="fd-page fd-page--workspace">
@@ -884,7 +888,12 @@ export function EnvironmentView({
         <h1>State & activity</h1>
         <div className="fd-local-connection-actions">
           {runtime === undefined || environment.error !== undefined ? null : (
-            <ResetEnvironmentDialog runtime={runtime} onReset={environment.refresh} />
+            <>
+              <Button onClick={() => setCapturing((value) => !value)} aria-expanded={capturing}>
+                Save as scenario
+              </Button>
+              <ResetEnvironmentDialog runtime={runtime} onReset={environment.refresh} />
+            </>
           )}
           <Button onClick={() => onVisit("/connect")}>
             <Plug size={15} />
@@ -892,6 +901,14 @@ export function EnvironmentView({
           </Button>
         </div>
       </header>
+      {capturing && runtime !== undefined ? (
+        <SaveScenario
+          key={`${runtime.metadata.worldInstanceId}:${runtime.description.generation}`}
+          runtime={runtime}
+          onClose={() => setCapturing(false)}
+          onSaved={onSourceChanged}
+        />
+      ) : null}
       {environment.error !== undefined ? (
         <InlineMessage tone="danger">
           {environment.error} <Button onClick={() => void environment.refresh()}>Retry</Button>

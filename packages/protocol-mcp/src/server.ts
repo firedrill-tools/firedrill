@@ -2,7 +2,12 @@ import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
 import type { IncomingMessage, Server, ServerResponse } from "node:http";
 import { createServer } from "node:http";
 import type { JsonObject, JsonValue, OperationContract, ToolPackageManifest } from "@firedrill/contracts";
-import { FIREDRILL_FRAMEWORK_VERSION, JsonObjectSchema, JsonValueSchema } from "@firedrill/contracts";
+import {
+  FIREDRILL_FRAMEWORK_VERSION,
+  JsonObjectSchema,
+  JsonValueSchema,
+  McpToolAliasSchema,
+} from "@firedrill/contracts";
 import type { BoundWorldClient } from "@firedrill/world-kernel";
 import {
   localhostHostValidation,
@@ -35,6 +40,7 @@ interface RegisteredOperation {
   readonly packageId: string;
   readonly operation: OperationContract;
   readonly toolName: string;
+  readonly description?: string;
 }
 
 /**
@@ -53,7 +59,29 @@ function operations(tools: readonly ToolPackageManifest[]): readonly RegisteredO
       const toolName = mcpToolName(tool.id, operation.id);
       if (names.has(toolName)) throw new TypeError(`duplicate MCP tool name ${toolName}`);
       names.add(toolName);
-      registered.push({ packageId: tool.id, operation, toolName });
+      registered.push({
+        packageId: tool.id,
+        operation,
+        toolName,
+        ...(operation.description === undefined ? {} : { description: operation.description }),
+      });
+    }
+  }
+  // Reserve every canonical name first so aliases cannot steal another operation.
+  for (const tool of tools) {
+    for (const operation of tool.operations) {
+      if (operation.mcp === undefined) continue;
+      const alias = McpToolAliasSchema.parse(operation.mcp);
+      if (alias.name === mcpToolName(tool.id, operation.id)) continue;
+      if (names.has(alias.name)) throw new TypeError(`duplicate MCP tool name ${alias.name}`);
+      names.add(alias.name);
+      const description = alias.description ?? operation.description;
+      registered.push({
+        packageId: tool.id,
+        operation,
+        toolName: alias.name,
+        ...(description === undefined ? {} : { description }),
+      });
     }
   }
   return registered;
@@ -126,7 +154,7 @@ function buildServer(
     server.registerTool(
       item.toolName,
       {
-        ...(item.operation.description === undefined ? {} : { description: item.operation.description }),
+        ...(item.description === undefined ? {} : { description: item.description }),
         inputSchema: fromJsonSchema(item.operation.inputSchema),
         outputSchema: fromJsonSchema(item.operation.outputSchema),
       },

@@ -41,3 +41,24 @@ report loop. A model response by itself never establishes a passing test.
 Programmatic callers can use `runFiredrillAgent({ root, allowRepositoryExecution: false })` when they want a reviewable source proposal without letting the authoring session execute repository code. This removes the drill runner from the actual MCP registry and SDK permissions, and restricts Tool checks to source inspection. Reading/editing ordinary files, formatting, compiler validation, and build-plan inspection remain available. The session reports execution as a remaining step, not a completed drill.
 
 The same optional policy is accepted by `createFiredrillAuthoringTools` and `createFiredrillAuthoringServer`. The default stays `true` for the complete existing local loop. This option limits the assistant's tool surface; it does not replace operating-system isolation or review of source changes.
+
+## Optional browser test driver
+
+`@firedrill/agent/browser` exports `createBrowserAgentDriver` and
+`runBrowserAgentTest`. Give it the URL of your already-running application, a
+task, and independent browser assertions. The Claude Agent SDK chooses actions
+through a small Playwright tool surface; it cannot read your repository, run a
+shell, create assertions, or declare the test passed. Your application and its
+agent remain unchanged and caller-owned.
+
+The browser path requires `@firedrill/browser-tests`, an installed Playwright
+Chromium browser, and your `ANTHROPIC_API_KEY`. Its default limits are 40 turns,
+$2 of model spend, and a two-minute browser deadline. Page accessibility content
+and the task are sent to Anthropic. Runtime fill parameters stay local; the model
+receives their names, not their values. Do not put credentials into task prose.
+
+Successful steps can be saved and rerun without a model. Without independent
+assertions, the result is **completed**, never **passed**. Browser assertions do
+not verify synthetic world state; use a drill's world assertions for that.
+See the [browser testing guide](../browser-tests/README.md) for parameters,
+captures, origin restrictions, reports, and combining the browser with a world.

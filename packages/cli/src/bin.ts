@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 import { spawn } from "node:child_process";
+import { Console } from "node:console";
 import { createInterface } from "node:readline/promises";
 import { runCli } from "./program.js";
 
@@ -25,6 +26,9 @@ function openUrl(url: string): Promise<void> {
 }
 
 const arguments_ = process.argv.slice(2);
+// Trusted Tool modules may use console.log. Keep those logs off MCP's wire.
+const originalConsole = globalThis.console;
+if (arguments_[0] === "mcp") globalThis.console = new Console(process.stderr, process.stderr);
 const cancellation = new AbortController();
 let signalExitCode: number | undefined;
 const onSigint = () => {
@@ -58,6 +62,7 @@ try {
     cwd: process.cwd(),
     stdout: process.stdout,
     stderr: process.stderr,
+    stdio: { input: process.stdin, output: process.stdout },
     environment: process.env,
     signal: cancellation.signal,
     interactive,
@@ -74,6 +79,7 @@ try {
     process.stderr.write("Firedrill failed internally. No report was produced.\n");
   process.exitCode = signalExitCode ?? 1;
 } finally {
+  globalThis.console = originalConsole;
   terminal?.removeListener("SIGINT", onSigint);
   terminal?.close();
   process.removeListener("SIGINT", onSigint);

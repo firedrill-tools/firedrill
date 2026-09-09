@@ -44,6 +44,9 @@ importers:
       '@anthropic-ai/claude-agent-sdk':
         specifier: 0.3.241
         version: 0.3.241(@anthropic-ai/sdk@0.120.0(zod@4.1.12))(@modelcontextprotocol/sdk@1.30.0(zod@4.1.12))(zod@4.1.12)
+      '@firedrill/browser-tests':
+        specifier: workspace:*
+        version: link:../browser-tests
       '@firedrill/compiler':
         specifier: workspace:*
         version: link:../compiler
@@ -80,6 +83,25 @@ importers:
         specifier: 3.2.7
         version: 3.2.7(@types/node@26.2.0)(jiti@2.7.0)(lightningcss@1.33.0)(tsx@4.23.12)(yaml@2.9.0)
 
+  packages/browser-tests:
+    dependencies:
+      playwright:
+        specifier: 1.62.1
+        version: 1.62.1
+      tar:
+        specifier: 7.5.22
+        version: 7.5.22
+      zod:
+        specifier: 4.1.12
+        version: 4.1.12
+    devDependencies:
+      typescript:
+        specifier: 5.9.3
+        version: 5.9.3
+      vitest:
+        specifier: 3.2.7
+        version: 3.2.7(@types/node@26.2.0)(jiti@2.7.0)(lightningcss@1.33.0)(tsx@4.23.12)(yaml@2.9.0)
+
   packages/cli:
     dependencies:
       '@firedrill/compiler':
@@ -100,10 +122,19 @@ importers:
       '@firedrill/world-build':
         specifier: workspace:*
         version: link:../world-build
+      '@modelcontextprotocol/server':
+        specifier: 2.0.0
+        version: 2.0.0
     devDependencies:
       '@firedrill/agent':
         specifier: workspace:*
         version: link:../agent
+      '@firedrill/browser-tests':
+        specifier: workspace:*
+        version: link:../browser-tests
+      '@modelcontextprotocol/client':
+        specifier: 2.0.0
+        version: 2.0.0
       typescript:
         specifier: 5.9.3
         version: 5.9.3
@@ -249,6 +280,12 @@ importers:
         specifier: workspace:*
         version: link:../simulation
     devDependencies:
+      '@firedrill/agent':
+        specifier: workspace:*
+        version: link:../agent
+      '@firedrill/browser-tests':
+        specifier: workspace:*
+        version: link:../browser-tests
       '@fontsource-variable/inter':
         specifier: 5.3.0
         version: 5.3.0
@@ -428,6 +465,9 @@ importers:
         specifier: workspace:*
         version: link:../world-store-sqlite
     devDependencies:
+      '@modelcontextprotocol/client':
+        specifier: 2.0.0
+        version: 2.0.0
       typescript:
         specifier: 5.9.3
         version: 5.9.3
@@ -1748,6 +1788,11 @@ packages:
   fs-constants@1.0.0:
     resolution: {integrity: sha512-y6OAwoSIf7FyjMIv94u+b5rdheZEjzR63GTyZJm5qh4Bi+2YgwLCcI/fPFZkL5PSixOt6ZNKm+w+Hfp/Bciwow==}
 
+  fsevents@2.3.2:
+    resolution: {integrity: sha512-xiqMQR4xAeHTuB9uWm+fFRcIOgKBMiOBP+eXiyT7jsgVCq1bkVygt00oASowB7EdtpOHaaPgKt812P9ab+DDKA==}
+    engines: {node: ^8.16.0 || ^10.6.0 || >=11.0.0}
+    os: [darwin]
+
   fsevents@2.3.3:
     resolution: {integrity: sha512-5xoDfX+fL7faATnagmWPpbFtwh/R77WmMMqqHGS65C3vvB0YHrgF+B1YmZ3441tMj5n63k0212XNoJwzlhffQw==}
     engines: {node: ^8.16.0 || ^10.6.0 || >=11.0.0}
@@ -2144,6 +2189,16 @@ packages:
   pkce-challenge@5.0.1:
     resolution: {integrity: sha512-wQ0b/W4Fr01qtpHlqSqspcj3EhBvimsdh0KlHhH8HRZnMsEa0ea2fTULOXOS9ccQr3om+GcGRk4e+isrZWV8qQ==}
     engines: {node: '>=16.20.0'}
+
+  playwright-core@1.62.1:
+    resolution: {integrity: sha512-wPYSwEBJY9GHraISXqyqtx0na0LpO3XEX7jNDhntbex7tzUS7kLnZsOlFruFJB4Hi/rhDMjXGqHewDZ68nYZVw==}
+    engines: {node: '>=20'}
+    hasBin: true
+
+  playwright@1.62.1:
+    resolution: {integrity: sha512-0M+L3LAD8/nm554LOla9Ayx0j0tmFZ0FBcoQ7F1VuVHpM/XpiC8RcDzBQB8W5+hA8L22THxELzeF+2WcUzvcLg==}
+    engines: {node: '>=20'}
+    hasBin: true
 
   postcss@8.5.26:
     resolution: {integrity: sha512-u82N74LFzG8ca+dD8puPnplTXoGH4fTPpVGuIbt36G3qvNlkvfD0lEAZSxaly3KX8TS/L1A1gsCEmvKmBcVbkQ==}
@@ -3557,6 +3612,9 @@ snapshots:
 
   fs-constants@1.0.0: {}
 
+  fsevents@2.3.2:
+    optional: true
+
   fsevents@2.3.3:
     optional: true
 
@@ -3858,6 +3916,14 @@ snapshots:
   picomatch@4.0.5: {}
 
   pkce-challenge@5.0.1: {}
+
+  playwright-core@1.62.1: {}
+
+  playwright@1.62.1:
+    dependencies:
+      playwright-core: 1.62.1
+    optionalDependencies:
+      fsevents: 2.3.2
 
   postcss@8.5.26:
     dependencies:

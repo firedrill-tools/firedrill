@@ -50,6 +50,11 @@ export function normalizeManifest(input: ToolPackageManifest): ToolPackageManife
   return ToolPackageManifestSchema.parse({
     ...input,
     capabilities: [...input.capabilities].sort(),
+    ...(input.connections === undefined
+      ? {}
+      : {
+          connections: [...input.connections].sort((left, right) => compareStableStrings(left.id, right.id)),
+        }),
     state: [...input.state].sort((left, right) => compareStableStrings(left.namespace, right.namespace)),
     operations: input.operations
       .map((operation) => ({ ...operation, declaredErrors: [...operation.declaredErrors].sort() }))

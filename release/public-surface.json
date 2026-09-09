@@ -9,6 +9,10 @@
     "entrypoint": "./dist/bin.js",
     "helpCommands": [
       [],
+      ["mcp"],
+      ["browser"],
+      ["browser", "run"],
+      ["browser", "verify"],
       ["agent"],
       ["run"],
       ["validate"],
@@ -34,6 +38,12 @@
     {
       "name": "@firedrill/agent",
       "directory": "packages/agent",
+      "layer": "adapter",
+      "exports": [".", "./browser"]
+    },
+    {
+      "name": "@firedrill/browser-tests",
+      "directory": "packages/browser-tests",
       "layer": "adapter",
       "exports": ["."]
     },

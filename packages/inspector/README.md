@@ -6,6 +6,12 @@ from one origin. It does not contact a hosted service or supply a customer agent
 drills still invoke the repository's declared module, command, HTTP, or
 caller-owned target through the normal public runner.
 
+Optional **Browser tests** can exercise an application's UI using saved steps,
+or an explicitly enabled Claude Agent SDK task driver. Saved steps need no model
+key. The task driver sends observed page content to the configured model provider
+only with permission; it does not replace the agent being tested. See
+[browser testing](../browser-tests/README.md) for setup, captures and limitations.
+
 Use `firedrill serve` for a live synthetic environment with connection values,
 current data, and Tool activity. It requires no drill or scenario. Use
 `firedrill inspect` to inspect repository source and saved drill reports without
@@ -61,6 +67,13 @@ must be JSON and are capped at 64 KiB. The token is not accepted in a query stri
 | `POST /api/environment/call` | `{ actorId, packageId, operationId, arguments?, idempotencyKey? }`; uses canonical actor grants and labels the result `initiator: "operator"` |
 | `POST /api/environment/reset` | `{ worldInstanceId, packages? }`; exact running identity required; omitted packages resets the complete world |
 | `GET /api/environment/connections` | Explicit credential reveal: connection tokens and environment variables |
+| `POST /api/environment/scenarios/preview` | Preview bounded live tool data as new scenario source, with sensitive values redacted |
+| `POST /api/environment/scenarios` | Save the previewed scenario after identity, generation and source-hash checks; never overwrite source |
+
+**State & activity → Save as scenario** creates a new repository-owned data seed,
+not a snapshot of clock, history or pending work. Saving raw sensitive values
+requires explicit confirmation. The running environment is unchanged; see
+[reusable scenarios](../../docs/reusable-scenarios.md).
 
 Live pages include a `generation` cursor epoch, also available as
 `description.generation` in status. Pass `generation` with paginated reads;
@@ -209,7 +222,8 @@ state, Tool surfaces, live or sealed causal evidence, retained world state,
 active faults, pending events, and callback deliveries. It can run drills and
 suites, repeat a sealed drill with the same seed, compare two verified local
 reports, cancel active work, and open the self-contained HTML report. Repository
-source remains authoritative and read-only in the inspector. World, scenario,
+source remains authoritative. Source viewers are read-only; the explicit scenario
+capture and browser-test save actions can create new files, never overwrite them. World, scenario,
 Tool, target, drill, and suite panels can open their current repository file in a
 line-numbered viewer; the browser cannot request arbitrary filesystem paths.
 **Current repository file** means the file on disk now, not necessarily the source

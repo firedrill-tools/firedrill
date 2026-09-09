@@ -39,6 +39,7 @@ export type SimulationTarget = SimulationProject["targets"][number];
 export type EvidenceEntry = SimulationEvidencePage["entries"][number];
 export type StateNamespace = SimulationRunDetail["stateNamespaces"][number];
 export type Route =
+  | "/browser-tests"
   | "/world"
   | "/schema"
   | "/data"
