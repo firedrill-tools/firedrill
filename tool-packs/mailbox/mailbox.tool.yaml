@@ -1,0 +1,520 @@
+schemaVersion: 1
+module: ./dist/behavior.js
+manifest:
+  schemaVersion: 1
+  id: mailbox
+  version: 0.1.0-rc.1
+  engine: ">=0.1.0 <0.2.0"
+  capabilities:
+    - event.emit
+    - state.read
+    - state.write
+  state:
+    - namespace: messages
+      schema:
+        type: object
+        required:
+          - id
+          - ownerId
+          - from
+          - to
+          - subject
+          - folder
+          - read
+          - version
+          - body
+        properties:
+          id:
+            type: string
+            pattern: ^[A-Za-z0-9][A-Za-z0-9._-]{0,95}$
+          ownerId:
+            type: string
+          from:
+            type: string
+            minLength: 1
+            maxLength: 254
+          to:
+            type: array
+            items:
+              type: string
+              minLength: 1
+              maxLength: 254
+            minItems: 1
+            maxItems: 20
+          subject:
+            type: string
+            maxLength: 512
+          folder:
+            type: string
+            enum:
+              - inbox
+              - draft
+              - sent
+              - archive
+          read:
+            type: boolean
+          version:
+            type: integer
+            minimum: 1
+            maximum: 2147483647
+          body:
+            type: string
+            maxLength: 16384
+        additionalProperties: false
+      description: Actor-owned synthetic mailbox messages.
+  operations:
+    - id: messages.delete
+      description: Delete an actor-owned message, optionally requiring a matching version.
+      inputSchema:
+        type: object
+        required:
+          - id
+        properties:
+          id:
+            type: string
+            pattern: ^[A-Za-z0-9][A-Za-z0-9._-]{0,95}$
+          ifVersion:
+            type: integer
+            minimum: 0
+            maximum: 2147483646
+        additionalProperties: false
+      outputSchema:
+        type: object
+        required:
+          - id
+          - deleted
+        properties:
+          id:
+            type: string
+            pattern: ^[A-Za-z0-9][A-Za-z0-9._-]{0,95}$
+          deleted:
+            const: true
+        additionalProperties: false
+      declaredErrors:
+        - CONFLICT
+        - NOT_FOUND
+      idempotency: required
+      fidelity: stateful
+    - id: messages.get
+      description: Read one actor-owned message.
+      inputSchema:
+        type: object
+        required:
+          - id
+        properties:
+          id:
+            type: string
+            pattern: ^[A-Za-z0-9][A-Za-z0-9._-]{0,95}$
+        additionalProperties: false
+      outputSchema:
+        type: object
+        required:
+          - message
+        properties:
+          message:
+            type: object
+            required:
+              - id
+              - ownerId
+              - from
+              - to
+              - subject
+              - folder
+              - read
+              - version
+              - body
+            properties:
+              id:
+                type: string
+                pattern: ^[A-Za-z0-9][A-Za-z0-9._-]{0,95}$
+              ownerId:
+                type: string
+              from:
+                type: string
+                minLength: 1
+                maxLength: 254
+              to:
+                type: array
+                items:
+                  type: string
+                  minLength: 1
+                  maxLength: 254
+                minItems: 1
+                maxItems: 20
+              subject:
+                type: string
+                maxLength: 512
+              folder:
+                type: string
+                enum:
+                  - inbox
+                  - draft
+                  - sent
+                  - archive
+              read:
+                type: boolean
+              version:
+                type: integer
+                minimum: 1
+                maximum: 2147483647
+              body:
+                type: string
+                maxLength: 16384
+            additionalProperties: false
+        additionalProperties: false
+      declaredErrors:
+        - NOT_FOUND
+      idempotency: none
+      fidelity: stateful
+    - id: messages.list
+      description: List actor-owned message headers with bounded, filter-bound cursor pagination.
+      inputSchema:
+        type: object
+        required:
+          []
+        properties:
+          limit:
+            type: integer
+            minimum: 1
+            maximum: 100
+          cursor:
+            type: string
+            minLength: 1
+            maxLength: 2048
+          folder:
+            type: string
+            enum:
+              - inbox
+              - draft
+              - sent
+              - archive
+        additionalProperties: false
+      outputSchema:
+        type: object
+        required:
+          - items
+        properties:
+          items:
+            type: array
+            maxItems: 100
+            items:
+              type: object
+              required:
+                - id
+                - ownerId
+                - from
+                - to
+                - subject
+                - folder
+                - read
+                - version
+              properties:
+                id:
+                  type: string
+                  pattern: ^[A-Za-z0-9][A-Za-z0-9._-]{0,95}$
+                ownerId:
+                  type: string
+                from:
+                  type: string
+                  minLength: 1
+                  maxLength: 254
+                to:
+                  type: array
+                  items:
+                    type: string
+                    minLength: 1
+                    maxLength: 254
+                  minItems: 1
+                  maxItems: 20
+                subject:
+                  type: string
+                  maxLength: 512
+                folder:
+                  type: string
+                  enum:
+                    - inbox
+                    - draft
+                    - sent
+                    - archive
+                read:
+                  type: boolean
+                version:
+                  type: integer
+                  minimum: 1
+                  maximum: 2147483647
+              additionalProperties: false
+          nextCursor:
+            type: string
+            maxLength: 2048
+        additionalProperties: false
+      declaredErrors:
+        - INVALID_CURSOR
+      idempotency: none
+      fidelity: stateful
+    - id: messages.send
+      description: Move a draft to sent and emit a synthetic sent event; never delivers external email.
+      inputSchema:
+        type: object
+        required:
+          - id
+        properties:
+          id:
+            type: string
+            pattern: ^[A-Za-z0-9][A-Za-z0-9._-]{0,95}$
+          ifVersion:
+            type: integer
+            minimum: 0
+            maximum: 2147483646
+        additionalProperties: false
+      outputSchema:
+        type: object
+        required:
+          - message
+        properties:
+          message:
+            type: object
+            required:
+              - id
+              - ownerId
+              - from
+              - to
+              - subject
+              - folder
+              - read
+              - version
+              - body
+            properties:
+              id:
+                type: string
+                pattern: ^[A-Za-z0-9][A-Za-z0-9._-]{0,95}$
+              ownerId:
+                type: string
+              from:
+                type: string
+                minLength: 1
+                maxLength: 254
+              to:
+                type: array
+                items:
+                  type: string
+                  minLength: 1
+                  maxLength: 254
+                minItems: 1
+                maxItems: 20
+              subject:
+                type: string
+                maxLength: 512
+              folder:
+                type: string
+                enum:
+                  - inbox
+                  - draft
+                  - sent
+                  - archive
+              read:
+                type: boolean
+              version:
+                type: integer
+                minimum: 1
+                maximum: 2147483647
+              body:
+                type: string
+                maxLength: 16384
+            additionalProperties: false
+        additionalProperties: false
+      declaredErrors:
+        - CONFLICT
+        - INVALID_STATE
+        - NOT_FOUND
+      idempotency: required
+      fidelity: behavioral
+    - id: messages.write
+      description: Create or replace an actor-owned draft, optionally requiring a matching version.
+      inputSchema:
+        type: object
+        required:
+          - id
+          - from
+          - to
+          - subject
+          - body
+        properties:
+          id:
+            type: string
+            pattern: ^[A-Za-z0-9][A-Za-z0-9._-]{0,95}$
+          from:
+            type: string
+            minLength: 1
+            maxLength: 254
+          to:
+            type: array
+            items:
+              type: string
+              minLength: 1
+              maxLength: 254
+            minItems: 1
+            maxItems: 20
+          subject:
+            type: string
+            maxLength: 512
+          body:
+            type: string
+            maxLength: 16384
+          ifVersion:
+            type: integer
+            minimum: 0
+            maximum: 2147483646
+        additionalProperties: false
+      outputSchema:
+        type: object
+        required:
+          - message
+        properties:
+          message:
+            type: object
+            required:
+              - id
+              - ownerId
+              - from
+              - to
+              - subject
+              - folder
+              - read
+              - version
+              - body
+            properties:
+              id:
+                type: string
+                pattern: ^[A-Za-z0-9][A-Za-z0-9._-]{0,95}$
+              ownerId:
+                type: string
+              from:
+                type: string
+                minLength: 1
+                maxLength: 254
+              to:
+                type: array
+                items:
+                  type: string
+                  minLength: 1
+                  maxLength: 254
+                minItems: 1
+                maxItems: 20
+              subject:
+                type: string
+                maxLength: 512
+              folder:
+                type: string
+                enum:
+                  - inbox
+                  - draft
+                  - sent
+                  - archive
+              read:
+                type: boolean
+              version:
+                type: integer
+                minimum: 1
+                maximum: 2147483647
+              body:
+                type: string
+                maxLength: 16384
+            additionalProperties: false
+        additionalProperties: false
+      declaredErrors:
+        - CONFLICT
+        - INVALID_STATE
+      idempotency: required
+      fidelity: stateful
+  events:
+    - id: message.sent
+      payloadSchema:
+        type: object
+        required:
+          - id
+          - ownerId
+          - to
+        properties:
+          id:
+            type: string
+            pattern: ^[A-Za-z0-9][A-Za-z0-9._-]{0,95}$
+          ownerId:
+            type: string
+          to:
+            type: array
+            items:
+              type: string
+              minLength: 1
+              maxLength: 254
+            minItems: 1
+            maxItems: 20
+        additionalProperties: false
+  http:
+    - id: delete
+      operationId: messages.delete
+      method: DELETE
+      path: /mailbox/messages/{id}
+      auth:
+        kind: bearer
+      requestBody: none
+      response:
+        successStatus: 200
+        errors:
+          - code: CONFLICT
+            status: 409
+          - code: NOT_FOUND
+            status: 404
+    - id: get
+      operationId: messages.get
+      method: GET
+      path: /mailbox/messages/{id}
+      auth:
+        kind: bearer
+      requestBody: none
+      response:
+        successStatus: 200
+        errors:
+          - code: NOT_FOUND
+            status: 404
+    - id: list
+      operationId: messages.list
+      method: GET
+      path: /mailbox/messages
+      auth:
+        kind: bearer
+      requestBody: none
+      response:
+        successStatus: 200
+        errors:
+          - code: INVALID_CURSOR
+            status: 400
+    - id: send
+      operationId: messages.send
+      method: POST
+      path: /mailbox/messages/{id}/send
+      auth:
+        kind: bearer
+      requestBody: none
+      response:
+        successStatus: 200
+        errors:
+          - code: CONFLICT
+            status: 409
+          - code: INVALID_STATE
+            status: 409
+          - code: NOT_FOUND
+            status: 404
+    - id: write
+      operationId: messages.write
+      method: PUT
+      path: /mailbox/messages/{id}
+      auth:
+        kind: bearer
+      requestBody: json
+      response:
+        successStatus: 200
+        errors:
+          - code: CONFLICT
+            status: 409
+          - code: INVALID_STATE
+            status: 409

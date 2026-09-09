@@ -1,0 +1,18 @@
+schemaVersion: 1
+id: baseline
+state:
+  - action: upsert
+    packageId: mailbox
+    namespace: messages
+    rowId: operator:welcome
+    value:
+      id: welcome
+      ownerId: operator
+      from: sender@example.test
+      to:
+        - operator@example.test
+      subject: Synthetic welcome
+      body: This message exists only in the isolated world.
+      folder: inbox
+      read: false
+      version: 1

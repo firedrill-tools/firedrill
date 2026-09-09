@@ -165,6 +165,18 @@
       "exports": ["./package.json"]
     },
     {
+      "name": "@firedrill/tool-mailbox",
+      "directory": "tool-packs/mailbox",
+      "layer": "tool-pack",
+      "exports": ["./package.json"]
+    },
+    {
+      "name": "@firedrill/tool-object-storage",
+      "directory": "tool-packs/object-storage",
+      "layer": "tool-pack",
+      "exports": ["./package.json"]
+    },
+    {
       "name": "@firedrill/tool-work-queue",
       "directory": "tool-packs/work-queue",
       "layer": "tool-pack",

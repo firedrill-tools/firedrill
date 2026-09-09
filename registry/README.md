@@ -46,6 +46,66 @@ Compatibility profile `octokit-rest-21`:
 - Limitation: Only the four listed Issues and issue-comment routes are implemented.
 - Limitation: Pagination metadata, conditional requests, custom media types, and the complete response field set are not implemented.
 
+## [`@firedrill/tool-mailbox`](../tool-packs/mailbox/README.md)
+
+Stateful synthetic mailbox Tool pack for Firedrill
+
+- Version: `0.1.0-rc.1`
+- Tool ID: `mailbox`
+- Lifecycle: `active`
+- License: `Apache-2.0`
+- Engine compatibility: `>=0.1.0 <0.2.0`
+- Capabilities: `event.emit`, `state.read`, `state.write`
+- State namespaces: `messages`
+- Events: `message.sent`
+- Faults: None
+- Subscriptions: None
+
+Operations:
+
+- `messages.delete` — stateful fidelity
+- `messages.get` — stateful fidelity
+- `messages.list` — stateful fidelity
+- `messages.send` — behavioral fidelity
+- `messages.write` — stateful fidelity
+
+Synthetic HTTP routes:
+
+- `DELETE /mailbox/messages/{id}` → `messages.delete`
+- `GET /mailbox/messages/{id}` → `messages.get`
+- `GET /mailbox/messages` → `messages.list`
+- `POST /mailbox/messages/{id}/send` → `messages.send`
+- `PUT /mailbox/messages/{id}` → `messages.write`
+
+## [`@firedrill/tool-object-storage`](../tool-packs/object-storage/README.md)
+
+Stateful synthetic text object storage Tool pack for Firedrill
+
+- Version: `0.1.0-rc.1`
+- Tool ID: `object-storage`
+- Lifecycle: `active`
+- License: `Apache-2.0`
+- Engine compatibility: `>=0.1.0 <0.2.0`
+- Capabilities: `event.emit`, `state.read`, `state.write`
+- State namespaces: `objects`
+- Events: `object.changed`
+- Faults: None
+- Subscriptions: None
+
+Operations:
+
+- `objects.delete` — stateful fidelity
+- `objects.get` — stateful fidelity
+- `objects.list` — stateful fidelity
+- `objects.put` — stateful fidelity
+
+Synthetic HTTP routes:
+
+- `DELETE /storage/object` → `objects.delete`
+- `GET /storage/object` → `objects.get`
+- `GET /storage/objects` → `objects.list`
+- `PUT /storage/object` → `objects.put`
+
 ## [`@firedrill/tool-work-queue`](../tool-packs/work-queue/README.md)
 
 Reference stateful work-queue Tool pack for Firedrill

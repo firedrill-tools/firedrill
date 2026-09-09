@@ -434,6 +434,8 @@ try {
         dependencies: {
           "@firedrill/cli": `file:${archives.get("@firedrill/cli")}`,
           "@firedrill/tool-github-issues": `file:${archives.get("@firedrill/tool-github-issues")}`,
+          "@firedrill/tool-mailbox": `file:${archives.get("@firedrill/tool-mailbox")}`,
+          "@firedrill/tool-object-storage": `file:${archives.get("@firedrill/tool-object-storage")}`,
           "@firedrill/tool-work-queue": `file:${archives.get("@firedrill/tool-work-queue")}`,
           "@octokit/rest": "21.1.1",
         },
@@ -462,6 +464,11 @@ try {
     readFileSync(join(root, "tooling", "packed-tool-first.mjs")),
   );
   run("node", ["tool-first.mjs", installedPackProject], consumer);
+  writeFileSync(
+    join(consumer, "mailbox-storage.mjs"),
+    readFileSync(join(root, "tooling", "packed-mailbox-storage.mjs")),
+  );
+  run("node", ["mailbox-storage.mjs", installedPackProject], consumer);
   mkdirSync(join(installedPackProject, "world"), { recursive: true });
   writeFileSync(
     join(installedPackProject, "firedrill.json"),

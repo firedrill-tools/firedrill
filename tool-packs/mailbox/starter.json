@@ -1,0 +1,23 @@
+{
+  "schemaVersion": 1,
+  "virtualTimeUs": 0,
+  "state": [
+    {
+      "action": "upsert",
+      "packageId": "mailbox",
+      "namespace": "messages",
+      "rowId": "local-dev:welcome",
+      "value": {
+        "id": "welcome",
+        "ownerId": "local-dev",
+        "from": "sender@example.test",
+        "to": ["operator@example.test"],
+        "subject": "Synthetic welcome",
+        "body": "This message exists only in the isolated world.",
+        "folder": "inbox",
+        "read": false,
+        "version": 1
+      }
+    }
+  ]
+}

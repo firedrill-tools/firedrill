@@ -1,0 +1,107 @@
+schemaVersion: 1
+id: object-storage-behavior
+title: Exercise every declared object-storage operation and error through real HTTP and MCP
+targetId: conformance-agent
+scenarioId: baseline
+actorId: operator
+task:
+  instruction: Exercise positive behavior, bounded pagination, optimistic conflicts, missing records, and deletion.
+assertions:
+  - id: objects-list-ok
+    kind: operation.count
+    operation:
+      packageId: object-storage
+      operationId: objects.list
+    outcomes:
+      - ok
+    comparison:
+      operator: greater_than_or_equal
+      value: 1
+  - id: objects-list-tool-error
+    kind: operation.count
+    operation:
+      packageId: object-storage
+      operationId: objects.list
+    outcomes:
+      - tool_error
+    comparison:
+      operator: greater_than_or_equal
+      value: 1
+  - id: objects-get-ok
+    kind: operation.count
+    operation:
+      packageId: object-storage
+      operationId: objects.get
+    outcomes:
+      - ok
+    comparison:
+      operator: greater_than_or_equal
+      value: 1
+  - id: objects-get-tool-error
+    kind: operation.count
+    operation:
+      packageId: object-storage
+      operationId: objects.get
+    outcomes:
+      - tool_error
+    comparison:
+      operator: greater_than_or_equal
+      value: 1
+  - id: objects-put-ok
+    kind: operation.count
+    operation:
+      packageId: object-storage
+      operationId: objects.put
+    outcomes:
+      - ok
+    comparison:
+      operator: greater_than_or_equal
+      value: 1
+  - id: objects-put-tool-error
+    kind: operation.count
+    operation:
+      packageId: object-storage
+      operationId: objects.put
+    outcomes:
+      - tool_error
+    comparison:
+      operator: greater_than_or_equal
+      value: 1
+  - id: objects-delete-ok
+    kind: operation.count
+    operation:
+      packageId: object-storage
+      operationId: objects.delete
+    outcomes:
+      - ok
+    comparison:
+      operator: greater_than_or_equal
+      value: 1
+  - id: objects-delete-tool-error
+    kind: operation.count
+    operation:
+      packageId: object-storage
+      operationId: objects.delete
+    outcomes:
+      - tool_error
+    comparison:
+      operator: greater_than_or_equal
+      value: 1
+  - id: event-emitted
+    kind: event.count
+    event:
+      packageId: object-storage
+      eventId: object.changed
+    phase: emitted
+    comparison:
+      operator: greater_than_or_equal
+      value: 1
+  - id: deleted-record
+    kind: state.count
+    packageId: object-storage
+    namespace: objects
+    where:
+      key: draft.txt
+    comparison:
+      operator: equals
+      value: 0

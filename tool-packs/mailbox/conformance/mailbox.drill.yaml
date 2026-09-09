@@ -1,0 +1,127 @@
+schemaVersion: 1
+id: mailbox-behavior
+title: Exercise every declared mailbox operation and error through real HTTP and MCP
+targetId: conformance-agent
+scenarioId: baseline
+actorId: operator
+task:
+  instruction: Exercise positive behavior, bounded pagination, optimistic conflicts, missing records, and deletion.
+assertions:
+  - id: messages-list-ok
+    kind: operation.count
+    operation:
+      packageId: mailbox
+      operationId: messages.list
+    outcomes:
+      - ok
+    comparison:
+      operator: greater_than_or_equal
+      value: 1
+  - id: messages-list-tool-error
+    kind: operation.count
+    operation:
+      packageId: mailbox
+      operationId: messages.list
+    outcomes:
+      - tool_error
+    comparison:
+      operator: greater_than_or_equal
+      value: 1
+  - id: messages-get-ok
+    kind: operation.count
+    operation:
+      packageId: mailbox
+      operationId: messages.get
+    outcomes:
+      - ok
+    comparison:
+      operator: greater_than_or_equal
+      value: 1
+  - id: messages-get-tool-error
+    kind: operation.count
+    operation:
+      packageId: mailbox
+      operationId: messages.get
+    outcomes:
+      - tool_error
+    comparison:
+      operator: greater_than_or_equal
+      value: 1
+  - id: messages-write-ok
+    kind: operation.count
+    operation:
+      packageId: mailbox
+      operationId: messages.write
+    outcomes:
+      - ok
+    comparison:
+      operator: greater_than_or_equal
+      value: 1
+  - id: messages-write-tool-error
+    kind: operation.count
+    operation:
+      packageId: mailbox
+      operationId: messages.write
+    outcomes:
+      - tool_error
+    comparison:
+      operator: greater_than_or_equal
+      value: 1
+  - id: messages-send-ok
+    kind: operation.count
+    operation:
+      packageId: mailbox
+      operationId: messages.send
+    outcomes:
+      - ok
+    comparison:
+      operator: greater_than_or_equal
+      value: 1
+  - id: messages-send-tool-error
+    kind: operation.count
+    operation:
+      packageId: mailbox
+      operationId: messages.send
+    outcomes:
+      - tool_error
+    comparison:
+      operator: greater_than_or_equal
+      value: 1
+  - id: messages-delete-ok
+    kind: operation.count
+    operation:
+      packageId: mailbox
+      operationId: messages.delete
+    outcomes:
+      - ok
+    comparison:
+      operator: greater_than_or_equal
+      value: 1
+  - id: messages-delete-tool-error
+    kind: operation.count
+    operation:
+      packageId: mailbox
+      operationId: messages.delete
+    outcomes:
+      - tool_error
+    comparison:
+      operator: greater_than_or_equal
+      value: 1
+  - id: event-emitted
+    kind: event.count
+    event:
+      packageId: mailbox
+      eventId: message.sent
+    phase: emitted
+    comparison:
+      operator: greater_than_or_equal
+      value: 1
+  - id: deleted-record
+    kind: state.count
+    packageId: mailbox
+    namespace: messages
+    where:
+      id: draft
+    comparison:
+      operator: equals
+      value: 0
