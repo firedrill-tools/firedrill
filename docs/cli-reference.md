@@ -14,6 +14,7 @@ agent through its declared target, then verifies state and tool-call consequence
 
 Usage:
   firedrill browser <run|verify> [options]  (optional browser tests)
+  firedrill data <preview|save> [options]  (review selected data before importing)
   firedrill mcp [--allow-execution] [--root <path>]  (coding-agent control over stdio)
   firedrill cloud <command> [options]  (optional destination extension)
   firedrill agent [--workflow <environment|drill>] [--prompt <task>] [--model <model>] [--effort <level>] [--max-turns <count>] [--max-budget-usd <amount>] [--timeout-ms <milliseconds>] [--json] [--root <path>]
@@ -106,6 +107,66 @@ The server is scoped to one root, never changes production agent configuration,
 and closes every environment it owns on disconnect or interrupt. Credentials are
 only returned by environment_connect. Reports remain in the project .firedrill/.
 Guide: docs/control-mcp.md in the installed Firedrill documentation.
+```
+
+## `firedrill data`
+
+```text
+Import selected data as a reusable scenario
+
+Usage:
+  firedrill data preview <import-plan.json> --allow-read [--allow-origin <origin>] [--root <path>] [--json]
+  firedrill data save <preview.json> --expect <preview-hash> --confirm save-reviewed-data [--root <path>] [--json]
+
+Preview reads only the explicitly selected JSON file or read-only HTTP endpoint.
+HTTP imports require its exact --allow-origin. Credentials come only from the
+environment names declared in the plan; redirects and production writes are not supported.
+Select fields and optional record ids; redact personal fields before saving.
+Preview never changes world source or running state. Only a redacted preview is
+saved under .firedrill/imports/. Review its complete contents before data save.
+Save creates a new <id>.scenario.json in your source tree; never overwrites.
+Keep the import plan free of secrets. Do not commit .firedrill/.
+Guide: docs/data-import.md in the Firedrill source or installed SDK documentation.
+```
+
+## `firedrill data preview`
+
+```text
+Import selected data as a reusable scenario
+
+Usage:
+  firedrill data preview <import-plan.json> --allow-read [--allow-origin <origin>] [--root <path>] [--json]
+  firedrill data save <preview.json> --expect <preview-hash> --confirm save-reviewed-data [--root <path>] [--json]
+
+Preview reads only the explicitly selected JSON file or read-only HTTP endpoint.
+HTTP imports require its exact --allow-origin. Credentials come only from the
+environment names declared in the plan; redirects and production writes are not supported.
+Select fields and optional record ids; redact personal fields before saving.
+Preview never changes world source or running state. Only a redacted preview is
+saved under .firedrill/imports/. Review its complete contents before data save.
+Save creates a new <id>.scenario.json in your source tree; never overwrites.
+Keep the import plan free of secrets. Do not commit .firedrill/.
+Guide: docs/data-import.md in the Firedrill source or installed SDK documentation.
+```
+
+## `firedrill data save`
+
+```text
+Import selected data as a reusable scenario
+
+Usage:
+  firedrill data preview <import-plan.json> --allow-read [--allow-origin <origin>] [--root <path>] [--json]
+  firedrill data save <preview.json> --expect <preview-hash> --confirm save-reviewed-data [--root <path>] [--json]
+
+Preview reads only the explicitly selected JSON file or read-only HTTP endpoint.
+HTTP imports require its exact --allow-origin. Credentials come only from the
+environment names declared in the plan; redirects and production writes are not supported.
+Select fields and optional record ids; redact personal fields before saving.
+Preview never changes world source or running state. Only a redacted preview is
+saved under .firedrill/imports/. Review its complete contents before data save.
+Save creates a new <id>.scenario.json in your source tree; never overwrites.
+Keep the import plan free of secrets. Do not commit .firedrill/.
+Guide: docs/data-import.md in the Firedrill source or installed SDK documentation.
 ```
 
 ## `firedrill browser`

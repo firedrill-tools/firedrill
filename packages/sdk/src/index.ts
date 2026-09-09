@@ -9,6 +9,7 @@ export type {
   RunCaptureOptions,
 } from "./capture.js";
 export * from "./compare-runs.js";
+export * from "./data-import.js";
 export * from "./local-world.js";
 export type {
   LocalWorldBinding,

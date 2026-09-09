@@ -27,6 +27,7 @@ import { loadWorldBuild } from "@firedrill/world-build";
 import { executeAgentCommand } from "./agent-command.js";
 import { executeBrowserCommand } from "./browser-command.js";
 import { executeCloudCommand } from "./cloud-command.js";
+import { executeDataCommand } from "./data-command.js";
 import { executeInitCommand, type InitCommandInput } from "./init-command.js";
 import type { InitPath } from "./init-project.js";
 import { executeMcpCommand } from "./mcp-command.js";
@@ -134,6 +135,7 @@ agent through its declared target, then verifies state and tool-call consequence
 
 Usage:
   firedrill browser <run|verify> [options]  (optional browser tests)
+  firedrill data <preview|save> [options]  (review selected data before importing)
   firedrill mcp [--allow-execution] [--root <path>]  (coding-agent control over stdio)
   firedrill cloud <command> [options]  (optional destination extension)
   firedrill agent [--workflow <environment|drill>] [--prompt <task>] [--model <model>] [--effort <level>] [--max-turns <count>] [--max-budget-usd <amount>] [--timeout-ms <milliseconds>] [--json] [--root <path>]
@@ -2092,6 +2094,7 @@ async function inspectCommand(parsed: ParsedArguments, io: CliIo): Promise<numbe
 }
 
 export async function runCli(arguments_: readonly string[], io: CliIo): Promise<number> {
+  if (arguments_[0] === "data") return executeDataCommand(arguments_.slice(1), io);
   if (arguments_[0] === "browser") return executeBrowserCommand(arguments_.slice(1), io);
   if (arguments_[0] === "mcp") return executeMcpCommand(arguments_.slice(1), io);
   if (arguments_[0] === "cloud") {

@@ -10,6 +10,9 @@
     "helpCommands": [
       [],
       ["mcp"],
+      ["data"],
+      ["data", "preview"],
+      ["data", "save"],
       ["browser"],
       ["browser", "run"],
       ["browser", "verify"],
@@ -45,7 +48,7 @@
       "name": "@firedrill/browser-tests",
       "directory": "packages/browser-tests",
       "layer": "adapter",
-      "exports": ["."]
+      "exports": [".", "./contracts"]
     },
     {
       "name": "@firedrill/assertions",

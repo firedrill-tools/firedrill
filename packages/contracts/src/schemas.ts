@@ -4,6 +4,7 @@ import {
   EvidenceAttestationStatementSchema,
   EvidenceVerificationKeySchema,
 } from "./attestation.js";
+import { DataImportPlanSchema } from "./data-import.js";
 import { DiagnosticSchema } from "./diagnostics.js";
 import { DrillDefinitionSchema } from "./drill.js";
 import { ErrorEnvelopeSchema } from "./errors.js";
@@ -17,6 +18,7 @@ import { DrillSuiteDefinitionSchema } from "./suite.js";
 import { TargetDescriptorSchema, TargetInvocationSchema, TargetResultSchema } from "./target.js";
 
 export const ContractSchemas = {
+  dataImportPlan: DataImportPlanSchema,
   assertionDefinition: AssertionDefinitionSchema,
   assertionResult: AssertionResultSchema,
   diagnostic: DiagnosticSchema,

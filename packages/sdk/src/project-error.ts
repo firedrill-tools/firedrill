@@ -5,6 +5,7 @@ export type FiredrillProjectErrorCode =
   | "framework.BUILD_HASH_MISMATCH"
   | "framework.BUILD_INVALID"
   | "framework.DRILL_NOT_FOUND"
+  | "framework.DATA_IMPORT_INVALID"
   | "framework.FAULT_NOT_FOUND"
   | "framework.INTERNAL_ERROR"
   | "framework.INVALID_ARGUMENT"
