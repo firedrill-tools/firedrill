@@ -54,6 +54,17 @@ Closing the listener revokes calls immediately and closes outstanding sockets, i
 
 Another transport can serve `createToolUiClientSource()` at the same module path to retain this browser protocol. Its default accepts only the existing 43-character opaque app token. An explicit `{ credentialFormat: "signed", maxCredentialBytes: 4096 }` accepts two- or three-segment base64url app credentials up to that bound (at most 16 KiB). This is browser-side syntax checking, not authentication. The transport must validate signatures, expiry, current actor authority, per-app operation scope and exact origin on every request. It must supply only an app-scoped credential, never a general world or inspector credential. The client continues clearing URL fragments, using only origin-local session storage, making same-origin credential-omitting requests, and exposing no additional API.
 
+An explicit `{ credentialTransport: "cookie" }` uses browser cookie transport
+(`credentials: "same-origin"`) without an Authorization header. It never reads a
+bearer from a fragment or session storage, clears token fragments and removes
+previously stored app bearers. The same `getContext()` and `invoke()` APIs apply.
+The serving transport must establish authentication, use appropriately scoped
+HttpOnly/Secure/SameSite cookies, and enforce exact Host/Origin and CSRF checks;
+this option neither creates cookies nor grants access. The default remains
+`"bearer"`, including for existing local listeners. Captures such as browser
+traces may contain cookies; disabling or sanitizing those captures remains the
+calling application's responsibility.
+
 A Tool may also declare repository-owned `http` routes using an OpenAPI-style path template, one supported credential placement, a JSON/form/text/no-body request shape, and explicit success and Tool-error statuses. Its behavior module supplies pure `decode` and `encode` codecs around one declared semantic operation. The route adapter parses and bounds the wire request, verifies the per-trial credential, invokes the operation as the selected scenario actor, and renders the response. It never owns state or consequences.
 
 The supported credential placements are bearer, named header, query parameter, HTTP Basic username/password token, and explicit `none`. Prefer a credentialed route. `none` is intended only for a deliberately unauthenticated local API and allows any local process that can reach the ephemeral listener to act as that drill actor.

@@ -1,14 +1,18 @@
 /** Browser-side syntax checking only. The serving transport must authenticate every request. */
 export interface ToolUiClientOptions {
+  /** Explicit same-origin cookie transport; the serving application owns authentication and CSRF checks. */
+  readonly credentialTransport?: "bearer" | "cookie";
   readonly credentialFormat?: "opaque" | "signed";
   readonly maxCredentialBytes?: number;
 }
 
 /** Same-origin browser module for the canonical Tool app protocol. Contains no credentials. */
 export function createToolUiClientSource(options: ToolUiClientOptions = {}): string {
+  const transport = options.credentialTransport ?? "bearer";
   const format = options.credentialFormat ?? "opaque";
   const maximum = options.maxCredentialBytes ?? (format === "opaque" ? 43 : 4096);
   if (
+    !["bearer", "cookie"].includes(transport) ||
     !["opaque", "signed"].includes(format) ||
     !Number.isSafeInteger(maximum) ||
     maximum < 43 ||
@@ -16,7 +20,16 @@ export function createToolUiClientSource(options: ToolUiClientOptions = {}): str
   )
     throw new TypeError("Tool app credential format or byte bound is invalid");
   const pattern = format === "opaque" ? "^[A-Za-z0-9_-]{43}$" : "^[A-Za-z0-9_-]+(?:\\.[A-Za-z0-9_-]+){1,2}$";
-  return `
+  const connection =
+    transport === "cookie"
+      ? `
+// Cookie authentication remains server-side. Never consume a fragment or stored bearer.
+if (new URLSearchParams(location.hash.slice(1)).has("token")) {
+  history.replaceState(history.state, "", location.pathname + location.search);
+}
+try { sessionStorage.removeItem("firedrill.tool-ui.token.v1"); } catch { /* No persistent bearer. */ }
+`
+      : `
 const credentialPattern = new RegExp(${JSON.stringify(pattern)});
 function validToken(value) {
   return typeof value === "string" && value.length >= 43 && value.length <= ${maximum} && credentialPattern.test(value);
@@ -38,18 +51,24 @@ if (fragment.has("token")) {
   try { token = sessionStorage.getItem(storageKey); } catch { /* Reopen the original app link. */ }
 }
 
+`;
+  return `${connection}
 async function request(path, body) {
-  if (!validToken(token)) {
+  ${
+    transport === "bearer"
+      ? `if (!validToken(token)) {
     throw new Error("Open this Tool app from its local Firedrill app link to connect.");
+  }`
+      : ""
   }
   const response = await fetch(path, {
     method: body === undefined ? "GET" : "POST",
     mode: "same-origin",
-    credentials: "omit",
+    credentials: ${JSON.stringify(transport === "cookie" ? "same-origin" : "omit")},
     redirect: "error",
     cache: "no-store",
     headers: {
-      authorization: "Bearer " + token,
+      ${transport === "bearer" ? 'authorization: "Bearer " + token,' : ""}
       ...(body === undefined ? {} : { "content-type": "application/json" }),
     },
     ...(body === undefined ? {} : { body: JSON.stringify(body) }),
