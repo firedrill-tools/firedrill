@@ -98,7 +98,7 @@ scenarios, and tools. Tool **Implementation** shows the behavior module, separat
 from its declaration. This is the source captured at compile/refresh, not a claim
 that it is the original code of every historical run.
 
-**Drills** explains the task and checks to execute. **Runs** shows saved execution
+**Drills** explains the task and checks to execute. **Results** shows saved execution
 results; opening an exact run preserves that identity. A scenario's **Runs** links
 use the scenario recorded with the result, even if source changed later. Use run
 state to inspect the retained outcome, not the current scenario's starting data.

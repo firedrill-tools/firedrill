@@ -120,9 +120,9 @@ In the inspector:
   inspect starting data, and try an operation against the running backend.
   If the pack includes a UI, **Open app** opens its usable interface in a new tab.
   It shares the backend's live state; see [Tool apps](tool-apps.md).
-- **Live data and activity:** see current records and recorded calls. Manual
+- **State & activity:** see current records and recorded calls. Manual
   playground calls are operator checks, not agent test results.
-- **Connect:** explicitly reveal/copy the actual HTTP, MCP or CLI connection
+- **Connect agent:** explicitly reveal/copy the actual HTTP, MCP or CLI connection
   settings. Tokens grant local actor access; do not commit or share them.
 - **Drills and results:** define repeatable tasks and review their saved outcomes
   when you are ready. Empty results do not mean anything has passed.

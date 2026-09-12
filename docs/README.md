@@ -1,4 +1,8 @@
-# Using Firedrill
+# Firedrill developer guides
+
+New to Firedrill? The [README user guide](../README.md) walks through installation,
+starting Tools, connecting an agent, the first passing/failing drill, source-file
+organization, and reading reports. This index takes you deeper into each workflow.
 
 Firedrill lets you run your existing AI agent against controlled tools and data,
 then check what it actually changed. Your agent still chooses its actions. Your
@@ -27,7 +31,7 @@ database, or learn every concept before the first useful call.
 | Name | What you define or get |
 | --- | --- |
 | World | The controlled surroundings: available tools, starting data, identities, permissions, and time. |
-| Tool | An action the agent can take, with inputs, outputs, and an implementation of its fake consequences. It need not be HTTP. |
+| Tool | A fake dependency with one or more callable operations, defined inputs/outputs, and implemented consequences. It need not be HTTP. |
 | Scenario | A variation of the starting conditions, such as an empty account or a tool returning an error. |
 | Target | How the test reaches the agent you already have. This is test configuration, not a new agent. |
 | Drill | A task for the agent plus checks on the outcome. Running it is an agent simulation. |
@@ -68,5 +72,5 @@ that uses a model still needs its own provider setup. A seeded synthetic world
 does not make live model output deterministic.
 
 Packages are currently an unpublished release candidate. The
-[root README](../README.md#try-the-complete-local-loop) gives working source-checkout
+[root README](../README.md#install-the-current-version) gives working source-checkout
 commands; do not assume an npm release is available.
