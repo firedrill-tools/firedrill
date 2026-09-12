@@ -1,27 +1,53 @@
 import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
 import type { IncomingMessage, Server, ServerResponse } from "node:http";
 import { createServer } from "node:http";
-import type { JsonObject, JsonValue, OperationContract, ToolPackageManifest } from "@firedrill/contracts";
+import type {
+  JsonObject,
+  JsonValue,
+  OperationContract,
+  OperationOutcome,
+  OperationRef,
+  ToolPackageManifest,
+} from "@firedrill/contracts";
 import {
   FIREDRILL_FRAMEWORK_VERSION,
   JsonObjectSchema,
   JsonValueSchema,
   McpToolAliasSchema,
 } from "@firedrill/contracts";
-import type { BoundWorldClient } from "@firedrill/world-kernel";
 import {
   localhostHostValidation,
   localhostOriginValidation,
   toNodeHandler,
 } from "@modelcontextprotocol/node";
-import type { BaseContext, CallToolResult, McpHttpHandler } from "@modelcontextprotocol/server";
+import type { BaseContext, CallToolResult } from "@modelcontextprotocol/server";
 import { createMcpHandler, fromJsonSchema, McpServer } from "@modelcontextprotocol/server";
 
 const EXPLICIT_IDEMPOTENCY_KEY = "dev.firedrill/idempotency-key";
 const MAX_BODY_BYTES = 1024 * 1024;
 
+export interface McpWorldClient {
+  invoke(
+    operation: OperationRef,
+    arguments_: JsonObject,
+    options?: { readonly idempotencyKey?: string },
+  ): { readonly outcome: OperationOutcome } | Promise<{ readonly outcome: OperationOutcome }>;
+}
+
+export interface McpWorldHandler {
+  fetch(request: Request, options?: { readonly parsedBody?: unknown }): Promise<Response>;
+  close(): Promise<void>;
+}
+
+export interface CreateMcpWorldHandlerOptions {
+  readonly client: McpWorldClient;
+  readonly tools: readonly Pick<ToolPackageManifest, "id" | "operations">[];
+  /** Stable, non-secret scope separating request-derived idempotency keys. */
+  readonly bindingScope: string;
+}
+
 export interface StartMcpWorldBindingOptions {
-  readonly client: Pick<BoundWorldClient, "invoke">;
+  readonly client: McpWorldClient;
   readonly tools: readonly ToolPackageManifest[];
   readonly hostname?: "127.0.0.1" | "::1";
   readonly port?: number;
@@ -51,7 +77,9 @@ export function mcpToolName(packageId: string, operationId: string): string {
   return `${packageId}.${operationId}`;
 }
 
-function operations(tools: readonly ToolPackageManifest[]): readonly RegisteredOperation[] {
+function operations(
+  tools: readonly Pick<ToolPackageManifest, "id" | "operations">[],
+): readonly RegisteredOperation[] {
   const names = new Set<string>();
   const registered: RegisteredOperation[] = [];
   for (const tool of tools) {
@@ -142,7 +170,7 @@ function toolError(value: JsonObject): CallToolResult {
 }
 
 function buildServer(
-  client: Pick<BoundWorldClient, "invoke">,
+  client: McpWorldClient,
   registered: readonly RegisteredOperation[],
   bindingScope: string,
 ): McpServer {
@@ -158,10 +186,10 @@ function buildServer(
         inputSchema: fromJsonSchema(item.operation.inputSchema),
         outputSchema: fromJsonSchema(item.operation.outputSchema),
       },
-      (argumentsInput, context) => {
+      async (argumentsInput, context) => {
         try {
           const arguments_ = JsonObjectSchema.parse(argumentsInput);
-          const result = client.invoke(
+          const result = await client.invoke(
             { packageId: item.packageId, operationId: item.operation.id },
             arguments_,
             callOptions(item.operation, context, bindingScope),
@@ -264,7 +292,7 @@ function closeServer(server: Server): Promise<void> {
 }
 
 function requestHandler(options: {
-  readonly handler: McpHttpHandler;
+  readonly handler: McpWorldHandler;
   readonly token: string;
 }): (request: IncomingMessage, response: ServerResponse) => Promise<void> {
   const validateHost = localhostHostValidation();
@@ -307,13 +335,25 @@ function requestHandler(options: {
   };
 }
 
+/**
+ * Embeds the canonical MCP operation adapter in an existing HTTP server.
+ * The caller owns authentication, origin checks, body limits and request-time
+ * authorization. Supply only the permitted Tool surface and an actor-bound client.
+ */
+export function createMcpWorldHandler(options: CreateMcpWorldHandlerOptions): McpWorldHandler {
+  if (options.bindingScope.length === 0 || options.bindingScope.length > 1024)
+    throw new TypeError("MCP binding scope must contain between 1 and 1024 characters");
+  const registered = operations(options.tools);
+  const handler = createMcpHandler(() => buildServer(options.client, registered, options.bindingScope));
+  return { fetch: handler.fetch, close: handler.close };
+}
+
 export async function startMcpWorldBinding(options: StartMcpWorldBindingOptions): Promise<McpWorldBinding> {
   const hostname = options.hostname ?? "127.0.0.1";
   const token = options.token ?? randomBytes(32).toString("base64url");
   if (token.length < 16) throw new TypeError("world token must contain at least 16 characters");
-  const registered = operations(options.tools);
   const bindingScope = createHash("sha256").update(token).digest("hex");
-  const handler = createMcpHandler(() => buildServer(options.client, registered, bindingScope));
+  const handler = createMcpWorldHandler({ client: options.client, tools: options.tools, bindingScope });
   const serve = requestHandler({ handler, token });
   const server = createServer((request, response) => {
     void serve(request, response).catch(() => {

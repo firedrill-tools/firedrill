@@ -7,7 +7,7 @@ import { BoundWorldClient, WorldKernel } from "@firedrill/world-kernel";
 import { SqliteWorldStore } from "@firedrill/world-store-sqlite";
 import { Client, StreamableHTTPClientTransport } from "@modelcontextprotocol/client";
 import { afterEach, describe, expect, it } from "vitest";
-import { mcpToolName, startMcpWorldBinding } from "../src/index.js";
+import { createMcpWorldHandler, mcpToolName, startMcpWorldBinding } from "../src/index.js";
 
 const HASH_A = `sha256:${"a".repeat(64)}` as const;
 const HASH_B = `sha256:${"b".repeat(64)}` as const;
@@ -169,6 +169,78 @@ function postRaw(url: URL, token: string, body: Buffer, contentLength?: number):
 }
 
 describe("MCP world binding", () => {
+  it("embeds the same adapter over asynchronous invocation and fresh per-request HTTP handlers", async () => {
+    const fixture = world();
+    const seen: string[] = [];
+    const client = new Client({ name: "embedded-adapter-consumer", version: "1.0.0" });
+    const tools = [
+      {
+        id: fixture.tool.manifest.id,
+        operations: fixture.tool.manifest.operations.map((operation) => ({
+          ...operation,
+          ...(operation.id === "scores.add" ? { mcp: { name: "ADD_POINTS" } } : {}),
+        })),
+      },
+    ];
+    const transport = new StreamableHTTPClientTransport(new URL("http://127.0.0.1/mcp"), {
+      fetch: async (input, init) => {
+        const request = new Request(input, init);
+        const handler = createMcpWorldHandler({
+          tools,
+          bindingScope: "isolated-score-consumer",
+          client: {
+            async invoke(operation, arguments_, options) {
+              await Promise.resolve();
+              seen.push(operation.operationId);
+              return fixture.client.invoke(operation, arguments_, options);
+            },
+          },
+        });
+        try {
+          const response = await handler.fetch(request);
+          const bytes = await response.arrayBuffer();
+          return new Response([204, 205, 304].includes(response.status) ? null : bytes, {
+            status: response.status,
+            headers: response.headers,
+          });
+        } finally {
+          await handler.close();
+        }
+      },
+    });
+    try {
+      await client.connect(transport);
+      const listed = await client.listTools();
+      expect(listed.tools.map((tool) => tool.name)).toContain("ADD_POINTS");
+      const result = await client.callTool({ name: "ADD_POINTS", arguments: { points: 11 } });
+      expect(result.isError).not.toBe(true);
+      expect(fixture.store.readState("scoreboard", "scores", "main")?.value).toEqual({ score: 11 });
+      const invalid = await client.callTool({ name: "ADD_POINTS", arguments: { points: -1 } });
+      expect(invalid.isError).toBe(true);
+      expect(fixture.store.readState("scoreboard", "scores", "main")?.value).toEqual({ score: 11 });
+      fixture.client.revoke();
+      const revoked = await client.callTool({ name: "ADD_POINTS", arguments: { points: 1 } });
+      expect(revoked.isError).toBe(true);
+      expect(fixture.store.readState("scoreboard", "scores", "main")?.value).toEqual({ score: 11 });
+      expect(seen).toEqual(["scores.add", "scores.add", "scores.add"]);
+    } finally {
+      await client.close();
+      fixture.store.close();
+    }
+  });
+
+  it("rejects missing or excessive embedding identity before accepting requests", () => {
+    for (const bindingScope of ["", "x".repeat(1025)]) {
+      expect(() =>
+        createMcpWorldHandler({
+          tools: [],
+          bindingScope,
+          client: { invoke: () => ({ outcome: { status: "ok", value: null } }) },
+        }),
+      ).toThrow("MCP binding scope");
+    }
+  });
+
   it("rejects canonical/alias and alias/alias collisions before opening a server", async () => {
     const fixture = world();
     const first = {
