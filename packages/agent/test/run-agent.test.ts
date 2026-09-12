@@ -91,6 +91,53 @@ describe("Firedrill Agent runtime", () => {
     expect(mocked.query).not.toHaveBeenCalled();
   });
 
+  it.each(["https://model.example.test/scoped", "http://127.0.0.1:4567", "http://[::1]:4567"])(
+    "preserves an explicitly configured model API URL: %s",
+    async (baseUrl) => {
+      mocked.query.mockReturnValueOnce(
+        stream([
+          {
+            type: "result",
+            subtype: "success",
+            session_id: "session_endpoint",
+            is_error: false,
+            num_turns: 1,
+            duration_ms: 1,
+            total_cost_usd: 0,
+            result: "done",
+          } as unknown as SDKMessage,
+        ]),
+      );
+      await runFiredrillAgent({
+        root: process.cwd(),
+        workflow: "drill",
+        environment: { ANTHROPIC_API_KEY: "test-key", ANTHROPIC_BASE_URL: baseUrl },
+      });
+      expect(mocked.query.mock.calls[0]?.[0].options.env).toMatchObject({
+        ANTHROPIC_API_KEY: "test-key",
+        ANTHROPIC_BASE_URL: baseUrl,
+      });
+    },
+  );
+
+  it.each([
+    "http://remote.example.test",
+    "https://user:secret@example.test",
+    "https://example.test/?token=secret",
+    "https://example.test/#fragment",
+    "file:///tmp/api",
+    "https://example.test/\n",
+    "",
+  ])("rejects an unsafe model API URL: %j", async (baseUrl) => {
+    await expect(
+      runFiredrillAgent({
+        root: process.cwd(),
+        environment: { ANTHROPIC_API_KEY: "test-key", ANTHROPIC_BASE_URL: baseUrl },
+      }),
+    ).rejects.toMatchObject({ code: "agent.INVALID_OPTIONS" });
+    expect(mocked.query).not.toHaveBeenCalled();
+  });
+
   it("rejects an already-cancelled session without starting the SDK", async () => {
     const controller = new AbortController();
     controller.abort();

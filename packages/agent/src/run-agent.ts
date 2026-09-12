@@ -126,6 +126,28 @@ function defaultPrompt(allowRepositoryExecution: boolean, workflow: "environment
 }
 
 function agentEnvironment(environment: Readonly<Record<string, string | undefined>>, runtimeHome: string) {
+  if (environment.ANTHROPIC_BASE_URL !== undefined) {
+    try {
+      const value = environment.ANTHROPIC_BASE_URL;
+      const parsed = new URL(value);
+      const loopback = ["localhost", "127.0.0.1", "[::1]"].includes(parsed.hostname);
+      if (
+        value.length > 8_192 ||
+        /[\r\n\0]/.test(value) ||
+        !(parsed.protocol === "https:" || (parsed.protocol === "http:" && loopback)) ||
+        parsed.username ||
+        parsed.password ||
+        parsed.search ||
+        parsed.hash
+      )
+        throw new Error("invalid API origin");
+    } catch {
+      throw new FiredrillAgentError(
+        "agent.INVALID_OPTIONS",
+        "ANTHROPIC_BASE_URL must be an HTTPS or loopback HTTP URL without credentials, query, or fragment",
+      );
+    }
+  }
   for (const name of ["HTTP_PROXY", "HTTPS_PROXY"] as const) {
     const value = environment[name];
     if (value === undefined || value === "") continue;
@@ -148,6 +170,7 @@ function agentEnvironment(environment: Readonly<Record<string, string | undefine
   }
   const allowed = [
     "ANTHROPIC_API_KEY",
+    "ANTHROPIC_BASE_URL",
     "LANG",
     "LC_ALL",
     "PATH",
