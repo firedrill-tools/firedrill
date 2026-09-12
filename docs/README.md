@@ -56,6 +56,10 @@ human or another LLM. [See the distinction](world-authoring.md#people-and-permis
 | Find an exact CLI flag or machine-readable command | [CLI reference](cli-reference.md) |
 | Build a custom viewer or client | [Local simulation API](local-simulation-api.md) |
 | Reuse an existing tool implementation | [Tool catalog](../registry/README.md) |
+| Install tools from anyone's repository or package | [Tool installation](tool-installation.md) |
+| Share a Tool from my own repository | [Independent Tool packages](tool-packages.md) |
+| Search or maintain an independent index | [Tool discovery](tool-discovery.md) |
+| Implement the open Tool contract | [Tool compatibility](tool-compatibility.md) |
 | Let a coding agent set this up | [Authoring-agent workflow](quickstart.md#5-let-an-authoring-agent-iterate-to-green) |
 | Understand version and report compatibility | [Compatibility](compatibility.md) |
 

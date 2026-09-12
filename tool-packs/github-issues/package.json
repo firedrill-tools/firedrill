@@ -28,6 +28,8 @@
     "dist",
     "github-issues.tool.yaml",
     "starter.json",
+    "firedrill.json",
+    "conformance",
     "README.md"
   ],
   "publishConfig": {
@@ -38,10 +40,14 @@
     "tool": "github-issues.tool.yaml",
     "starter": "starter.json",
     "lifecycle": "active",
-    "conformance": "github-issues-conformance"
+    "conformance": {
+      "schemaVersion": 1,
+      "project": "firedrill.json",
+      "suite": "github-issues-conformance"
+    }
   },
   "scripts": {
-    "build": "tsx ../../tooling/package-files.mts clean && tsc -p tsconfig.build.json && tsx ../../tooling/package-files.mts finalize",
+    "build": "tsx ../../tooling/package-files.mts clean && tsc -p tsconfig.build.json && tsx ../../tooling/build-tool-conformance.mts conformance/agent.mjs && tsx ../../tooling/package-files.mts finalize",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "node test/pack.test.mjs"
   },

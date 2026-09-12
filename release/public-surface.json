@@ -28,6 +28,7 @@
       ["inspect"],
       ["serve"],
       ["tool"],
+      ["tool", "search"],
       ["tool", "create"],
       ["tool", "add"],
       ["tool", "inspect"],
@@ -60,7 +61,7 @@
       "name": "@firedrill/cli",
       "directory": "packages/cli",
       "layer": "app",
-      "exports": ["."]
+      "exports": [".", "./schema/tool-index.json", "./tool-discovery"]
     },
     {
       "name": "@firedrill/compiler",

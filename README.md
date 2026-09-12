@@ -2,6 +2,11 @@
 
 Firedrill is an open-source stateful simulation and testing framework for AI agents that take actions.
 
+Tools can come from this repository, your project, or anyone else's package.
+The [open Tool contract](docs/tool-compatibility.md) supports independent authoring,
+installation from npm/Git/local folders, portable conformance, and optional
+discovery indexes. No central contribution or account is required.
+
 Firedrill gives your AI agent a world to work inside—tools, data, and state with real consequences—so you can test what it does, not just what it says. Each trial starts from a fresh, controlled world, lets the existing agent act through its ordinary tool seams, and verifies the resulting state and behavior. The complete individual-developer loop runs locally without an account, upload, or hosted service.
 
 Firedrill runs worlds and drills. It does not host, rewrite, or choose the agent.

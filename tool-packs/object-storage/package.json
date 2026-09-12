@@ -27,6 +27,8 @@
     "dist",
     "object-storage.tool.yaml",
     "starter.json",
+    "firedrill.json",
+    "conformance",
     "README.md"
   ],
   "publishConfig": {
@@ -37,7 +39,11 @@
     "tool": "object-storage.tool.yaml",
     "starter": "starter.json",
     "lifecycle": "active",
-    "conformance": "object-storage-conformance"
+    "conformance": {
+      "schemaVersion": 1,
+      "project": "firedrill.json",
+      "suite": "object-storage-conformance"
+    }
   },
   "scripts": {
     "build": "tsx ../../tooling/package-files.mts clean && tsc -p tsconfig.build.json && tsx ../../tooling/build-tool-app.mts && tsx ../../tooling/package-files.mts finalize",

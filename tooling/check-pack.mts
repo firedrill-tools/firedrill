@@ -698,6 +698,11 @@ try {
     readFileSync(join(root, "tooling", "packed-browser-tests.mjs")),
   );
   run("node", ["browser-tests.mjs", installedPackProject], consumer);
+  writeFileSync(
+    join(consumer, "independent-tools.mjs"),
+    readFileSync(join(root, "tooling", "packed-independent-tools.mjs")),
+  );
+  run("node", ["independent-tools.mjs"], consumer);
   process.stdout.write(`packed consumer check passed for ${publishable.length} package(s)\n`);
 } finally {
   if (temporary.startsWith(`${tmpdir()}/firedrill-pack-`)) {

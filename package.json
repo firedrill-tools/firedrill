@@ -42,6 +42,7 @@
     "check": "pnpm format:check && pnpm lint && pnpm boundaries && pnpm genericity && pnpm determinism && pnpm public:check && pnpm release:check && pnpm build && pnpm docs:cli:check && pnpm schema:check && pnpm registry:check && pnpm skill:check && pnpm typecheck && pnpm test && pnpm quickstart:check && pnpm pack:check"
   },
   "devDependencies": {
+    "esbuild": "0.28.2",
     "@arethetypeswrong/cli": "0.18.5",
     "@biomejs/biome": "2.5.9",
     "@types/node": "26.2.0",

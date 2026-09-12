@@ -13,6 +13,7 @@ export {
   ToolSourceSchema,
   WorldSourceSchema,
 } from "./source-schemas.js";
+export { InstalledToolPackageManifestSchema } from "./tool-package.js";
 export type {
   CompiledBuild,
   CompileWorldOptions,

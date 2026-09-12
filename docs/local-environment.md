@@ -55,6 +55,16 @@ not a replica of the service your agent uses. Replace its declaration and behavi
 with the real inputs, responses, errors and effects you need. A stateless tool is
 also supported: `firedrill tool create my-tool --template stateless`.
 
+Use `firedrill tool search [text]` to discover packages, or add `--index <path-or-url>`
+to read an independently maintained index. `init --index <path-or-url>` uses that
+index in the same setup chooser. An index is optional; it doesn't own or certify
+the packages it lists.
+
+Install a Tool directly with `firedrill tool add <source> --install`: an npm package,
+Git repository/subdirectory, or local package directory/archive. See
+[exact syntax and source pinning](tool-installation.md). No contribution to the
+Firedrill repository is required. Without `--install`, selection remains offline.
+
 Add tools later with `firedrill tool add <installed-package>` or
 `firedrill tool create <id>`. Your project may use several tools together in one
 synthetic environment. They can change shared state through declared contracts.

@@ -2,6 +2,12 @@
 
 This directory is the home for reusable, community-maintained Tools that model common agent action surfaces. Tool packs are plugins; framework core must remain unaware of their vendors, operation names, state shapes, and policies.
 
+It is one home, not the only home. Authors can maintain and distribute compatible
+Tools in their own repositories without submitting anything here. See the
+[open Tool contract](../docs/tool-compatibility.md),
+[independent package workflow](../docs/tool-packages.md), and
+[optional discovery indexes](../docs/tool-discovery.md).
+
 The [`work-queue`](work-queue/README.md) package is a deliberately neutral reference implementation of the package contract. It proves that a separately packed dependency can be explicitly selected, inspected without executing code, bundled into an immutable build, executed through ordinary bindings, and refused by the contribution command when invoked from a consumer installation. The [`github-issues`](github-issues/README.md) package proves a separate, bounded compatibility path through an unchanged official client.
 
 The [`mailbox`](mailbox/README.md) pack models actor-owned messages and a synthetic draft-to-sent lifecycle; the [`object-storage`](object-storage/README.md) pack models actor-owned UTF-8 text objects. Both supply bounded pagination, optimistic versions, deletion, and shared HTTP/MCP world state. They are generic semantic APIs, not complete email or storage service replicas. None of these packs is evidence of independent community adoption, and none is published yet.

@@ -1,5 +1,5 @@
 import { spawnSync } from "node:child_process";
-import { mkdirSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
+import { mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { compileWorld } from "../packages/compiler/dist/index.js";
 import { compareStableStrings } from "./stable-order.mts";
@@ -15,7 +15,9 @@ interface PackageManifest {
     readonly layer?: string;
     readonly tool?: string;
     readonly lifecycle?: "active" | "deprecated" | "revoked";
-    readonly conformance?: string;
+    readonly conformance?:
+      | string
+      | { readonly schemaVersion: 1; readonly project: string; readonly suite: string };
   };
 }
 
@@ -184,8 +186,12 @@ for (const entry of readdirSync(packsRoot, { withFileTypes: true }).sort((left, 
   if (tool.version !== package_.version) {
     throw new Error(`${package_.name} package version ${package_.version} differs from Tool ${tool.version}`);
   }
-  if (!compiled.build.worldIr.suites.some((suite) => suite.id === package_.firedrill?.conformance)) {
-    throw new Error(`${package_.name} has no declared conformance suite ${package_.firedrill.conformance}`);
+  const conformanceSuite =
+    typeof package_.firedrill.conformance === "string"
+      ? package_.firedrill.conformance
+      : package_.firedrill.conformance.suite;
+  if (!compiled.build.worldIr.suites.some((suite) => suite.id === conformanceSuite)) {
+    throw new Error(`${package_.name} has no declared conformance suite ${conformanceSuite}`);
   }
   records.push({
     directoryName: entry.name,
@@ -197,7 +203,7 @@ for (const entry of readdirSync(packsRoot, { withFileTypes: true }).sort((left, 
       lifecycle: package_.firedrill.lifecycle,
       maintainers: (package_.maintainers ?? []).map((maintainer) => maintainer.name),
       keywords: [...(package_.keywords ?? [])].sort(compareStableStrings),
-      conformanceSuite: package_.firedrill.conformance,
+      conformanceSuite,
       tool: {
         id: tool.id,
         version: tool.version,

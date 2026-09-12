@@ -23,6 +23,13 @@ export type InspectInstalledToolPackageResult =
       readonly declarationPath: string;
       readonly modulePath: string;
       readonly starter?: Pick<WorldSource, "schemaVersion" | "virtualTimeUs" | "state">;
+      /** A package-authored, versioned conformance project; inspecting it never runs it. */
+      readonly conformance?: {
+        readonly schemaVersion: 1;
+        readonly packageRoot: string;
+        readonly projectPath: string;
+        readonly suite: string;
+      };
       readonly diagnostics: readonly Diagnostic[];
     }
   | { readonly status: "failed"; readonly diagnostics: readonly Diagnostic[] };
@@ -158,6 +165,16 @@ export function inspectInstalledToolPackage(options: {
     declarationPath: installed.declaration.absolutePath,
     modulePath: module.path.absolutePath,
     ...(starter === undefined ? {} : { starter }),
+    ...(installed.conformance === undefined
+      ? {}
+      : {
+          conformance: {
+            schemaVersion: 1 as const,
+            packageRoot: installed.root,
+            projectPath: installed.conformance.project.absolutePath,
+            suite: installed.conformance.suite,
+          },
+        }),
     diagnostics:
       installed.lifecycle === "deprecated"
         ? [

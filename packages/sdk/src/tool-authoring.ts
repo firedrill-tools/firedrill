@@ -17,6 +17,7 @@ import { loadWorldBuild } from "@firedrill/world-build";
 import { FiredrillProjectError } from "./project-error.js";
 import type { AgentCallback, RunDrillsResult } from "./run-drills.js";
 import { runDrills } from "./run-drills.js";
+import { stagePackagedToolConformance } from "./tool-package-conformance.js";
 
 export interface ToolInspection {
   readonly schemaVersion: 1;
@@ -138,6 +139,8 @@ export interface ToolConformanceResult {
   readonly status: "passed" | "failed";
   readonly tool: ToolValidation;
   readonly suiteId: StableId;
+  /** Whether the consumer supplied the suite or the installed package shipped it. */
+  readonly suiteSource: "repository" | "package";
   readonly coverage: {
     readonly operations: readonly ToolOperationCoverage[];
     readonly events: readonly ToolEventCoverage[];
@@ -548,12 +551,34 @@ function drillFailure(run: RunDrillsResult, pass: "first" | "repeat"): ToolConfo
  * Conformance requires passing drills, reproducible hashes, and observed declared behavior.
  */
 export async function testTool(options: TestToolOptions): Promise<ToolConformanceResult> {
-  const prepared = await preparedTool(options);
-  const suiteId = resolveSuite(prepared.loaded, prepared.inspection.toolId, options.suite);
+  let prepared = await preparedTool(options);
+  const originalInspection = prepared.inspection;
   const output = resolve(
     prepared.root,
     options.testDirectory ?? join(".firedrill", "tool-tests", prepared.inspection.toolId),
   );
+  let suiteSource: ToolConformanceResult["suiteSource"] = "repository";
+  let selectedSuite = options.suite;
+  if (
+    selectedSuite === undefined &&
+    !prepared.loaded.worldIr.suites.some(
+      (suite) =>
+        suite.id === `${prepared.inspection.toolId}-conformance` ||
+        (prepared.loaded.worldIr.tools.length === 1 && suite.id === "conformance"),
+    )
+  ) {
+    const packaged = await stagePackagedToolConformance({
+      root: prepared.root,
+      output,
+      tool: prepared.inspection,
+    });
+    if (packaged !== undefined) {
+      prepared = await preparedTool({ root: packaged.root, toolId: options.toolId });
+      selectedSuite = packaged.suite;
+      suiteSource = "package";
+    }
+  }
+  const suiteId = resolveSuite(prepared.loaded, prepared.inspection.toolId, selectedSuite);
   const run = () =>
     runDrills({
       root: prepared.root,
@@ -582,10 +607,12 @@ export async function testTool(options: TestToolOptions): Promise<ToolConformanc
     status: violations.length === 0 ? "passed" : "failed",
     tool: {
       ...prepared.inspection,
+      ...(suiteSource === "package" ? { origin: originalInspection.origin } : {}),
       executable: true,
       buildDirectory: prepared.loaded.directory,
     },
     suiteId,
+    suiteSource,
     coverage,
     deterministic: !violations.some((violation) => violation.code === "NONDETERMINISTIC_RESULT"),
     violations,

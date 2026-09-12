@@ -1,10 +1,22 @@
-import { compileWorld } from "@firedrill/compiler";
-import type { CliIo } from "./program.js";
+import { existsSync, lstatSync, readFileSync, realpathSync } from "node:fs";
+import { isAbsolute, join, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
+import { compileWorld, inspectInstalledToolPackage } from "@firedrill/compiler";
+import { NodePackageNameSchema } from "@firedrill/contracts";
 import { executeAgentCommand } from "./agent-command.js";
-import { FiredrillInitError, initProject, type InitializedProject, type InitPath } from "./init-project.js";
+import { FiredrillInitError, type InitializedProject, type InitPath, initProject } from "./init-project.js";
 import { installReadyTool, toolInstallPlan } from "./install-tool.js";
+import type { CliIo } from "./program.js";
 import { executeServeCommand } from "./serve-command.js";
-import { readyTools, type ReadyTool } from "./tool-catalog.js";
+import type { ReadyTool } from "./tool-catalog.js";
+import {
+  type DiscoveredTool,
+  discoverTools,
+  resolveDiscoveredTool,
+  ToolDiscoveryError,
+} from "./tool-discovery.js";
+import { sourceArgument } from "./tool-distribution-command.js";
+import { FiredrillToolInstallationError, installToolSource } from "./tool-installation.js";
 import { addToolPackages, createTool, FiredrillToolSetupError, type ToolSetupResult } from "./tool-setup.js";
 
 export interface InitCommandInput {
@@ -14,6 +26,7 @@ export interface InitCommandInput {
   readonly initTool?: readonly string[];
   readonly initCustom?: string;
   readonly initSearch?: string;
+  readonly toolIndex?: string;
   readonly initAuthoring?: "manual" | "firedrill-agent" | "coding-agent";
   readonly initInstall?: boolean;
   readonly initAllowAgent?: boolean;
@@ -47,7 +60,7 @@ function catalog(io: CliIo, tools: readonly ReadyTool[], allowCustom = true): vo
     io.stdout.write("No matching ready-made Tool in the bundled catalog. Create a custom Tool below.\n");
   tools.forEach((tool, index) => {
     io.stdout.write(
-      `  ${index + 1}. ${tool.id} — ${tool.installed ? "installed" : "installation required"}\n     ${tool.description}\n`,
+      `  ${index + 1}. ${tool.id} — ${tool.packageName}@${tool.version} (${tool.installed ? "installed" : "installation required"})\n     ${tool.description}\n`,
     );
     io.stdout.write(
       `     ${tool.operations.length} declared operations; bounded compatibility, not a complete service replica.\n`,
@@ -59,6 +72,98 @@ function catalog(io: CliIo, tools: readonly ReadyTool[], allowCustom = true): vo
 function yes(answer: string, defaultValue = false): boolean {
   const value = answer.trim().toLowerCase();
   return value === "y" || value === "yes" || (value === "" && defaultValue);
+}
+
+interface ToolSelection {
+  readonly selector: string;
+  readonly entry: DiscoveredTool | undefined;
+  readonly packageName: string | undefined;
+  readonly sourceKey: string;
+}
+
+function localSourcePath(root: string, selector: string): string | undefined {
+  if (!selector.startsWith(".") && !selector.startsWith("file:") && !isAbsolute(selector)) return undefined;
+  try {
+    return selector.startsWith("file://")
+      ? fileURLToPath(new URL(selector))
+      : resolve(root, selector.startsWith("file:") ? selector.slice(5) : selector);
+  } catch {
+    return undefined;
+  }
+}
+
+/** Read identity hints only. Acquisition still validates the complete package before installation. */
+function selectionIdentity(root: string, selector: string, entry: DiscoveredTool | undefined): ToolSelection {
+  if (entry !== undefined)
+    return { selector, entry, packageName: entry.packageName, sourceKey: entry.installSource };
+  const local = localSourcePath(root, selector);
+  if (local !== undefined) {
+    let sourceKey = `local:${resolve(local)}`;
+    let packageName: string | undefined;
+    try {
+      sourceKey = `local:${realpathSync(local)}`;
+      const manifestPath = join(local, "package.json");
+      const metadata = lstatSync(manifestPath);
+      if (metadata.isFile() && !metadata.isSymbolicLink() && metadata.size <= 1_048_576) {
+        const manifest: unknown = JSON.parse(readFileSync(manifestPath, "utf8"));
+        if (manifest !== null && typeof manifest === "object" && "name" in manifest) {
+          const parsed = NodePackageNameSchema.safeParse(manifest.name);
+          if (parsed.success) packageName = parsed.data;
+        }
+      }
+    } catch {
+      /* Invalid or unavailable sources receive their actionable error during acquisition. */
+    }
+    return { selector, entry, packageName, sourceKey };
+  }
+  const npm = selector.startsWith("npm:") ? selector.slice(4) : selector;
+  const separator = npm.lastIndexOf("@");
+  const name = separator > 0 ? npm.slice(0, separator) : npm;
+  if (NodePackageNameSchema.safeParse(name).success) {
+    let version = separator > 0 ? npm.slice(separator + 1) : "latest";
+    if (separator <= 0) {
+      const installed = inspectInstalledToolPackage({ repositoryRoot: root, packageName: name });
+      if (installed.status === "success") version = installed.package.version;
+    }
+    return { selector, entry, packageName: name, sourceKey: `${name}@${version}` };
+  }
+  return { selector, entry, packageName: undefined, sourceKey: selector };
+}
+
+function selectionConflict(packageName: string, afterAcquisition = false): never {
+  throw new ToolDiscoveryError(
+    "framework.TOOL_SELECTION_CONFLICT",
+    `Choose one version and source for ${packageName}; multiple conflicting selections cannot share one package dependency.${afterAcquisition ? " Acquisition revealed the conflict; inspect package.json and its lock for dependency changes. No Firedrill source selection was written." : " No packages were acquired or setup files written."}`,
+  );
+}
+
+async function planToolSelections(
+  input: InitCommandInput,
+  selectors: readonly string[],
+  signal?: AbortSignal,
+): Promise<readonly ToolSelection[]> {
+  const selections: ToolSelection[] = [];
+  const packages = new Map<string, string>();
+  const sources = new Set<string>();
+  for (const selector of selectors) {
+    const entry = await resolveDiscoveredTool({
+      root: input.root,
+      selector,
+      ...(input.toolIndex === undefined ? {} : { index: input.toolIndex }),
+      ...(signal === undefined ? {} : { signal }),
+    });
+    const selection = selectionIdentity(input.root, selector, entry);
+    if (selection.packageName !== undefined) {
+      const previous = packages.get(selection.packageName);
+      if (previous !== undefined && previous !== selection.sourceKey)
+        selectionConflict(selection.packageName);
+      packages.set(selection.packageName, selection.sourceKey);
+    }
+    if (sources.has(selection.sourceKey)) continue;
+    sources.add(selection.sourceKey);
+    selections.push(selection);
+  }
+  return selections;
 }
 
 async function authorEnvironment(
@@ -183,11 +288,25 @@ export async function executeInitCommand(input: InitCommandInput, io: CliIo): Pr
       } else if (input.initStart) return finish(input, io);
       return 0;
     }
-    const tools = readyTools(input.root, input.initSearch);
+    const discover = (query = "", offset = 0) =>
+      discoverTools({
+        root: input.root,
+        query,
+        offset,
+        limit: 20,
+        ...(input.toolIndex === undefined ? {} : { index: input.toolIndex }),
+        ...(io.signal === undefined ? {} : { signal: io.signal }),
+      });
+    let discovery = await discover(input.initSearch);
+    const tools = discovery.tools;
     if (input.initSearch !== undefined) {
-      if (input.json)
-        emit(io, { schemaVersion: 1, command: "init", status: "catalog", tools, accountRequired: false });
-      else catalog(io, tools);
+      if (input.json) emit(io, { ...discovery, command: "init", status: "catalog", accountRequired: false });
+      else {
+        catalog(io, tools);
+        io.stdout.write(
+          `Showing ${tools.length} of ${discovery.total}. Use firedrill tool search for pagination.\n`,
+        );
+      }
       return 0;
     }
     const selected = [...(input.initTool ?? [])];
@@ -199,24 +318,39 @@ export async function executeInitCommand(input: InitCommandInput, io: CliIo): Pr
     }
     if (selected.length === 0 && custom === undefined && io.ask !== undefined) {
       let visible = tools;
+      let query = "";
       while (custom === undefined) {
         catalog(io, visible, selected.length === 0);
+        if (discovery.total > discovery.limit)
+          io.stdout.write(
+            `Showing ${discovery.offset + 1}–${discovery.offset + visible.length} of ${discovery.total}; n: next page, p: previous page.\n`,
+          );
         const answer = (
           await io.ask(
             selected.length === 0
-              ? "Choose a Tool [c], installed package name, or /search: "
-              : "Choose another Tool, installed package name, or /search (Enter to finish): ",
+              ? "Choose a Tool [c], package/Git/local source, or /search: "
+              : "Choose another Tool, package/Git/local source, or /search (Enter to finish): ",
           )
         ).trim();
-        if (answer.startsWith("/")) {
-          visible = readyTools(input.root, answer.slice(1));
+        const search = answer.startsWith("/") && !(isAbsolute(answer) && existsSync(answer));
+        if (answer === "n" || answer === "p" || search) {
+          let offset = discovery.offset;
+          if (search) {
+            query = answer.slice(1);
+            offset = 0;
+          } else if (answer === "n" && offset + discovery.limit < discovery.total) offset += discovery.limit;
+          else if (answer === "p") offset = Math.max(0, offset - discovery.limit);
+          discovery = await discover(query, offset);
+          visible = discovery.tools;
           continue;
         }
         if (answer === "" && selected.length > 0) break;
         if (selected.length === 0 && (answer === "" || answer === "c" || answer === "custom")) {
           custom = (await io.ask("Name your custom Tool [my-tool]: ")).trim() || "my-tool";
         } else {
-          selected.push(visible.find((_tool, index) => answer === String(index + 1))?.packageName ?? answer);
+          selected.push(
+            visible.find((_tool, index) => answer === String(index + 1))?.installSource ?? answer,
+          );
           if (!yes(await io.ask("Add another ready-made Tool? [y/N] "))) break;
         }
       }
@@ -224,15 +358,16 @@ export async function executeInitCommand(input: InitCommandInput, io: CliIo): Pr
     let setup: ToolSetupResult;
     if (selected.length > 0) {
       const packageNames: string[] = [];
-      for (const selector of selected) {
-        const entry = tools.find((tool) => tool.id === selector || tool.packageName === selector);
-        const packageName = entry?.packageName ?? selector;
-        if (packageNames.includes(packageName)) continue;
+      const packageSources = new Map<string, string>();
+      const selections = await planToolSelections(input, selected, io.signal);
+      for (const selection of selections) {
+        const { selector, entry } = selection;
+        let packageName = entry?.packageName ?? selector;
         if (entry !== undefined && !input.json) {
           io.stdout.write(`${entry.id}: ${entry.operations.map((item) => item.id).join(", ")}\n`);
           for (const limitation of entry.limitations) io.stdout.write(`Limit: ${limitation}\n`);
         }
-        if (entry !== undefined && !entry.installed) {
+        if (entry !== undefined && !entry.installed && input.toolIndex === undefined) {
           const install =
             input.initInstall === true ||
             (!input.json &&
@@ -273,8 +408,68 @@ export async function executeInitCommand(input: InitCommandInput, io: CliIo): Pr
               );
             return 2;
           }
+        } else if (
+          (input.toolIndex !== undefined && entry !== undefined && (input.initInstall || !entry.installed)) ||
+          (entry === undefined &&
+            inspectInstalledToolPackage({ repositoryRoot: input.root, packageName }).status !== "success")
+        ) {
+          const source = entry?.installSource ?? selector;
+          const permitted =
+            input.initInstall === true ||
+            (!input.json &&
+              io.ask !== undefined &&
+              yes(
+                await io.ask(
+                  `Install ${source} with lifecycle scripts disabled? Review third-party Tool code before running it. [y/N] `,
+                ),
+              ));
+          if (!permitted) {
+            if (input.json)
+              emit(io, {
+                schemaVersion: 1,
+                command: "init",
+                status: "setup-pending",
+                code: "framework.TOOL_INSTALL_REQUIRED",
+                source,
+                next: `firedrill init --tool ${sourceArgument(source)} --install`,
+              });
+            else
+              io.stdout.write(
+                `Installation was not authorized. Resume: firedrill init --tool ${sourceArgument(source)} --install\n`,
+              );
+            return 2;
+          }
+          const installed = await installToolSource({
+            root: input.root,
+            source,
+            ...(io.signal === undefined ? {} : { signal: io.signal }),
+          });
+          const inspected = inspectInstalledToolPackage({
+            repositoryRoot: input.root,
+            packageName: installed.packageName,
+          });
+          if (
+            entry !== undefined &&
+            (installed.packageName !== entry.packageName ||
+              installed.version !== entry.version ||
+              inspected.status !== "success" ||
+              inspected.declaration.manifest.id !== entry.id)
+          )
+            throw new ToolDiscoveryError(
+              "framework.TOOL_INDEX_PACKAGE_MISMATCH",
+              "The installed package does not match the selected index entry. Review the package and index; it was not selected in firedrill.json.",
+            );
+          packageName = installed.packageName;
+          if (!input.json)
+            io.stdout.write(
+              `Installed ${packageName}@${installed.version}. Commit dependency manifests/locks and .firedrill-tools/ if created.\n`,
+            );
         }
-        packageNames.push(packageName);
+        const previousSource = packageSources.get(packageName);
+        if (previousSource !== undefined && previousSource !== selection.sourceKey)
+          selectionConflict(packageName, true);
+        packageSources.set(packageName, selection.sourceKey);
+        if (!packageNames.includes(packageName)) packageNames.push(packageName);
       }
       setup = addToolPackages({ root: input.root, packageNames });
     } else {
@@ -361,6 +556,23 @@ export async function executeInitCommand(input: InitCommandInput, io: CliIo): Pr
         });
       else io.stdout.write("Setup cancelled. Any completed local source changes remain available.\n");
       return 0;
+    }
+    if (error instanceof FiredrillToolInstallationError || error instanceof ToolDiscoveryError) {
+      const suggestion = error instanceof FiredrillToolInstallationError ? error.suggestion : undefined;
+      if (input.json)
+        emit(io, {
+          schemaVersion: 1,
+          command: "init",
+          status: "failed",
+          code: error.code,
+          message: error.message,
+          ...(suggestion === undefined ? {} : { suggestion }),
+        });
+      else
+        io.stderr.write(
+          `${error.code} ${error.message}\n${suggestion === undefined ? "" : `${suggestion}\n`}`,
+        );
+      return 2;
     }
     if (!(error instanceof FiredrillInitError) && !(error instanceof FiredrillToolSetupError)) throw error;
     if (input.json)

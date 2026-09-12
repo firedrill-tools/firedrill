@@ -29,6 +29,16 @@ These commands cross the executable-code boundary:
 
 The local framework does not claim to sandbox that code. The compiler rejects Node built-in and undeclared package imports from locked Tool artifacts, but JavaScript executing in the local process still has ambient process authority. Review a Tool pack before installing or executing it. Package lifecycle and fidelity metadata are provenance signals, not a security endorsement.
 
+## Independently maintained Tools
+
+Tool code may live in any author's repository; a listing in the bundled catalog or an independent index is not required. `tool search` reads metadata, not behavior. An explicitly selected remote `--index` contacts that index host, does not follow redirects, and treats its descriptions and compatibility claims as publisher statements, not certification.
+
+`tool add <source> --install` and authorized `init` installation can acquire npm packages, local package directories/archives, or Git packages. They may contact the selected registry or Git host and fetch dependencies. Acquisition disables package lifecycle scripts and does not execute Tool behavior. Git selectors resolve to an exact commit; reviewed package bytes are checked against the installed files before selection. These checks are not a malware scan. Review package source, dependencies, manifests, and locks before running it. Private Git access uses the user's credential helper; never embed credentials in a source selector.
+
+Git and local packages are retained beneath `.firedrill-tools/` as source archives and provenance files. Unlike `.firedrill/` generated evidence, these are intended to be committed with dependency manifests and locks for reproducible installs. Review their contents before sharing; use an explicit package file allowlist and never include secrets or private test data.
+
+An installed package can ship conformance targets in addition to Tool behavior. `tool test` prefers a consumer-owned suite, or stages the package's portable suite under `.firedrill/tool-tests/` when no consumer suite was selected. Staging rejects symlinks, excludes dependencies and common secret/generated files, and requires the same Tool contract, behavior, and app assets as the installed package. It does not install dependencies or run package build scripts. Running the resulting tests still executes trusted local code with the user's authority. A passing suite demonstrates only its declared coverage and reproducibility, not independent provider fidelity or safety certification.
+
 ## Enforced local boundaries
 
 - Repository source, installed Tool source, immutable builds, and target modules are checked for path escape and external symlinks before use.

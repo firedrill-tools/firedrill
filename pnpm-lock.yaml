@@ -21,6 +21,9 @@ importers:
       '@types/node':
         specifier: 26.2.0
         version: 26.2.0
+      esbuild:
+        specifier: 0.28.2
+        version: 0.28.2
       publint:
         specifier: 0.3.24
         version: 0.3.24
@@ -125,6 +128,12 @@ importers:
       '@modelcontextprotocol/server':
         specifier: 2.0.0
         version: 2.0.0
+      tar:
+        specifier: 7.5.22
+        version: 7.5.22
+      zod:
+        specifier: 4.4.3
+        version: 4.4.3
     devDependencies:
       '@firedrill/agent':
         specifier: workspace:*

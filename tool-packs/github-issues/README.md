@@ -38,3 +38,11 @@ firedrill tool test github-issues
 ```
 
 The conformance suite uses the unchanged official client to execute a successful read-comment-close flow and a provider-shaped rate-limit failure. It covers every declared operation and error, verifies emitted events and state consequences, rejects an unsupported official-client method at loopback, and repeats the suite with the same seed to prove deterministic world behavior.
+
+The package ships that suite for installed consumers too. Its exact official
+client and dependencies are bundled into the optional conformance target at
+build time; consumers do not need to install another client or access this
+source checkout. The adjacent `dist/conformance/THIRD-PARTY-NOTICES.txt` and
+`dependencies.json` identify the bundled dependencies and preserve their license
+texts. This is still an author-supplied compatibility check, not independent
+certification of the complete GitHub API.

@@ -68,6 +68,16 @@ Inspect `firedrill.json`, project dependencies, and existing Tool source before 
 
 Use `firedrill tool add <installed-package>` to select an approved dependency or `firedrill tool create <tool-id>` for a stateful starter. These reuse the same tool contract; no service catalog or separate twin runtime is required.
 
+Tools may live in anyone's repository, not only Firedrill's. `tool search [text]
+--json` searches bundled metadata; `--index <path-or-url>` explicitly reads another
+index. With installation authority, `tool add <npm/Git/local-source> --install`
+pins and installs that source with scripts disabled. Never infer approval from a
+catalog entry. For an author explicitly sharing a reusable package, use
+`tool create <id> --package --name <npm-name> --root <new-directory>`; it includes
+portable conformance. Keep dependency locks and `.firedrill-tools/` source archives
+in version control, not generated `.firedrill/` evidence. Publishing or contributing
+still requires separate explicit authority.
+
 If no selected package matches the agent's actual seam, author a repository Tool. Do not force a generic example or near-match onto the project. Read [references/authoring.md](references/authoring.md) for both paths.
 
 ### 4. Author the smallest useful world

@@ -13,8 +13,11 @@ targets, personas, or scenarios that the task does not need.
    read-only. A catalog entry is not proof that a package is installed/published
    or compatible with the customer's exact client. Reuse a compatible, approved installed tool package with
    `firedrill tool add <package-name>`. This does not install packages or run their
-   lifecycle scripts. For an explicitly approved catalog download,
-   `firedrill init --tool <package> --install` uses the package manager with scripts
+   lifecycle scripts. Authors can own packages outside Firedrill's repository.
+   `firedrill tool search <term> --json` supports an explicit independent
+   `--index <path-or-url>`; no index is required to install a known source.
+   For an explicitly approved npm, Git, or local package install,
+   `firedrill tool add <source> --install` uses the package manager with scripts
    disabled. Never authorize an install merely because a matching name exists.
    Do not select a near-match while claiming full compatibility. Pack-authored
    starter records may populate a new world's repo-owned baseline; do not replace

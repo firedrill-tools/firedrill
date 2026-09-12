@@ -4,6 +4,6 @@ target:
   kind: command
   bindings: [http]
   executable: node
-  arguments: [conformance/agent.mjs]
+  arguments: [dist/conformance/agent.mjs]
   workingDirectory: .
   timeoutMs: 15000

@@ -25,11 +25,12 @@ Usage:
   firedrill format [--check] [--json] [--root <path>]
   firedrill compare <baseline-report> <candidate-report> [--json]
   firedrill report verify <report-directory> [--json]
-  firedrill init [--tool <package-or-catalog-id> | --custom <tool-id> | --search <text> | --path <path>] [--install] [--authoring <manual|firedrill-agent|coding-agent>] [--allow-agent] [--start] [--no-open] [--json] [--root <path>]
+  firedrill init [--tool <source-or-catalog-id> | --custom <tool-id> | --search <text> | --path <path>] [--index <path-or-url>] [--install] [--authoring <manual|firedrill-agent|coding-agent>] [--allow-agent] [--start] [--no-open] [--json] [--root <path>]
   firedrill inspect [--port <port>] [--no-open] [--json] [--root <path>]
   firedrill serve [--scenario <id>] [--actor <id>] [--seed <seed>] [--port <port>] [--mcp-port <port>] [--cli-port <port>] [--no-open] [--json] [--root <path>]
-  firedrill tool create <tool-id> [--template <stateful|stateless>] [--json] [--root <path>]
-  firedrill tool add <installed-package> [--json] [--root <path>]
+  firedrill tool search [text] [--index <path-or-url>] [--limit <1-100>] [--offset <count>] [--json]
+  firedrill tool create <tool-id> [--template <stateful|stateless>] [--package] [--name <npm-name>] [--json] [--root <path>]
+  firedrill tool add <source> [--install] [--json] [--root <path>]
   firedrill tool inspect <tool-id> [--json] [--root <path>]
   firedrill tool validate <tool-id> [--json] [--root <path>]
   firedrill tool test <tool-id> [--suite <id>] [--seed <seed>] [--callback-receiver <id>=<origin>] [--callback-secret-env <id>=<variable>] [--json] [--root <path>]
@@ -75,10 +76,11 @@ Tool contribution options:
 
 Init options:
   --path <path>         Use firedrill-agent, coding-agent, template, or manual
-  --tool <package|id>   Select a ready-made Tool; repeat to compose several
+  --tool <source|id>    Select a reusable Tool; repeat to compose several
   --custom <tool-id>    Create your own stateful Tool; no key required
-  --search <text>       Search the bundled catalog without writing or installing
-  --install             Authorize a pinned catalog package install, scripts disabled
+  --search <text>       Search Tool metadata without writing or installing
+  --index <path-or-url> Use an independently maintained index for init/tool search
+  --install             Authorize pinned dependency installation, scripts disabled
   --authoring <mode>    Optional manual, firedrill-agent, or coding-agent help
   --allow-agent         Authorize the optional Anthropic-backed authoring session
   --start               Start selected Tools and their inspector in the foreground
@@ -403,8 +405,8 @@ who authored it.
 Choose a clear starting path for this repository's local fake tools
 
 Usage:
-  firedrill init [--tool <package-or-catalog-id> | --custom <tool-id> | --search <text>]
-                [--install] [--authoring <manual|firedrill-agent|coding-agent>]
+  firedrill init [--tool <source-or-catalog-id> | --custom <tool-id> | --search <text>]
+                [--index <path-or-url>] [--install] [--authoring <manual|firedrill-agent|coding-agent>]
                 [--allow-agent] [--start] [--no-open] [--json] [--root <path>]
   firedrill init --path <firedrill-agent|coding-agent|template|manual> [--allow-agent] [--start] [--json]
 
@@ -412,13 +414,15 @@ Interactive init lets you pick/search a ready-made Tool or create your own,
 optionally customize it, and start local HTTP, MCP, CLI and inspector interfaces.
 No account, model key, agent target, scenario, or drill is needed. Catalog entries
 show only their declared operations and limitations, not full-service emulation.
-Missing catalog packages require installation consent (--install without a TTY).
-Installation pins the catalog version and disables lifecycle scripts; unpublished
+Missing packages require installation consent (--install without a TTY).
+Installation pins the resolved package and disables lifecycle scripts; unpublished
 packages may require a separately supplied local package archive.
 
 Bare JSON, CI, and piped init remains read-only. --search is always read-only.
---tool selects an installed package (or catalog id); --custom creates a stateful
-get/set Tool scaffold. --start explicitly runs selected Tool code until Ctrl+C.
+--tool selects a package, catalog id, Git source, or local package directory.
+--index explicitly reads an independently maintained local/HTTPS Tool index.
+--custom creates a stateful get/set Tool scaffold.
+--start explicitly runs selected Tool code until Ctrl+C.
 The Agent is optional: --authoring firedrill-agent --allow-agent uses your shell's
 ANTHROPIC_API_KEY. Never put key text in command arguments. Missing keys leave a
 resumable setup. --authoring coding-agent installs the canonical skill and brief.
@@ -478,8 +482,9 @@ event on shutdown. Each launch creates a fresh retained world under .firedrill/.
 Create, select, inspect, and prove Tool behavior
 
 Usage:
-  firedrill tool create <tool-id> [--template <stateful|stateless>] [--json] [--root <path>]
-  firedrill tool add <installed-package> [--json] [--root <path>]
+  firedrill tool search [text] [--index <path-or-url>] [--limit <1-100>] [--offset <count>] [--json]
+  firedrill tool create <tool-id> [--template <stateful|stateless>] [--package] [--name <npm-name>] [--json] [--root <path>]
+  firedrill tool add <source> [--install] [--json] [--root <path>]
   firedrill tool inspect <tool-id> [--json] [--root <path>]
   firedrill tool validate <tool-id> [--json] [--root <path>]
   firedrill tool test <tool-id> [--suite <id>] [--seed <seed>]
@@ -488,8 +493,10 @@ Usage:
   firedrill tool contribute <tool-id> --accept-apache-2.0 [--output <path>]
 
 create writes editable behavior and a declaration; it defaults to stateful.
-add selects an already-installed package. It does not install dependencies or
-execute their behavior. Existing actor grants are left unchanged.
+--package scaffolds a distributable Tool with starter state and conformance drills.
+add selects an installed package; --install explicitly acquires an npm, Git, or
+local source first. No Tool behavior runs. Existing actor grants stay unchanged.
+search can read anyone's index; indexing and contributing are never required.
 A selected Tool can come from this repository or from an installed package named
 once in firedrill.json under toolPackages. inspect never executes behavior.
 validate and test execute the selected module locally with your authority. test
@@ -498,13 +505,29 @@ Callback Tools use the same explicit local receiver bindings as firedrill run.
 contribute is only for source owned by this repository; it never uploads source.
 ```
 
+## `firedrill tool search`
+
+```text
+Find independently maintained Tool packages
+
+Usage:
+  firedrill tool search [text] [--index <path-or-url>] [--limit <1-100>] [--offset <count>]
+            [--json] [--root <path>]
+
+Reads bundled metadata by default. --index explicitly reads a local or HTTPS
+index maintained by anyone. No package installation or behavior execution occurs.
+Publisher metadata is not a security endorsement or a service-parity certificate.
+Install a selected source with firedrill tool add <source> --install.
+```
+
 ## `firedrill tool create`
 
 ```text
 Create an editable repository Tool
 
 Usage:
-  firedrill tool create <tool-id> [--template <stateful|stateless>] [--json] [--root <path>]
+  firedrill tool create <tool-id> [--template <stateful|stateless>] [--package]
+            [--name <npm-package-name>] [--json] [--root <path>]
 
 Creates an actual local behavior module and its Tool declaration without
 executing behavior. --template defaults to stateful; stateless provides a plain
@@ -512,20 +535,28 @@ function. Existing files are never overwritten. A missing Firedrill project is
 initialized with a minimal backend world, not an agent target or test drill.
 Existing actor permissions are not expanded; follow the printed grant guidance.
 Use firedrill serve when ready to connect a client to the local backend.
+--package creates a standalone distributable package in a new or empty --root,
+including starter state and conformance drills. --name sets its npm name.
+You can maintain and distribute it from your own repository; contribution to
+Firedrill is optional. No publication or installation happens during creation.
 ```
 
 ## `firedrill tool add`
 
 ```text
-Select an already-installed Tool package
+Select or explicitly install a Tool package
 
 Usage:
-  firedrill tool add <installed-package> [--json] [--root <path>]
+  firedrill tool add <source> [--install] [--json] [--root <path>]
 
 Reads the installed package's Tool metadata and adds its exact package name to
-firedrill.json under toolPackages. Install it with your package manager first.
-This command does not contact a registry, run package scripts, or execute Tool
-behavior. Repeating the command is safe; existing actor permissions stay intact.
+firedrill.json under toolPackages. Without --install, the package must already be
+installed; no download occurs. With --install, accept npm name[@version], a local
+package directory/tarball, github:owner/repo#ref::subdirectory, or
+git+https://host/repo.git#ref::subdirectory. Git is pinned to its resolved commit.
+Lifecycle scripts are disabled; Tool behavior is not executed by this command.
+Commit the dependency manifest/lock and .firedrill-tools/ source archives if created.
+Existing actor permissions stay intact. Review third-party code before execution.
 ```
 
 ## `firedrill tool inspect`

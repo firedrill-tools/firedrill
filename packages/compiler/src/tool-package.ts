@@ -1,13 +1,14 @@
-import { createRequire } from "node:module";
 import { lstatSync, readFileSync, realpathSync } from "node:fs";
+import { createRequire } from "node:module";
 import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import {
+  type Diagnostic,
+  type NodePackageName,
   NodePackageNameSchema,
   SemverSchema,
   SourcePathSchema,
-  type Diagnostic,
-  type NodePackageName,
   type SourceSpan,
+  StableIdSchema,
 } from "@firedrill/contracts";
 import { z } from "zod";
 import { diagnostic } from "./diagnostics.js";
@@ -15,7 +16,7 @@ import type { ResolvedRepositoryPath } from "./repository.js";
 
 const MAX_PACKAGE_MANIFEST_BYTES = 1_048_576;
 
-const InstalledToolPackageManifestSchema = z
+export const InstalledToolPackageManifestSchema = z
   .object({
     name: NodePackageNameSchema,
     version: SemverSchema,
@@ -25,6 +26,14 @@ const InstalledToolPackageManifestSchema = z
         tool: SourcePathSchema,
         starter: SourcePathSchema.optional(),
         lifecycle: z.enum(["active", "deprecated", "revoked"]),
+        conformance: z
+          .union([
+            StableIdSchema,
+            z
+              .object({ schemaVersion: z.literal(1), project: SourcePathSchema, suite: StableIdSchema })
+              .strict(),
+          ])
+          .optional(),
       })
       .passthrough(),
   })
@@ -37,6 +46,7 @@ export interface InstalledToolPackage {
   readonly root: string;
   readonly declaration: ResolvedRepositoryPath;
   readonly starter?: ResolvedRepositoryPath;
+  readonly conformance?: { readonly project: ResolvedRepositoryPath; readonly suite: string };
 }
 
 type ToolPackageResolution =
@@ -111,10 +121,10 @@ function resolveInsidePackage(input: {
       for (const segment of relative(input.packageRoot, absolutePath).split(sep)) {
         component = join(component, segment);
         if (lstatSync(component).isSymbolicLink())
-          throw new TypeError("starter paths must not contain symlinks");
+          throw new TypeError(`${input.purpose} paths must not contain symlinks`);
       }
       const info = lstatSync(absolutePath);
-      if (info.size > MAX_PACKAGE_MANIFEST_BYTES) throw new TypeError("starter exceeds 1 MiB");
+      if (info.size > MAX_PACKAGE_MANIFEST_BYTES) throw new TypeError(`${input.purpose} exceeds 1 MiB`);
     }
     const realPath = realpathSync(absolutePath);
     if (!contained(input.packageRoot, realPath)) {
@@ -223,6 +233,24 @@ export function resolveInstalledToolPackage(
           rejectSymlinks: true,
         });
   if (starter?.status === "failed") return starter;
+  const conformanceMetadata = parsed.data.firedrill.conformance;
+  const conformance =
+    typeof conformanceMetadata !== "object"
+      ? undefined
+      : resolveInsidePackage({
+          packageName: requestedName,
+          packageRoot,
+          baseDirectory: packageRoot,
+          path: conformanceMetadata.project,
+          purpose: "Tool conformance project",
+          rejectSymlinks: true,
+        });
+  if (conformance?.status === "failed") return conformance;
+  if (conformance !== undefined && !conformance.path.absolutePath.endsWith(`${sep}firedrill.json`))
+    return failure({
+      message: "Tool conformance project must name a firedrill.json file",
+      path: conformance.path.repositoryPath,
+    });
   return {
     status: "success",
     package: {
@@ -232,6 +260,9 @@ export function resolveInstalledToolPackage(
       root: packageRoot,
       declaration: declaration.path,
       ...(starter === undefined ? {} : { starter: starter.path }),
+      ...(conformance === undefined || typeof conformanceMetadata !== "object"
+        ? {}
+        : { conformance: { project: conformance.path, suite: conformanceMetadata.suite } }),
     },
   };
 }

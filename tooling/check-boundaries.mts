@@ -87,7 +87,8 @@ function sourceFiles(directory: string): string[] {
   const result: string[] = [];
   const walk = (current: string) => {
     for (const entry of readdirSync(current, { withFileTypes: true })) {
-      if (["coverage", "dist", "node_modules"].includes(entry.name)) continue;
+      // Local conformance writes compiled artifacts; those are not package source.
+      if ([".firedrill", ".git", "coverage", "dist", "node_modules"].includes(entry.name)) continue;
       const path = join(current, entry.name);
       if (entry.isDirectory()) walk(path);
       else if (/\.[cm]?[jt]sx?$/.test(entry.name)) result.push(path);
