@@ -1,86 +1,73 @@
 # Firedrill
 
-Firedrill is an open-source simulation and testing framework for AI agents.
-Give your existing agent working fake tools and data, let it choose its actions,
-and check what it actually changed—not just what it said.
+Firedrill is a simulation and testing framework for AI agents. Define synthetic
+tools and data, run your agent against them, and assert on tool calls, state
+changes, and events.
 
-Start a synthetic backend to experiment, or run a **drill**: a task for the agent
-with checks on the outcome. Both run locally, without a Firedrill account or
-Docker. Agents can use HTTP, MCP, CLI commands, functions, or a browser; they do
-not have to be chatbots.
+- Stateful tools with HTTP, MCP, CLI, and function bindings.
+- Scenario-based tests with faults, response overrides, and virtual time.
+- Isolated world state, seeded data, snapshots, and resets.
+- HTML, JSON, and JUnit reports with timelines and optional browser captures.
+- Repository-defined tools, including independently distributed packages.
 
-This guide is for developers **using** Firedrill. Start here, then follow the
-linked guides when you need more control.
+[Quickstart](#quickstart) · [SDK](#using-the-sdk) ·
+[Documentation](docs/README.md) · [Examples](examples/quickstart/README.md)
 
-[Install](#install-the-current-version) · [Start tools](#start-tools-for-your-agent) ·
-[First drill](#run-your-first-drill) · [Connect your agent](#connect-your-existing-agent) ·
-[Files](#where-your-files-live) · [Results](#read-the-results) ·
-[Create and share tools](#create-and-share-tools) · [All guides](docs/README.md)
+## Installation
 
-## Install the current version
+Requirements: Node.js 20.19 or later and pnpm 9.15–10.
 
-**Pre-release:** the packages are not published to npm yet. These instructions
-use a source checkout; they do not assume an available `npx` or registry release.
-You need Node.js 20.19 or newer and pnpm 9.15–10.
-
-From this Firedrill checkout:
+Packages are not yet published to npm. From a checkout of this repository:
 
 ```sh
 pnpm install --frozen-lockfile
 pnpm build
 
-# Make the built CLI available in this terminal, including after changing folders.
+# Use the built CLI in this terminal.
 export FIREDRILL_CLI="$PWD/packages/cli/dist/bin.js"
 firedrill() { node "$FIREDRILL_CLI" "$@"; }
-firedrill --help
 ```
 
-Wait for the build to finish before using the CLI. The shell function above is
-only a convenience for this terminal; it does not install or modify your agent.
-Alternatively, call `node /absolute/path/to/firedrill/packages/cli/dist/bin.js`.
+The examples below use this shell function. You can also invoke the CLI directly
+with `node /path/to/firedrill/packages/cli/dist/bin.js`.
 
-The TypeScript API is `@firedrill/sdk`; the optional local authoring assistant is
-`@firedrill/agent`. Until publication, use reviewed local package archives for
-those dependencies, not registry install commands. The repository's
-`pnpm pack:artifacts -- --output /absolute/path/to/an/empty/directory` prepares
-the package set and its manifest without publishing it.
+The programmatic API is `@firedrill/sdk`. To prepare installable archives of the
+CLI, SDK, and other packages from this checkout, run
+`pnpm pack:artifacts -- --output /absolute/path/to/an/empty/directory`.
+The output includes a package manifest.
 
-## Start tools for your agent
+## Quickstart
 
-From the checkout, create a separate directory for a small, editable backend:
+Create a project with a synthetic record store:
 
 ```sh
-mkdir ../firedrill-tools-demo
-cd ../firedrill-tools-demo
+mkdir ../firedrill-example
+cd ../firedrill-example
 firedrill init --custom records
 firedrill serve
 ```
 
-`init` writes a real Tool declaration, behavior module, and starting world.
-This custom starter is a small record store to adapt, **not** a replica of your
-agent's service. `serve` starts it on loopback and opens the local inspector.
+`init` creates a Tool declaration, a behavior module, and starting data.
+`serve` starts the backend and opens the inspector.
 
-In the inspector, open **Tools** to read the implementation and try an operation.
-Inspect the resulting data and activity. Use **Connect agent** for the actual connection
-settings. If a Tool includes an interactive app, **Open app** opens it; its UI
-and API operate on the same synthetic data.
+Open **Tools** to inspect the implementation or call an operation.
+**State & activity** shows records and calls; **Connect agent** provides the
+connection settings. Tools with a bundled UI also have an **Open app** action.
+Browser actions and API calls use the same state.
 
-Keep the terminal running; Ctrl+C stops the server. Use `serve --no-open` if you
-prefer to open the printed inspector URL yourself. Ports are chosen dynamically.
-Connection URLs and tokens are private to that running environment.
+The server listens on loopback using available ports. Keep the terminal open;
+Ctrl+C stops it. Use `--no-open` to skip opening the inspector automatically.
 
-In your real agent repository, `firedrill init` offers guided Tool selection and
-authoring choices. You can use your own Tools, independently distributed
-packages, or the [maintained catalog](registry/README.md). Unpublished catalog
-packages need a local installation; selecting one does not make it downloadable.
+Run `firedrill init` in an existing project for guided setup, or select a package
+from the [Tool catalog](registry/README.md). Catalog packages currently require
+a local installation until they are published.
 
-No scenario, target, or test is required to start Tools. A successful playground
-call proves that operation worked; it does not mean your agent passed a drill.
-See [the complete tool-first workflow](docs/local-environment.md).
+Tools can run independently of tests. To check an agent's behavior, add a drill.
 
-## Run your first drill
+## Writing drills
 
-After stopping `serve`, create a **different new directory** beside that demo:
+A **drill** defines an agent task, starting conditions, and assertions about the
+result. To try one, stop the server and create the example test project:
 
 ```sh
 mkdir ../firedrill-first-drill
@@ -92,63 +79,68 @@ firedrill run changes-resource
 firedrill inspect
 ```
 
-The included agent is a deterministic client, not an LLM. It writes the value
-`7` through a synthetic Tool. The drill checks that the operation succeeded once
-and that the stored value is `7`. No model key is needed for this example.
+The template contains a deterministic example agent that writes `7` to a record.
+Its drill checks that the write succeeded once and that the final value is `7`.
+Replace the example target with your agent when adding your own tests.
 
-To see a failure, open `firedrill/drills/changes-resource.drill.yaml` and change
-only the `value-changed` assertion's expected value from `7` to `8`. Leave
-`task.input.value` at `7`, then rerun the drill. The report shows expected `8`,
-actual `7`, and the CLI exits with `1`. Restore the expectation afterwards.
+To inspect a failing result, edit
+`firedrill/drills/changes-resource.drill.yaml`: change the `value-changed`
+assertion's expected value to `8`, keeping `task.input.value` at `7`.
+Rerun the drill. The report shows expected `8` and actual `7`; the process exits
+with code `1`. Restore the expectation afterwards.
 
-`validate` checks definitions without running the agent. `plan` lists the setup.
-`run` executes it. Bare `firedrill` runs all drills. `inspect` opens definitions
-and saved results; unlike `serve`, it does not silently start a live backend.
-
-### The few names you need
-
-| Name | Meaning |
+| Command | Purpose |
 | --- | --- |
-| **Tool** | A fake dependency with defined inputs, responses, and behavior. A write can change what the next call reads. |
-| **World** | The Tools and their starting data, identities, permissions, and clock. |
-| **Scenario** | A variation of that setup: different records, permissions, failures, or scheduled events. |
-| **Target** | Test configuration for reaching the agent you already have. |
-| **Drill** | An agent task plus checks on its consequences. |
-| **Run** | A saved execution result: checks, calls, changed data, and optional captured files. |
+| `firedrill validate` | Check source definitions |
+| `firedrill plan` | List tools, scenarios, targets, and drills |
+| `firedrill run <id>` | Run one drill |
+| `firedrill` | Run all drills |
+| `firedrill serve` | Start a standalone synthetic backend |
+| `firedrill inspect` | Browse definitions and saved results |
 
-A persona describes an identity; an actor acts with particular permissions.
-Neither automatically creates another LLM or a simulated user. Most projects
-can start with one actor. [People and permissions](docs/world-authoring.md#people-and-permissions)
-explains when more are useful.
+### Definitions
 
-## Connect your existing agent
-
-Firedrill controls the **surroundings**, not the agent's decisions or internal
-database. Its SQLite world backs the synthetic Tools. It is not a replacement
-for your application's PostgreSQL, MongoDB, or other storage.
-
-Use the agent's existing configuration or a separate test harness:
-
-| Your agent uses… | Connect in test setup with… |
+| Term | Meaning |
 | --- | --- |
-| HTTP clients | A configurable base URL/auth pointing at declared synthetic HTTP routes. |
-| MCP | The running world's MCP connection and actor token. |
-| CLI tools | A test-side command adapter or the Firedrill world CLI. |
-| Imported functions or SDK methods | Your runner's mocks/spies and `mockTool` from `@firedrill/sdk/testing`. |
-| A web interface | Your Playwright harness or the optional Firedrill browser-test package. |
+| Tool | A synthetic dependency with callable operations, input/output schemas, and an implementation |
+| World | Tools, starting data, identities, permissions, and a clock |
+| Scenario | A variation of the starting data, permissions, faults, or scheduled events |
+| Target | Configuration for invoking the agent under test |
+| Drill | A task and its assertions |
+| Run | A recorded execution result, including checks, calls, and state changes |
 
-There are no required Firedrill imports or per-action test branches in production
-agent logic. But the test must reach a real configurable or interceptable seam:
-setting an environment variable the application never reads does nothing.
-An inaccessible or hardcoded dependency may need a test adapter. Firedrill does
-not universally intercept arbitrary processes or silently fall back to production.
+Actors identify who is calling a tool and which operations they may use.
+Personas provide descriptions of those identities. See
+[people and permissions](docs/world-authoring.md#people-and-permissions).
 
-For repeatable drills, declare a `module`, `command`, or `http` target to invoke
-the agent from source configuration. Use `external` when your test file already
-owns the agent process. That target needs an SDK callback; the CLI and inspector
-cannot invent it.
+## Connecting an agent
 
-For example, in your existing test runner, after installing the SDK:
+Configure the agent's dependencies in test setup:
+
+| Dependency | Integration |
+| --- | --- |
+| HTTP client | Point its base URL and authentication at the Tool's declared HTTP routes |
+| MCP server | Use the world's MCP endpoint and actor token |
+| CLI tool | Use a test-side command adapter or the Firedrill world CLI |
+| Function or SDK method | Use runner mocks/spies with `mockTool` from `@firedrill/sdk/testing` |
+| Web interface | Use a Playwright harness or the optional browser-test package |
+
+Bindings use existing configuration or test-side adapters, leaving production
+agent logic unchanged. Hardcoded dependencies need an interceptable boundary or
+an explicit adapter. See [binding recipes](docs/quickstart.md#3-keep-the-agent-integration-at-one-seam)
+and [test-side mocking](docs/test-mocking.md).
+
+Targets can invoke a module, start a command, call an HTTP endpoint, or use an
+`external` callback supplied by a test harness. External targets run through the
+SDK; module, command, and HTTP targets can also run through the CLI.
+
+Model credentials belong to the agent process. For command targets, pass model
+credentials and other required host variables through `environmentFromHost`.
+Set target timeouts for the complete model/tool loop.
+
+## Using the SDK
+
+Use `runDrills` from an existing test runner:
 
 ```ts
 import { runDrills } from "@firedrill/sdk";
@@ -163,178 +155,184 @@ const result = await runDrills({
 expect(result.verdict).toBe("passed");
 ```
 
-Here `my-drill` is your declared drill with an `external` target;
-`runMyAgent` is your own test-side entry point, not a Firedrill function.
-It must apply the supplied connection values to the agent's existing clients.
-Your runner supplies `expect`. [Binding recipes](docs/quickstart.md#3-keep-the-agent-integration-at-one-seam)
-and [test-side mocking](docs/test-mocking.md) cover the concrete choices.
+This example assumes a declared `my-drill` with an `external` target.
+`runMyAgent` is your test adapter; it applies the supplied connection values to
+your agent. `expect` comes from your test runner.
 
-The agent keeps its own model credentials. Command targets must explicitly
-allow required host variables through `environmentFromHost`; do not put keys
-in world files or Tool connection values. Allow enough target time for the
-entire model/tool loop, not just one model request.
+`runDrills({ setup })` supports per-test data, fault, and Tool overrides.
+`createLocalWorld()` provides direct control over calls, state, time, and resets.
+See the [SDK reference](packages/sdk/README.md) for lifecycle hooks, concurrency,
+capture, and report APIs.
 
-## Where your files live
+## Project structure
 
-The teaching template uses this layout. Names and folders are yours to organize;
-resource references use stable IDs inside the files.
+The example template uses the following layout:
 
 ```text
 your-project/
-  firedrill.json                         # where source lives and which packs to use
+  firedrill.json                         # source location and selected packages
   firedrill/
     world.yaml                          # starting data, identities, access, time
     tools/resource-store/
-      resource-store.tool.yaml          # operations, input/output and state schemas
-      behavior.mjs                      # what the fake Tool actually does
-    scenarios/baseline.scenario.yaml    # starting-condition variation
-    targets/starter-agent.target.yaml  # how to invoke the existing agent
+      resource-store.tool.yaml          # operations and state schemas
+      behavior.mjs                      # operation implementations
+    scenarios/baseline.scenario.yaml    # starting conditions
+    targets/starter-agent.target.yaml  # agent invocation
     drills/changes-resource.drill.yaml  # task and assertions
     suites/resource-store-conformance.suite.yaml
-  firedrill-example/agent.mjs           # teaching client; not production agent code
-  .firedrill-tools/                     # vendored Git/local Tool source, if used
-  .firedrill/                           # GENERATED state, builds, reports
+  firedrill-example/agent.mjs           # example agent
+  .firedrill-tools/                     # vendored Tool dependencies
+  .firedrill/                           # generated state, builds, and reports
 ```
 
-You can use **JSON throughout** instead of YAML; a mixture is not required.
-Typed files use resource suffixes such as `.tool.json` or `.drill.yaml`.
-Executable behavior stays in JavaScript/TypeScript. Optional Markdown explains
-the source; free-form prose is not automatically executable behavior.
+Definitions support JSON or YAML; use either consistently or mix them.
+Resource suffixes identify file types, such as `.tool.json` and `.drill.yaml`.
+References use IDs inside the files, so you can organize folders as needed.
+Tool implementations are JavaScript or TypeScript.
 
-Commit your definitions, behavior, test harness, package manifest/lockfile, and
-referenced `.firedrill-tools/` archives. Keep `.firedrill/`, model keys, `.env`
-files, and `node_modules/` out of Git. `init` adds `.firedrill/` to `.gitignore`;
-you remain responsible for your application's other sensitive files.
+Commit definitions, behavior modules, test code, package manifests, lockfiles,
+and referenced `.firedrill-tools/` archives. Generated files under `.firedrill/`
+are ignored by `init`. Keep credentials, `.env` files, and `node_modules/` ignored
+as well.
 
-Runtime writes update SQLite, **not** your source files. Changing source creates
-a new build for the next run; restart `serve` to use it there. Each trial/attempt
-gets an isolated world, not a separate database for every vendor. Full reset
-restores the starting world; scoped reset can restore selected Tools. Neither
-resets your agent's own memory/database nor deletes saved drill reports.
-See [source authoring](docs/world-authoring.md) and [reset semantics](docs/local-world-control.md).
+### Source and runtime state
 
-## Read the results
+Tool state lives in SQLite. Runtime writes leave the source definitions unchanged.
+Source edits apply to the next build; restart `serve` to load them.
 
-Start at **`.firedrill/reports/index.html`**. It links to saved runs without a
-running server. Each run folder contains its own HTML report, machine-readable
-JSON, JUnit XML, ordered evidence, integrity manifest, and optional attachments.
-The inspector's **Results** page provides another way to browse them.
+Each trial or retry uses an isolated world. A full reset restores its baseline;
+a scoped reset restores selected Tools. Reset affects the synthetic environment,
+not the agent's own database or memory. Saved reports are retained.
 
-Read one result in this order:
+See [source authoring](docs/world-authoring.md) and
+[world controls](docs/local-world-control.md).
 
-1. **Task and outcome:** what was requested and whether execution finished.
-2. **Checks:** what passed or failed, with expected versus actual values.
-3. **Tool activity and state changes:** what the agent called and what changed.
-4. **Captured files:** logs, screenshots, recordings, or traces when enabled.
+## Reports
 
-A reply saying “done” cannot override a failed state assertion. A timeout,
-source error, or missing evidence is not the same as a behavioral failure.
-The CLI exits `0` for a passing selection, `1` for source/execution/check failure,
-and `2` for invalid command usage.
+Open `.firedrill/reports/index.html` to browse saved runs, or use **Results**
+in the inspector. Each run directory contains:
 
-Keep a report's attachment folder with it when sharing. Reports can contain
-sensitive test records and model output: review before sharing. The inspector's
-**Open report** can embed verified attachments in the opened copy.
-`firedrill report verify <report-directory>` checks bundle integrity; an unsigned
-local report does not prove who created it.
+- An HTML report with task, outcome, expected/actual checks, and tool activity.
+- JSON results, JUnit XML, and ordered evidence.
+- An integrity manifest and any captured attachments.
 
-Use the reproduction command printed with the result to pin its build and seed.
-That repeats the **world inputs**, not a live model's exact decisions. Compare
-two report directories with `firedrill compare <baseline> <candidate>`; changed
-inputs make a comparison descriptive, not proof of a regression.
+```sh
+firedrill compare .firedrill/reports/<baseline> .firedrill/reports/<candidate>
+firedrill report verify .firedrill/reports/<run-id>
+```
 
-## Go beyond a single test
+Reports distinguish assertion failures, execution errors, and incomplete evidence.
+CLI exit codes are `0` for a passing selection, `1` for source/execution/check
+failure, and `2` for invalid command usage.
 
-| You want to… | Use |
+The reproduction command pins the build and seed. This reproduces the world
+inputs; live model responses can still vary. Comparisons identify changed inputs
+before presenting result differences.
+
+Keep attachment folders with their reports. Review captured data before sharing.
+Bundle verification checks integrity, not authorship. See
+[running and results](docs/running-and-results.md) for the report layout and CI use.
+
+## Simulation controls
+
+| Capability | Usage or guide |
 | --- | --- |
-| Repeat the teaching drill | `firedrill run changes-resource --trials 3 --seed 42` |
-| Run selected smoke tests | `firedrill run --tag smoke --concurrency 4` |
-| Rerun after source edits | `firedrill run changes-resource --watch` |
-| Inject data, faults, or response overrides for one test | [`runDrills({ setup })`](packages/sdk/README.md#per-test-synthetic-data-and-tools) |
-| Control Tools directly, inspect state, advance time, or reset | [`createLocalWorld()`](docs/local-world-control.md) |
-| Simulate multiple interactions over time | [Drill timelines and long simulations](docs/running-and-results.md#repeat-compare-and-simulate-longer) |
-| Send a fake service webhook into your application | [Callbacks](docs/callbacks.md) |
-| Save selected changed data as another starting scenario | [Reusable scenarios](docs/reusable-scenarios.md) |
-| Capture logs, screenshots, video, or files only on failure | [Optional capture](docs/capture.md) |
-| Test through a UI | [Browser tests](packages/browser-tests/README.md) |
+| Repeated trials | `firedrill run changes-resource --trials 3 --seed 42` |
+| Filtered, concurrent execution | `firedrill run --tag smoke --concurrency 4` |
+| Watch mode | `firedrill run changes-resource --watch` |
+| Per-test data and Tool overrides | [SDK setup](packages/sdk/README.md#per-test-synthetic-data-and-tools) |
+| State inspection, virtual time, and resets | [World controls](docs/local-world-control.md) |
+| Multi-interaction simulations | [Drill timelines](docs/running-and-results.md#repeat-compare-and-simulate-longer) |
+| Synthetic webhooks | [Callbacks](docs/callbacks.md) |
+| Reusable starting states | [Scenarios](docs/reusable-scenarios.md) |
+| Logs, screenshots, recordings, and traces | [Capture](docs/capture.md) |
+| UI-driven tests | [Browser tests](packages/browser-tests/README.md) |
 
-Browser tests drive an application; **Tool apps** are the synthetic dependencies'
-own interfaces. They are different features. Browser-only checks prove what was
-observed in the page. Combine the browser harness with a world-bound drill when
-you also need assertions about Tool calls and synthetic data.
+Browser tests drive an application. Tool apps are interfaces to synthetic
+dependencies. Combine a browser harness with a world-bound drill to check both
+page behavior and Tool state.
 
-In CI, run the same CLI command or test file and retain its report directory.
-Use JUnit XML with your existing CI test-results viewer. Your test runner stays
-Jest, Vitest, Mocha, pytest, Playwright, or whatever already invokes your agent;
-Firedrill supplies the controlled environment and evidence.
+In CI, use the same commands or SDK tests and retain the report directory.
+JUnit files work with standard test-results viewers.
 
-## Let a coding agent set it up
+## Coding agents
 
-You can write definitions yourself, use your existing coding agent, or use
-**Firedrill Agent**. All three work on the same repository files.
+Firedrill includes a [skill](skills/firedrill/SKILL.md) for coding agents and an
+optional authoring assistant built with the Claude Agent SDK.
+
+To install instructions for your coding agent:
 
 ```sh
-firedrill init --path coding-agent   # installs instructions and a repository brief
+firedrill init --path coding-agent
+```
+
+To use Firedrill Agent:
+
+```sh
 firedrill init --path firedrill-agent
-firedrill agent                     # prepare or edit a synthetic environment
-firedrill agent --workflow drill    # explicitly author a drill
+firedrill agent
+firedrill agent --workflow drill
 ```
 
-For your own coding agent, start with the installed instructions or the
-[canonical skill](skills/firedrill/SKILL.md). Ask it to inspect the agent's real
-tool seams, prepare compatible fake Tools, validate, and run a representative
-drill. `--json` diagnostics support an edit/validate/retry loop. A noninteractive
-`init` without an explicit setup choice only reports options; it writes nothing.
+The default workflow creates or edits a synthetic environment. Use
+`--workflow drill` to author tests. Both initialization paths create instructions
+and a repository brief; the agent then authors the definitions.
 
-The source checkout includes the optional Agent package after building. Other
-installations need it separately. Firedrill Agent reads `ANTHROPIC_API_KEY` from
-its process environment; it does not automatically load `.env` files. It uses
-the **Claude Agent SDK**. Missing key/package?
-The CLI gives a resume instruction; the rest of Firedrill still works.
-Selected source goes to Anthropic, not to a Firedrill service. The assistant
-cannot read secret files or generated evidence, use a shell, commit, or publish.
-Defaults are 40 turns, $2 of model spend, and 15 minutes per invocation, with
-explicit CLI overrides. Its startup check is not proof that your agent passed.
+Firedrill Agent requires `@firedrill/agent` and `ANTHROPIC_API_KEY` in the process
+environment. The source checkout includes the package. The CLI does not load
+`.env` automatically. Selected repository content is sent to Anthropic.
 
-## Create and share tools
+Default limits are 40 turns, $2 of model spend, and 15 minutes per invocation.
+See `firedrill agent --help` for overrides and [Security](SECURITY.md#optional-firedrill-agent)
+for execution and source-access boundaries. `--json` diagnostics are available
+for scripted validation and authoring workflows.
 
-Use existing packages or write exactly the fake behavior you need. Tools may be
-stateless, stateful, backend-only, or include an interactive app. You do not have
-to contribute to this repository to distribute a compatible Tool.
+## Tool packages
+
+Create a Tool in your project:
 
 ```sh
-firedrill tool create my-tool                 # declaration + editable behavior
+firedrill tool create my-tool
 firedrill tool create my-helper --template stateless
-firedrill tool inspect my-tool                # inspect source, without running it
-firedrill tool validate my-tool               # explicitly load/check its behavior
-firedrill tool test my-tool                   # run its declared conformance suite
+firedrill tool inspect my-tool
+firedrill tool validate my-tool
 ```
 
-A conformance suite must be authored; creating a Tool is not proof of its fidelity.
-For an independently distributable starter, use
-`firedrill tool create my-tool --package --name @your-team/my-tool --root <new-directory>`.
-This includes a portable suite. Choose your own license before publishing.
+Tool declarations describe operations and schemas; behavior modules implement
+their responses and state changes. Add a conformance suite, then run
+`firedrill tool test my-tool`.
 
-Install a real package from npm, Git, a local directory, or an archive with
-`firedrill tool add <source> --install`. Without `--install`, it only selects an
-already installed package. Search with `firedrill tool search`, optionally using
-`--index <file-or-HTTPS-url>` for someone else's catalog. Acquisition pins source
-and disables install scripts; execution still runs **trusted local test code**,
-not a security sandbox. Review it like any test dependency.
+For a standalone package with a starter conformance suite:
 
-Read [Tool installation](docs/tool-installation.md), [package authoring](docs/tool-packages.md),
-[the open compatibility contract](docs/tool-compatibility.md), and
-[interactive Tool apps](docs/tool-apps.md). Declared compatibility and passing
-author tests are not certification of complete real-service behavior.
+```sh
+firedrill tool create my-tool --package --name @your-team/my-tool --root <new-directory>
+```
 
-## Help and reference
+Packages can live in any repository. Install one from npm, Git, a local directory,
+or an archive with `firedrill tool add <source> --install`. Without `--install`,
+the command selects an already installed package. Use `firedrill tool search`
+to browse the catalog, or `--index <file-or-HTTPS-url>` to use another index.
 
-- [Developer guides](docs/README.md): choose a workflow or learn a file format.
-- [CLI reference](docs/cli-reference.md): exact commands, flags, and JSON output.
-- [TypeScript SDK](packages/sdk/README.md): lifecycle, mocks, assertions, and capture.
-- [Troubleshooting](docs/running-and-results.md#ci-and-common-first-use-problems):
-  no drills, external handlers, missing Tool activity, timeouts, or report errors.
-- [Compatibility policy](docs/compatibility.md) and [security](SECURITY.md).
+Installation pins source and disables lifecycle scripts. Tool execution uses
+your local permissions; review packages as executable test dependencies.
+Conformance results describe tested coverage, not complete service compatibility.
 
-Firedrill is licensed under [Apache-2.0](LICENSE). Copyright Reload Tech Inc.
-Looking to change Firedrill itself? See [Contributing](CONTRIBUTING.md).
+See [installation](docs/tool-installation.md), [package authoring](docs/tool-packages.md),
+[Tool apps](docs/tool-apps.md), and the [compatibility contract](docs/tool-compatibility.md).
+
+## Documentation
+
+- [Developer guides](docs/README.md)
+- [CLI reference](docs/cli-reference.md)
+- [TypeScript SDK](packages/sdk/README.md)
+- [Troubleshooting](docs/running-and-results.md#ci-and-common-first-use-problems)
+- [Compatibility policy](docs/compatibility.md)
+- [Security](SECURITY.md)
+
+## Contributing
+
+See [CONTRIBUTING.md](CONTRIBUTING.md).
+
+## License
+
+[Apache-2.0](LICENSE). Copyright Reload Tech Inc.

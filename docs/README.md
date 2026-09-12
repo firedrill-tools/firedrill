@@ -72,5 +72,5 @@ that uses a model still needs its own provider setup. A seeded synthetic world
 does not make live model output deterministic.
 
 Packages are currently an unpublished release candidate. The
-[root README](../README.md#install-the-current-version) gives working source-checkout
+[root README](../README.md#installation) gives source-checkout
 commands; do not assume an npm release is available.
