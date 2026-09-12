@@ -1,5 +1,26 @@
-/** Served as a same-origin ES module. It contains no world or inspector credential. */
-export const TOOL_UI_CLIENT_SOURCE = `
+/** Browser-side syntax checking only. The serving transport must authenticate every request. */
+export interface ToolUiClientOptions {
+  readonly credentialFormat?: "opaque" | "signed";
+  readonly maxCredentialBytes?: number;
+}
+
+/** Same-origin browser module for the canonical Tool app protocol. Contains no credentials. */
+export function createToolUiClientSource(options: ToolUiClientOptions = {}): string {
+  const format = options.credentialFormat ?? "opaque";
+  const maximum = options.maxCredentialBytes ?? (format === "opaque" ? 43 : 4096);
+  if (
+    !["opaque", "signed"].includes(format) ||
+    !Number.isSafeInteger(maximum) ||
+    maximum < 43 ||
+    maximum > 16384
+  )
+    throw new TypeError("Tool app credential format or byte bound is invalid");
+  const pattern = format === "opaque" ? "^[A-Za-z0-9_-]{43}$" : "^[A-Za-z0-9_-]+(?:\\.[A-Za-z0-9_-]+){1,2}$";
+  return `
+const credentialPattern = new RegExp(${JSON.stringify(pattern)});
+function validToken(value) {
+  return typeof value === "string" && value.length >= 43 && value.length <= ${maximum} && credentialPattern.test(value);
+}
 const storageKey = "firedrill.tool-ui.token.v1";
 const fragment = new URLSearchParams(location.hash.slice(1));
 let token;
@@ -7,7 +28,7 @@ if (fragment.has("token")) {
   const candidate = fragment.get("token");
   // Clear even invalid credentials before any request or application rendering.
   history.replaceState(history.state, "", location.pathname + location.search);
-  if (/^[A-Za-z0-9_-]{43}$/.test(candidate ?? "")) {
+  if (validToken(candidate)) {
     token = candidate;
     try { sessionStorage.setItem(storageKey, token); } catch { /* Memory-only when storage is disabled. */ }
   } else {
@@ -18,7 +39,7 @@ if (fragment.has("token")) {
 }
 
 async function request(path, body) {
-  if (!/^[A-Za-z0-9_-]{43}$/.test(token ?? "")) {
+  if (!validToken(token)) {
     throw new Error("Open this Tool app from its local Firedrill app link to connect.");
   }
   const response = await fetch(path, {
@@ -67,3 +88,7 @@ export async function invoke(operationId, arguments_, options = {}) {
   return value;
 }
 `;
+}
+
+/** Default local opaque credential behavior, retained for existing listeners. */
+export const TOOL_UI_CLIENT_SOURCE = createToolUiClientSource();

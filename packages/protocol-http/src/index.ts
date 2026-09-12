@@ -1,6 +1,7 @@
 export * from "./callbacks.js";
 export * from "./server.js";
 export * from "./tool-ui.js";
+export { createToolUiClientSource, type ToolUiClientOptions } from "./tool-ui-client.js";
 export type {
   HttpWireAuthority,
   HttpWireInvoke,
