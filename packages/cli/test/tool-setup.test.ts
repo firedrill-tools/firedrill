@@ -13,6 +13,7 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { compileWorld } from "@firedrill/compiler";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { addToolPackages } from "../src/index.js";
 import { addToolPackage, createTool, FiredrillToolSetupError } from "../src/tool-setup.js";
 
 const failure = vi.hoisted(() => ({
@@ -256,6 +257,33 @@ function installedPack(root: string, packageName: string, id: string, yaml = fal
 }
 
 describe("installed Tool package selection", () => {
+  it("composes packages through the public source setup API without importing behavior", async () => {
+    const root = repository();
+    installedPack(root, "@example/note-archive", "note-archive");
+    installedPack(root, "@example/room-index", "room-index", true);
+    const result = addToolPackages({ root, packageNames: ["@example/note-archive", "@example/room-index"] });
+    expect(result.packageIds).toEqual(["note-archive", "room-index"]);
+    expect(read(root, "firedrill/world.json")).toEqual({
+      schemaVersion: 1,
+      id: "local-world",
+      actors: [{ id: "local-dev", grants: result.grants }],
+    });
+    expect(result.grants).toEqual([
+      { packageId: "note-archive", operationId: "entries.read" },
+      { packageId: "room-index", operationId: "entries.read" },
+    ]);
+    expect((await compileWorld({ repositoryRoot: root, materialize: false })).status).toBe("success");
+    const previous = readFileSync(join(root, "firedrill/world.json"), "utf8");
+    expect(
+      addToolPackages({ root, packageNames: ["@example/note-archive", "@example/room-index"] }).created,
+    ).toEqual([]);
+    expect(readFileSync(join(root, "firedrill/world.json"), "utf8")).toBe(previous);
+    installedPack(root, "@example/conflict", "room-index");
+    expect(() => addToolPackages({ root, packageNames: ["@example/conflict"] })).toThrow(
+      /Two selected packages own Tool/,
+    );
+    expect(readFileSync(join(root, "firedrill/world.json"), "utf8")).toBe(previous);
+  });
   it.each([false, true])(
     "selects an installed JSON/YAML package (yaml=%s) without executing it",
     async (yaml) => {

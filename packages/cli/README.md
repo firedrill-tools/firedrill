@@ -2,6 +2,14 @@
 
 Account-free local commands for repository-owned synthetic worlds and agent drills.
 
+For programmatic source setup, `addToolPackages({ root, packageNames })` from
+`@firedrill/cli` selects several already installed packages in one operation.
+It inspects declarations without importing behavior or installing dependencies.
+A new project receives the combined exact grants and validated starter data;
+existing world source and actor grants remain unchanged. Duplicate Tool IDs
+across packages are rejected before source changes. This creates source only,
+not a running backend or a test result.
+
 ```sh
 firedrill                 # run every drill
 firedrill my-drill        # run one drill; `run` is optional
