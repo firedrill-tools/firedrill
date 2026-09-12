@@ -13,6 +13,7 @@ import { trajectoryHash } from "@firedrill/world-ir";
 import { afterEach, describe, expect, it } from "vitest";
 import {
   compareLocalReports,
+  compareLocalReportDetails,
   renderHtmlReport,
   renderJsonReport,
   renderJunitReport,
@@ -952,8 +953,19 @@ describe("local evidence reporters", () => {
 
   it("compares exact-input runs without inventing a regression label", () => {
     const root = temporaryDirectory();
-    const entries = evidence();
-    const baselineResult = run(entries);
+    const entries = evidence().map((entry) =>
+      entry.kind === "lifecycle" ? { ...entry, details: { source: "fixture" } } : entry,
+    );
+    const original = run(entries);
+    const interactions = original.interactions.map((interaction) => ({
+      ...interaction,
+      targetResult: { ...interaction.targetResult, output: { note: "fixture" } },
+    }));
+    const baselineResult = RunResultSchema.parse({
+      ...original,
+      interactions,
+      trajectoryHash: trajectoryHash({ interactions, checkpoints: original.checkpoints, evidence: entries }),
+    });
     const baseline = writeLocalReport({ result: baselineResult, evidence: entries }, join(root, "baseline"));
     if (baselineResult.status !== "sealed") throw new Error("fixture must be sealed");
     const baselineAssertion = baselineResult.assertionResults[0];
@@ -1018,6 +1030,171 @@ describe("local evidence reporters", () => {
       },
     });
     expect(comparison).not.toHaveProperty("regression");
+  });
+
+  it("makes mixed redaction descriptive even when recorded input identities match", () => {
+    const root = temporaryDirectory();
+    const entries = evidence().map((entry) =>
+      entry.kind === "lifecycle" ? { ...entry, details: { source: "fixture" } } : entry,
+    );
+    const original = run(entries);
+    const interactions = original.interactions.map((interaction) => ({
+      ...interaction,
+      targetResult: { ...interaction.targetResult, output: { note: "fixture" } },
+    }));
+    const clean = RunResultSchema.parse({
+      ...original,
+      interactions,
+      trajectoryHash: trajectoryHash({ interactions, checkpoints: original.checkpoints, evidence: entries }),
+    });
+    const baseline = writeLocalReport({ result: clean, evidence: entries }, join(root, "before"));
+    const candidate = writeLocalReport(
+      { result: run(evidence()), evidence: evidence() },
+      join(root, "after"),
+    );
+    expect(baseline.manifest.redaction.applied).toBe(false);
+    expect(candidate.manifest.redaction.applied).toBe(true);
+    for (const comparison of [
+      compareLocalReports(baseline.directory, candidate.directory),
+      compareLocalReportDetails(baseline.directory, candidate.directory, { kind: "state_changes" }),
+    ]) {
+      expect(comparison.compatibility).toMatchObject({
+        status: "descriptive_only",
+        canAttributeBehaviorChange: false,
+        differences: [],
+      });
+      expect(comparison.compatibility.explanation).toContain("redacted values");
+      expect(comparison.compatibility.explanation).not.toContain("can be attributed");
+    }
+  });
+
+  it("retains expectation-only changes without re-evaluating recorded checks", () => {
+    const root = temporaryDirectory();
+    const entries = evidence();
+    const original = run(entries);
+    const assertion = AssertionResultSchema.parse({
+      ...original.assertionResults[0],
+      expected: { operator: "not_equals", value: 1 },
+      diff: { operator: "not_equals", matched: true, details: {} },
+    });
+    const checkpoints = original.checkpoints.map((checkpoint) => ({
+      ...checkpoint,
+      assertionResults: [assertion],
+    }));
+    const candidateResult = RunResultSchema.parse({
+      ...original,
+      checkpoints,
+      assertionResults: [assertion],
+      trajectoryHash: trajectoryHash({ interactions: original.interactions, checkpoints, evidence: entries }),
+    });
+    const baseline = writeLocalReport({ result: original, evidence: entries }, join(root, "before"));
+    const candidate = writeLocalReport({ result: candidateResult, evidence: entries }, join(root, "after"));
+    expect(compareLocalReports(baseline.directory, candidate.directory).changes.assertions).toEqual([
+      {
+        checkpointId: "final",
+        assertionId: "no-extra-actions",
+        baseline: "passed",
+        candidate: "passed",
+        actualChanged: false,
+        expectedChanged: true,
+      },
+    ]);
+    const page = compareLocalReportDetails(baseline.directory, candidate.directory, { kind: "assertions" });
+    expect(page.total).toBe(1);
+    expect(page.items[0]).toMatchObject({
+      identity: { checkpointId: "final", assertionId: "no-extra-actions" },
+      changedFields: ["diff", "expected"],
+      baseline: { state: "available", value: { status: "passed", actual: 0 } },
+      candidate: {
+        state: "available",
+        value: { status: "passed", actual: 0, expected: { operator: "not_equals", value: 1 } },
+      },
+    });
+  });
+
+  it("compares exact recorded mutation values even when counts agree", () => {
+    const root = temporaryDirectory();
+    const before = evidence();
+    const after = before.map((entry) =>
+      entry.kind === "state_change" ? { ...entry, after: { status: "different" } } : entry,
+    );
+    const baseline = writeLocalReport({ result: run(before), evidence: before }, join(root, "before"));
+    const candidate = writeLocalReport({ result: run(after), evidence: after }, join(root, "after"));
+    expect(compareLocalReports(baseline.directory, candidate.directory).changes.stateChangeCounts).toEqual(
+      [],
+    );
+    const page = compareLocalReportDetails(baseline.directory, candidate.directory, {
+      kind: "state_changes",
+    });
+    expect(page.alignment).toContain("Includes seed loading");
+    expect(page.items).toHaveLength(1);
+    expect(page.items[0]).toMatchObject({
+      identity: { packageId: "generic-tool", namespace: "records", rowId: "item-1", mutation: 1 },
+      changedFields: ["after"],
+      baseline: { state: "available", value: { before: { status: "queued" } } },
+      candidate: { state: "available", value: { after: { status: "different" } } },
+    });
+  });
+
+  it("bounds positional call detail pages and omits oversized values without truncating JSON", () => {
+    const root = temporaryDirectory();
+    const calls = (changed: boolean): EvidenceEntry[] =>
+      Array.from({ length: 30 }, (_, index) => ({
+        schemaVersion: 1,
+        sequence: index + 3,
+        transactionId: `txn_detail${index.toString().padStart(4, "0")}`,
+        transactionIndex: 0,
+        transactionSize: 1,
+        virtualTimeUs: 500,
+        correlationId: "corr_details001",
+        kind: "operation",
+        invocation: {
+          schemaVersion: 1,
+          callId: `call_detail${index.toString().padStart(4, "0")}`,
+          correlationId: "corr_details001",
+          operation: {
+            packageId: "generic-tool",
+            operationId: (index + Number(changed)) % 2 === 0 ? "items.read" : "items.update",
+          },
+          actorBindingId: "actor_details001",
+          arguments: { position: index, changed, ...(index === 0 ? { content: "x".repeat(20_000) } : {}) },
+        },
+        outcome: { status: "ok", value: { observed: changed } },
+        idempotency: "not_requested",
+      }));
+    const before = [...evidence(), ...calls(false)],
+      after = [...evidence(), ...calls(true)];
+    const baseline = writeLocalReport({ result: run(before), evidence: before }, join(root, "before"));
+    const candidate = writeLocalReport({ result: run(after), evidence: after }, join(root, "after"));
+    expect(compareLocalReports(baseline.directory, candidate.directory).changes.operationCounts).toEqual([]);
+    const first = compareLocalReportDetails(baseline.directory, candidate.directory, {
+      kind: "operations",
+      limit: 25,
+    });
+    expect(first).toMatchObject({ total: 30, offset: 0, nextOffset: 25 });
+    expect(first.items).toHaveLength(25);
+    expect(first.items[0]).toMatchObject({
+      identity: { position: 1 },
+      changedFields: ["arguments", "operation", "outcome"],
+      baseline: { state: "omitted", reason: "size_limit" },
+    });
+    expect(first.items[0]?.baseline).not.toHaveProperty("value");
+    expect(Buffer.byteLength(JSON.stringify(first))).toBeLessThan(1024 * 1024);
+    if (first.nextOffset === undefined) throw new Error("fixture must have a next page");
+    const last = compareLocalReportDetails(baseline.directory, candidate.directory, {
+      kind: "operations",
+      offset: first.nextOffset,
+    });
+    expect(last).toMatchObject({ total: 30, offset: 25 });
+    expect(last.items).toHaveLength(5);
+    expect(last.items[0]).toMatchObject({ identity: { position: 26 } });
+    expect(last).not.toHaveProperty("nextOffset");
+    expect(() =>
+      compareLocalReportDetails(baseline.directory, candidate.directory, { kind: "operations", limit: 26 }),
+    ).toThrow();
+    expect(() =>
+      compareLocalReportDetails(baseline.directory, candidate.directory, { kind: "operations", offset: 31 }),
+    ).toThrow();
   });
 
   it("downgrades changed worlds and rejects mismatched run inputs", () => {
