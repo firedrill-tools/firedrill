@@ -1653,7 +1653,7 @@ button.fd-row-button:focus-visible {
   line-height: 1.6;
 }
 
-.fd-run-advanced .fd-run-fields {
+.fd-run-fields--advanced {
   padding: 0;
 }
 

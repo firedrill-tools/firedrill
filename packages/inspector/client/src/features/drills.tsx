@@ -141,7 +141,7 @@ function RunDialog({
           Leave fields empty to keep your source-defined defaults. Each repeat starts with a fresh synthetic
           world.
         </p>
-        <div className="fd-run-fields">
+        <div className="fd-run-fields fd-run-fields--advanced">
           <label className="fd-field" htmlFor={`${id}-seed`}>
             <span>Seed</span>
             <small>Controls the world’s starting randomness, not the model.</small>

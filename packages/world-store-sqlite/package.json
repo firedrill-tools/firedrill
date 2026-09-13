@@ -39,7 +39,7 @@
   "devDependencies": {
     "@types/better-sqlite3": "7.6.13",
     "typescript": "5.9.3",
-    "vitest": "3.2.7"
+    "vitest": "4.1.11"
   },
   "repository": {
     "type": "git",

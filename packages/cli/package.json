@@ -70,7 +70,7 @@
     "@modelcontextprotocol/client": "2.0.0",
     "@firedrill/agent": "workspace:*",
     "typescript": "5.9.3",
-    "vitest": "3.2.7"
+    "vitest": "4.1.11"
   },
   "repository": {
     "type": "git",
