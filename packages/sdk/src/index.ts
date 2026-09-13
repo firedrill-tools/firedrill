@@ -8,6 +8,7 @@ export type {
   RunCaptureHandle,
   RunCaptureOptions,
 } from "./capture.js";
+export { LocalCaptureManager, validateCaptureOptions } from "./capture.js";
 export * from "./compare-runs.js";
 export * from "./data-import.js";
 export * from "./local-world.js";

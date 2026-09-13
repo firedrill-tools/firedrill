@@ -31,6 +31,7 @@ import type {
 import {
   compareStableStrings,
   DrillShardSchema,
+  RunIdSchema,
   RunWorldSetupSchema,
   SeedSchema,
   StableIdSchema,
@@ -268,7 +269,8 @@ interface StagedAttachment {
   readonly path: string;
 }
 
-class LocalAttachmentStager {
+/** Bounded supporting-file staging for runtime owners; no world or report authority. */
+export class LocalAttachmentStager {
   readonly root: string;
   readonly byRun = new Map<RunId, StagedAttachment[]>();
   #stageRoot: string | undefined;
@@ -283,6 +285,7 @@ class LocalAttachmentStager {
   }
 
   readonly sink: TargetAttachmentSink = ({ invocation, attachment }) => {
+    RunIdSchema.parse(invocation.runId);
     if (
       typeof attachment.path !== "string" ||
       attachment.path.length === 0 ||

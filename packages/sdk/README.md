@@ -142,6 +142,25 @@ The path must resolve to a regular, non-symlinked file inside `root`. Firedrill 
 
 Firedrill does not inspect or redact binary content. Mark `applied_by_caller` only after the harness has removed sensitive content; otherwise the report states that the file was copied verbatim. Attachments remain supporting evidence. A screenshot or DOM result cannot override a failed world-state, Tool-call, event, fault, time, or ordering assertion.
 
+### Custom execution owners
+
+Ordinary callers should use `runDrills`. A runtime that already owns target invocation
+can reuse `LocalAttachmentStager` and `LocalCaptureManager` with `invokeTarget`'s
+`attachmentSink` and `captureFactory`. Both stage supporting files only; neither
+grants world access or evaluates assertions. Call `validateCaptureOptions` before
+constructing a capture manager, and connect each manager's usage/reservation hooks
+as `runDrills` does so explicit attachments and optional captures share the bounds.
+
+`captureManager.finish(result)` applies the actual final verdict's retention policy.
+If bytes must be transferred before that verdict exists, use
+`finishPending(runId, [{ interactionId, targetResult }])` instead. This drains drivers
+and target stderr while retaining both `always` and `retain-on-failure` captures. It
+returns capture metadata, not a run result or a provisional verdict. The receiving
+runtime must apply those policies after its real assertions finish; a successful
+target response is not evidence that the drill passed. `sources(runId)` provides
+the private staged paths for verified copying. Always dispose both staging owners
+after use, and never expose private paths in reports or upload them as metadata.
+
 Setup and source problems reject with `FiredrillProjectError`, including stable code, details, and compiler diagnostics. A successful source build returns any non-error compiler diagnostics on `result.diagnostics`; an exact `buildHash` run returns none because it does not recompile source. A drill that executes and fails assertions resolves normally with `verdict: "failed"`, leaving Jest, Vitest, Mocha, or application code in control.
 
 Tool authors and consumers use `inspectTool()` to inspect a selected repository or installed-package contract without executing behavior. `validateTool()` explicitly loads the selected behavior with the developer's local authority. `testTool()` runs a selected repository conformance suite twice and returns ordinary verified drill reports plus operation/error/event/fault/subscription/callback coverage and same-seed state/trajectory reproducibility.

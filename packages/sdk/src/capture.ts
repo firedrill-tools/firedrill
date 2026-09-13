@@ -26,8 +26,14 @@ import type {
   RunId,
   RunResult,
   StableId,
+  TargetResult,
 } from "@firedrill/contracts";
-import { CapturePolicySchema, RunCaptureSchema, TargetFileAttachmentSchema } from "@firedrill/contracts";
+import {
+  CapturePolicySchema,
+  RunCaptureSchema,
+  RunIdSchema,
+  TargetFileAttachmentSchema,
+} from "@firedrill/contracts";
 import type { LocalReportAttachmentSource } from "@firedrill/reporters";
 import { FiredrillProjectError } from "./project-error.js";
 
@@ -161,6 +167,7 @@ export class LocalCaptureManager {
   #disposed = false;
 
   constructor(root: string, options: RunCaptureOptions | undefined, legacyUsage: (runId: RunId) => Usage) {
+    validateCaptureOptions(options);
     this.#root = realpathSync(root);
     this.#enabled = options !== undefined;
     this.policies = Object.freeze({
@@ -176,6 +183,7 @@ export class LocalCaptureManager {
   }
 
   #session(runId: RunId): CaptureSession {
+    RunIdSchema.parse(runId);
     let session = this.#sessions.get(runId);
     if (session === undefined) {
       session = {
@@ -574,10 +582,33 @@ export class LocalCaptureManager {
 
   async finish(result: RunResult): Promise<RunResult> {
     if (!this.#enabled) return result;
-    const runId = result.identity.runId;
+    const capture = await this.#finish(result.identity.runId, result.interactions, (policy) =>
+      keep(policy, result),
+    );
+    return { ...result, capture };
+  }
+
+  /**
+   * Drain supporting capture before a verdict exists. Enabled policies are retained;
+   * the embedding runtime must apply final-verdict retention before publishing a report.
+   * This method does not create a RunResult or evaluate any assertion.
+   */
+  async finishPending(
+    runId: RunId,
+    interactions: readonly { readonly interactionId: StableId; readonly targetResult: TargetResult }[] = [],
+  ): Promise<RunCapture | undefined> {
+    if (!this.#enabled) return undefined;
+    return this.#finish(runId, interactions, (policy) => policy !== "off");
+  }
+
+  async #finish(
+    runId: RunId,
+    interactions: readonly { readonly interactionId: StableId; readonly targetResult: TargetResult }[],
+    retain: (policy: CapturePolicy) => boolean,
+  ): Promise<RunCapture> {
     const session = this.#session(runId);
     // Existing command stderr remains causal evidence. This policy controls only its optional copy.
-    for (const interaction of result.interactions)
+    for (const interaction of interactions)
       for (const attachment of interaction.targetResult.attachments) {
         if (attachment.kind === "process.stderr" && typeof attachment.text === "string") {
           for (let offset = 0; offset < attachment.text.length; ) {
@@ -598,14 +629,14 @@ export class LocalCaptureManager {
     session.phase = "closing";
     for (const registered of session.drivers) {
       await registered.start;
-      if (keep(this.policies.screenshots, result) && registered.driver.screenshot !== undefined) {
+      if (retain(this.policies.screenshots) && registered.driver.screenshot !== undefined) {
         const input = await this.#driverCall(runId, registered, registered.driver.screenshot, "screenshot");
         if (input !== undefined) this.#file(runId, "screenshot", input, registered.interactionId);
       }
       if (this.policies.video !== "off" && registered.driver.stopVideo !== undefined) {
         const input = await this.#driverCall(runId, registered, registered.driver.stopVideo, "video");
         if (input !== undefined) {
-          if (keep(this.policies.video, result)) this.#file(runId, "video", input, registered.interactionId);
+          if (retain(this.policies.video)) this.#file(runId, "video", input, registered.interactionId);
           else session.discarded.video += 1;
         }
       }
@@ -617,7 +648,7 @@ export class LocalCaptureManager {
       this.#stageBytes -= session.logBytes;
       session.logs = [];
       session.logBytes = 0;
-      if (keep(this.policies.logs, result)) {
+      if (retain(this.policies.logs)) {
         try {
           this.#stage(runId, "log", { path: "capture-logs.txt", mediaType: "text/plain" }, body);
         } catch (error) {
@@ -627,7 +658,7 @@ export class LocalCaptureManager {
     }
     for (let index = session.files.length - 1; index >= 0; index -= 1) {
       const file = session.files[index];
-      if (file === undefined || keep(file.item.policy, result)) continue;
+      if (file === undefined || retain(file.item.policy)) continue;
       session.discarded[category(file.item.kind)] += 1;
       try {
         rmSync(file.path);
@@ -646,7 +677,7 @@ export class LocalCaptureManager {
     });
     session.drivers.splice(0);
     session.phase = "closed";
-    return { ...result, capture };
+    return capture;
   }
 
   sources(runId: RunId): readonly LocalReportAttachmentSource[] {
