@@ -98,8 +98,8 @@ describe("local Tool setup", () => {
       expect(tool?.id).toBe(id);
       expect(tool?.operations.map((operation) => operation.id)).toEqual(["get", "set"]);
       expect(tool?.http.map((route) => [route.method, route.path])).toEqual([
-        ["GET", `/${id}/records/{id}`],
-        ["PUT", `/${id}/records/{id}`],
+        ["GET", `/${id}/{id}`],
+        ["PUT", `/${id}/{id}`],
       ]);
       expect(compiled.build.worldIr.drills).toEqual([]);
       expect(compiled.build.worldIr.targets).toEqual([]);
