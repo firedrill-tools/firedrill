@@ -23,7 +23,9 @@ export type {
   LocalScenarioExport,
   LocalScenarioSaveResult,
   SaveLocalScenarioOptions,
+  ScenarioStateReader,
 } from "./local-world-scenario.js";
+export { captureLocalScenario as captureScenarioState } from "./local-world-scenario.js";
 export * from "./project-error.js";
 export * from "./run-drills.js";
 export * from "./tool-authoring.js";

@@ -11,7 +11,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { compileWorld } from "@firedrill/compiler";
 import { afterEach, describe, expect, it } from "vitest";
-import { createLocalWorld } from "../src/index.js";
+import { captureScenarioState, createLocalWorld, type ScenarioStateReader } from "../src/index.js";
 
 const directories: string[] = [];
 function fixture() {
@@ -76,6 +76,54 @@ afterEach(() => {
 });
 
 describe("repository-owned data scenario capture", () => {
+  it("exports the same source through a read-only adapter without requiring a LocalWorld", async () => {
+    const { root } = fixture();
+    const compiled = await compileWorld({ repositoryRoot: root, materialize: false });
+    expect(compiled.status).toBe("success");
+    if (compiled.status !== "success") throw new Error("fixture did not compile");
+    const world = await createLocalWorld({ root });
+    try {
+      world.call({
+        actorId: "worker",
+        packageId: "records",
+        operationId: "remove",
+        arguments: { id: "initial" },
+      });
+      world.call({
+        actorId: "worker",
+        packageId: "records",
+        operationId: "put",
+        arguments: { id: "new", count: 8 },
+      });
+      const adapter: ScenarioStateReader = {
+        describe: () => {
+          const description = world.describe();
+          return {
+            buildHash: description.buildHash,
+            generation: description.generation,
+            tools: description.tools.map(({ packageId, stateNamespaces }) => ({
+              packageId,
+              stateNamespaces,
+            })),
+          };
+        },
+        metadata: () => ({ worldInstanceId: world.metadata().worldInstanceId }),
+        state: (query) => world.state(query),
+      };
+      const options = { id: "adapter-export", packages: ["records"] };
+      const evidence = world.evidence();
+      expect(
+        captureScenarioState(adapter, { state: compiled.build.worldIr.baseline.state }, options),
+      ).toEqual(world.exportScenario(options));
+      expect(world.evidence()).toEqual(evidence);
+      expect(() =>
+        captureScenarioState(adapter, { state: [] }, { id: "safe", packages: ["missing"] }),
+      ).toThrow();
+    } finally {
+      world.close();
+    }
+  });
+
   it("bounds the actual formatted source before writes and keeps near-limit exports compilable", async () => {
     const { root, json } = fixture();
     const source = JSON.parse(readFileSync(join(root, "world/world.json"), "utf8"));

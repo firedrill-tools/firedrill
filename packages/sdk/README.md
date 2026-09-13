@@ -35,6 +35,8 @@ The handle can call a Tool as a declared actor, inspect current state and causal
 
 `world.close()` revokes access immediately and begins socket cleanup; await `binding.close()` to finish closing listeners. Closing a binding does not close its world. World files remain under `.firedrill/worlds/` unless a new `directory` is supplied. See [local world control](../../docs/local-world-control.md) for reset boundaries, lifecycle, and the inspector's borrowed-world integration.
 
+`world.exportScenario({ id, packages? })` captures current Tool rows and deletions from the world baseline as portable scenario source; `saveScenario` explicitly writes a new repository file. Custom runtime owners can use `captureScenarioState(reader, { state: baselineState }, options)` with a synchronous `ScenarioStateReader` exposing only `describe`, `metadata`, and `state`. The adapter must hold one coherent state/build position for the entire call. This invokes no Tool behavior and performs no source loading or file writes. Both paths use the same 50,000-action / 1 MiB source bound and return unredacted Tool data with an explicit list of omitted settings; neither is a complete snapshot.
+
 ## Run an agent drill
 
 ```ts

@@ -11,7 +11,13 @@ import {
 } from "node:fs";
 import { dirname, isAbsolute, join, relative, resolve } from "node:path";
 import { compileWorld, ProjectConfigSchema, ScenarioSourceSchema } from "@firedrill/compiler";
-import { canonicalJson, compareStableStrings, PackageIdSchema, StableIdSchema } from "@firedrill/contracts";
+import {
+  canonicalJson,
+  compareStableStrings,
+  type JsonObject,
+  PackageIdSchema,
+  StableIdSchema,
+} from "@firedrill/contracts";
 import type { LoadedWorldBuild } from "@firedrill/world-build";
 import type { LocalWorld } from "./local-world.js";
 import { FiredrillProjectError } from "./project-error.js";
@@ -54,6 +60,34 @@ export interface LocalScenarioSaveResult {
   readonly runtimeChanged: false;
 }
 
+/**
+ * Trusted synchronous read adapter for portable Tool-state capture. The owner
+ * must keep these reads on one immutable build and one coherent state position.
+ * No operation invocation, source loading, filesystem access or mutation is used.
+ */
+export interface ScenarioStateReader {
+  describe(): {
+    readonly buildHash: string;
+    readonly generation: number;
+    readonly tools: readonly {
+      readonly packageId: string;
+      readonly stateNamespaces: readonly string[];
+    }[];
+  };
+  metadata(): { readonly worldInstanceId: string };
+  state(query: {
+    readonly packageId: string;
+    readonly namespace: string;
+    readonly afterRowId?: string;
+    readonly limit: number;
+  }): readonly {
+    readonly packageId: string;
+    readonly namespace: string;
+    readonly rowId: string;
+    readonly value: JsonObject;
+  }[];
+}
+
 const MAX_RECORDS = 50_000;
 // Generated source must fit the compiler's per-file limit, including formatting.
 const MAX_BYTES = 1_048_576;
@@ -70,8 +104,8 @@ const OMITTED = [
 
 /** Synchronous capture cannot interleave with an in-process world operation or reset. */
 export function captureLocalScenario(
-  world: LocalWorld,
-  baseline: LoadedWorldBuild["worldIr"]["baseline"],
+  world: ScenarioStateReader,
+  baseline: Pick<LoadedWorldBuild["worldIr"]["baseline"], "state">,
   options: ExportLocalScenarioOptions,
 ): LocalScenarioExport {
   const id = StableIdSchema.safeParse(options.id);
