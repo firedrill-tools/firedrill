@@ -10,15 +10,17 @@ This is an open, versioned contract and reference implementation—not a claim
 that the wider industry has adopted a standard. Anyone can implement tooling
 against the schemas, build compatible packages, or maintain a discovery index.
 
-## Two equally supported homes
+## Community and independent Tools
 
-- **In this repository:** maintained and contributed packs under `tool-packs/`.
-  Contributions follow this repository's Apache-2.0 and review requirements.
+- **Community catalog:** reusable integrations are maintained in the independent
+  community-tools repository and released under their own package versions.
 - **Anywhere else:** a project-local Tool or independently distributed package.
   Its author owns releases, license, compatibility claims, and support.
 
 The same compiler, runtime, bindings, and conformance checks apply to both.
 Discovery helps people find packages; it is not permission to run them.
+The `tool-packs/` directory in this repository contains framework fixtures used
+to prove the open contract. Those fixtures are not the community catalog.
 
 ## What a package contains
 

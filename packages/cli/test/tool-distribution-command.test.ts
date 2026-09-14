@@ -43,14 +43,14 @@ function entry(name: string) {
 }
 
 describe("independent Tools through the public CLI", () => {
-  it("searches an author's local index with pagination without selecting or installing", async () => {
+  it("lists an author's local index with pagination without selecting or installing", async () => {
     const root = repository();
     const index = join(root, "tools.json");
     writeFileSync(index, JSON.stringify({ schemaVersion: 1, packages: [entry("rooms"), entry("weather")] }));
-    const found = await invoke(root, ["tool", "search", "--index", index, "--limit", "1", "--offset", "1"]);
+    const found = await invoke(root, ["tool", "list", "--index", index, "--limit", "1", "--offset", "1"]);
     expect(found.code, found.stdout + found.stderr).toBe(0);
     expect(found.result).toMatchObject({
-      command: "tool.search",
+      command: "tool.list",
       status: "success",
       total: 2,
       limit: 1,
@@ -83,7 +83,7 @@ describe("independent Tools through the public CLI", () => {
     const root = repository();
     const index = join(root, "tools.json");
     writeFileSync(index, JSON.stringify({ schemaVersion: 1, packages: [entry("rooms"), entry("weather")] }));
-    const found = await invoke(root, ["tool", "search", "--index", index, "--offset", "50"], false);
+    const found = await invoke(root, ["tool", "list", "--index", index, "--offset", "50"], false);
     expect(found.code, found.stdout + found.stderr).toBe(0);
     expect(found.stdout).toContain("Showing 0–0 of 2.");
     expect(found.stdout).not.toContain("0–50");
@@ -135,6 +135,8 @@ describe("independent Tools through the public CLI", () => {
   });
 
   it.each([
+    ["tool", "list", "rooms"],
+    ["tool", "search"],
     ["tool", "search", "--install"],
     ["tool", "create", "thing", "--name", "@a/b"],
     ["tool", "add", "@a/b", "--package"],

@@ -75,7 +75,15 @@ interface ParsedArguments {
     | "world";
   readonly reportCommand?: "verify";
   readonly reportPath?: string;
-  readonly toolCommand?: "add" | "contribute" | "create" | "inspect" | "search" | "test" | "validate";
+  readonly toolCommand?:
+    | "add"
+    | "contribute"
+    | "create"
+    | "inspect"
+    | "list"
+    | "search"
+    | "test"
+    | "validate";
   readonly toolTemplate?: "stateful" | "stateless";
   readonly toolPackage?: boolean;
   readonly toolName?: string;
@@ -155,7 +163,8 @@ Usage:
   firedrill init [--tool <source-or-catalog-id> | --custom <tool-id> | --search <text> | --path <path>] [--index <path-or-url>] [--install] [--authoring <manual|firedrill-agent|coding-agent>] [--allow-agent] [--start] [--no-open] [--json] [--root <path>]
   firedrill inspect [--port <port>] [--no-open] [--json] [--root <path>]
   firedrill serve [--scenario <id>] [--actor <id>] [--seed <seed>] [--port <port>] [--mcp-port <port>] [--cli-port <port>] [--no-open] [--json] [--root <path>]
-  firedrill tool search [text] [--index <path-or-url>] [--limit <1-100>] [--offset <count>] [--json]
+  firedrill tool list [--index <path-or-url>] [--limit <1-100>] [--offset <count>] [--json]
+  firedrill tool search <text> [--index <path-or-url>] [--limit <1-100>] [--offset <count>] [--json]
   firedrill tool create <tool-id> [--template <stateful|stateless>] [--package] [--name <npm-name>] [--json] [--root <path>]
   firedrill tool add <source> [--install] [--json] [--root <path>]
   firedrill tool inspect <tool-id> [--json] [--root <path>]
@@ -206,7 +215,7 @@ Init options:
   --tool <source|id>    Select a reusable Tool; repeat to compose several
   --custom <tool-id>    Create your own stateful Tool; no key required
   --search <text>       Search Tool metadata without writing or installing
-  --index <path-or-url> Use an independently maintained index for init/tool search
+  --index <path-or-url> Use an independently maintained index for init/tool list/search
   --install             Authorize pinned dependency installation, scripts disabled
   --authoring <mode>    Optional manual, firedrill-agent, or coding-agent help
   --allow-agent         Authorize the optional Anthropic-backed authoring session
@@ -375,7 +384,8 @@ who authored it.
 const TOOL_HELP = `Create, select, inspect, and prove Tool behavior
 
 Usage:
-  firedrill tool search [text] [--index <path-or-url>] [--limit <1-100>] [--offset <count>] [--json]
+  firedrill tool list [--index <path-or-url>] [--limit <1-100>] [--offset <count>] [--json]
+  firedrill tool search <text> [--index <path-or-url>] [--limit <1-100>] [--offset <count>] [--json]
   firedrill tool create <tool-id> [--template <stateful|stateless>] [--package] [--name <npm-name>] [--json] [--root <path>]
   firedrill tool add <source> [--install] [--json] [--root <path>]
   firedrill tool inspect <tool-id> [--json] [--root <path>]
@@ -412,10 +422,20 @@ direct bindings. It does not create a world or run a drill by itself.
 `;
 
 const TOOL_COMMAND_HELP: Readonly<Record<Exclude<ParsedArguments["toolCommand"], undefined>, string>> = {
+  list: `List community and independently indexed Tool packages
+
+Usage:
+  firedrill tool list [--index <path-or-url>] [--limit <1-100>] [--offset <count>]
+            [--json] [--root <path>]
+
+Reads the community catalog bundled with this CLI by default. --index explicitly
+reads another local or HTTPS catalog. Listing never installs or runs Tool code.
+Use tool search when you know a service, capability, or operation you need.
+`,
   search: `Find independently maintained Tool packages
 
 Usage:
-  firedrill tool search [text] [--index <path-or-url>] [--limit <1-100>] [--offset <count>]
+  firedrill tool search <text> [--index <path-or-url>] [--limit <1-100>] [--offset <count>]
             [--json] [--root <path>]
 
 Reads bundled metadata by default. --index explicitly reads a local or HTTPS
@@ -524,7 +544,9 @@ function parseArguments(arguments_: readonly string[], cwd: string): ParsedArgum
     const toolCommand =
       command === "tool"
         ? arguments_.find((argument): argument is NonNullable<ParsedArguments["toolCommand"]> =>
-            ["add", "contribute", "create", "inspect", "search", "test", "validate"].includes(argument),
+            ["add", "contribute", "create", "inspect", "list", "search", "test", "validate"].includes(
+              argument,
+            ),
           )
         : undefined;
     return {
@@ -1143,6 +1165,7 @@ function parseArguments(arguments_: readonly string[], cwd: string): ParsedArgum
           argument !== "contribute" &&
           argument !== "create" &&
           argument !== "inspect" &&
+          argument !== "list" &&
           argument !== "search" &&
           argument !== "test" &&
           argument !== "validate"
@@ -1153,7 +1176,7 @@ function parseArguments(arguments_: readonly string[], cwd: string): ParsedArgum
             json,
             check,
             help,
-            error: `unknown tool command ${argument}; use search, create, add, inspect, validate, test, or contribute`,
+            error: `unknown tool command ${argument}; use list, search, create, add, inspect, validate, test, or contribute`,
           };
         }
         toolCommand = argument;
@@ -1669,7 +1692,14 @@ function writeToolConformance(io: CliIo, result: ToolConformanceResult): void {
 }
 
 async function toolCommand(parsed: ParsedArguments, io: CliIo): Promise<number> {
+  if (parsed.toolCommand === "list" && parsed.toolId !== undefined) {
+    return writeUsageFailure(parsed, io, "tool list does not accept search text; use tool search <text>");
+  }
+  if (parsed.toolCommand === "search" && parsed.toolId === undefined) {
+    return writeUsageFailure(parsed, io, "tool search requires text; use tool list to browse every Tool");
+  }
   if (
+    parsed.toolCommand === "list" ||
     parsed.toolCommand === "search" ||
     (parsed.toolCommand === "create" && parsed.toolPackage) ||
     (parsed.toolCommand === "add" && parsed.initInstall)
@@ -1679,7 +1709,7 @@ async function toolCommand(parsed: ParsedArguments, io: CliIo): Promise<number> 
     return writeUsageFailure(
       parsed,
       io,
-      "tool requires create, inspect, validate, test, or contribute followed by <tool-id>, or add <installed-package>",
+      "tool requires list, search, create, inspect, validate, test, or contribute, or add <installed-package>",
     );
   }
   try {
@@ -2290,15 +2320,19 @@ export async function runCli(arguments_: readonly string[], io: CliIo): Promise<
       return writeUsageFailure(parsed, io, "--package and --name are only valid with tool create --package");
     if (
       parsed.toolIndex !== undefined &&
-      !(command === "tool" && parsed.toolCommand === "search") &&
+      !(command === "tool" && (parsed.toolCommand === "list" || parsed.toolCommand === "search")) &&
       command !== "init"
     )
-      return writeUsageFailure(parsed, io, "--index is only valid with tool search or init");
+      return writeUsageFailure(parsed, io, "--index is only valid with tool list, tool search, or init");
     if (
       (parsed.toolLimit !== undefined || parsed.toolOffset !== undefined) &&
-      !(command === "tool" && parsed.toolCommand === "search")
+      !(command === "tool" && (parsed.toolCommand === "list" || parsed.toolCommand === "search"))
     )
-      return writeUsageFailure(parsed, io, "--limit and --offset are only valid with tool search");
+      return writeUsageFailure(
+        parsed,
+        io,
+        "--limit and --offset are only valid with tool list or tool search",
+      );
     if (command === "init") {
       if (
         parsed.toolIndex !== undefined &&

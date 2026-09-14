@@ -28,7 +28,8 @@ Usage:
   firedrill init [--tool <source-or-catalog-id> | --custom <tool-id> | --search <text> | --path <path>] [--index <path-or-url>] [--install] [--authoring <manual|firedrill-agent|coding-agent>] [--allow-agent] [--start] [--no-open] [--json] [--root <path>]
   firedrill inspect [--port <port>] [--no-open] [--json] [--root <path>]
   firedrill serve [--scenario <id>] [--actor <id>] [--seed <seed>] [--port <port>] [--mcp-port <port>] [--cli-port <port>] [--no-open] [--json] [--root <path>]
-  firedrill tool search [text] [--index <path-or-url>] [--limit <1-100>] [--offset <count>] [--json]
+  firedrill tool list [--index <path-or-url>] [--limit <1-100>] [--offset <count>] [--json]
+  firedrill tool search <text> [--index <path-or-url>] [--limit <1-100>] [--offset <count>] [--json]
   firedrill tool create <tool-id> [--template <stateful|stateless>] [--package] [--name <npm-name>] [--json] [--root <path>]
   firedrill tool add <source> [--install] [--json] [--root <path>]
   firedrill tool inspect <tool-id> [--json] [--root <path>]
@@ -79,7 +80,7 @@ Init options:
   --tool <source|id>    Select a reusable Tool; repeat to compose several
   --custom <tool-id>    Create your own stateful Tool; no key required
   --search <text>       Search Tool metadata without writing or installing
-  --index <path-or-url> Use an independently maintained index for init/tool search
+  --index <path-or-url> Use an independently maintained index for init/tool list/search
   --install             Authorize pinned dependency installation, scripts disabled
   --authoring <mode>    Optional manual, firedrill-agent, or coding-agent help
   --allow-agent         Authorize the optional Anthropic-backed authoring session
@@ -482,7 +483,8 @@ event on shutdown. Each launch creates a fresh retained world under .firedrill/.
 Create, select, inspect, and prove Tool behavior
 
 Usage:
-  firedrill tool search [text] [--index <path-or-url>] [--limit <1-100>] [--offset <count>] [--json]
+  firedrill tool list [--index <path-or-url>] [--limit <1-100>] [--offset <count>] [--json]
+  firedrill tool search <text> [--index <path-or-url>] [--limit <1-100>] [--offset <count>] [--json]
   firedrill tool create <tool-id> [--template <stateful|stateless>] [--package] [--name <npm-name>] [--json] [--root <path>]
   firedrill tool add <source> [--install] [--json] [--root <path>]
   firedrill tool inspect <tool-id> [--json] [--root <path>]
@@ -505,13 +507,27 @@ Callback Tools use the same explicit local receiver bindings as firedrill run.
 contribute is only for source owned by this repository; it never uploads source.
 ```
 
+## `firedrill tool list`
+
+```text
+List community and independently indexed Tool packages
+
+Usage:
+  firedrill tool list [--index <path-or-url>] [--limit <1-100>] [--offset <count>]
+            [--json] [--root <path>]
+
+Reads the community catalog bundled with this CLI by default. --index explicitly
+reads another local or HTTPS catalog. Listing never installs or runs Tool code.
+Use tool search when you know a service, capability, or operation you need.
+```
+
 ## `firedrill tool search`
 
 ```text
 Find independently maintained Tool packages
 
 Usage:
-  firedrill tool search [text] [--index <path-or-url>] [--limit <1-100>] [--offset <count>]
+  firedrill tool search <text> [--index <path-or-url>] [--limit <1-100>] [--offset <count>]
             [--json] [--root <path>]
 
 Reads bundled metadata by default. --index explicitly reads a local or HTTPS

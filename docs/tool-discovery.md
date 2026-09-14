@@ -10,6 +10,7 @@ installation, code execution, or a security endorsement.
 Without an index option, search reads only the catalog shipped with your CLI:
 
 ```sh
+firedrill tool list
 firedrill tool search records
 ```
 
@@ -17,7 +18,7 @@ An author, team, or community can share its own index:
 
 ```sh
 firedrill tool search records --index https://example.org/tool-index.json
-firedrill tool search --index ./team-tools.json --offset 0 --limit 25 --json
+firedrill tool list --index ./team-tools.json --offset 0 --limit 25 --json
 ```
 
 Search results include the package name, exact version, declared operations,

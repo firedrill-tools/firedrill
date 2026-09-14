@@ -32,6 +32,7 @@
     "build": "pnpm -r --if-present build",
     "schema:check": "tsx tooling/check-authoring-schemas.mts",
     "registry:write": "tsx tooling/generate-registry.mts",
+    "registry:sync-community": "tsx tooling/generate-registry.mts --source ../firedrill-community-tools",
     "registry:check": "tsx tooling/generate-registry.mts --check",
     "skill:check": "tsx tooling/check-skill.mts",
     "quickstart:check": "tsx tooling/check-quickstart.mts",

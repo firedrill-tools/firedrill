@@ -28,6 +28,7 @@
       ["inspect"],
       ["serve"],
       ["tool"],
+      ["tool", "list"],
       ["tool", "search"],
       ["tool", "create"],
       ["tool", "add"],
@@ -158,30 +159,6 @@
       "directory": "packages/world-store-sqlite",
       "layer": "core",
       "exports": ["."]
-    },
-    {
-      "name": "@firedrill/tool-github-issues",
-      "directory": "tool-packs/github-issues",
-      "layer": "tool-pack",
-      "exports": ["./package.json"]
-    },
-    {
-      "name": "@firedrill/tool-mailbox",
-      "directory": "tool-packs/mailbox",
-      "layer": "tool-pack",
-      "exports": ["./package.json"]
-    },
-    {
-      "name": "@firedrill/tool-object-storage",
-      "directory": "tool-packs/object-storage",
-      "layer": "tool-pack",
-      "exports": ["./package.json"]
-    },
-    {
-      "name": "@firedrill/tool-work-queue",
-      "directory": "tool-packs/work-queue",
-      "layer": "tool-pack",
-      "exports": ["./package.json"]
     }
   ]
 }

@@ -204,7 +204,7 @@ writeFileSync(indexPath, JSON.stringify(index));
 const discovered = await discoverTools({ root: application, index: indexPath });
 assert.equal(discovered.tools[0].packageName, "@independent/record-book");
 assert.equal(discovered.tools[0].installed, true);
-assert.equal(firedrill(["tool", "search", "--index", indexPath]).total, 1);
+assert.equal(firedrill(["tool", "list", "--index", indexPath]).total, 1);
 writeFileSync(indexPath, JSON.stringify({ ...index, schemaVersion: 99 }));
 await assert.rejects(
   discoverTools({ root: application, index: indexPath }),

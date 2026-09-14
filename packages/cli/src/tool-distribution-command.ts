@@ -26,10 +26,10 @@ export async function executeToolDistributionCommand(input: DistributionInput, i
   const command = `tool.${input.toolCommand}`;
   const emit = (value: unknown) => io.stdout.write(`${JSON.stringify(value)}\n`);
   try {
-    if (input.toolCommand === "search") {
+    if (input.toolCommand === "list" || input.toolCommand === "search") {
       const result = await discoverTools({
         root: input.root,
-        ...(input.toolId === undefined ? {} : { query: input.toolId }),
+        ...(input.toolCommand !== "search" || input.toolId === undefined ? {} : { query: input.toolId }),
         ...(input.toolIndex === undefined ? {} : { index: input.toolIndex }),
         ...(input.toolLimit === undefined ? {} : { limit: input.toolLimit }),
         ...(input.toolOffset === undefined ? {} : { offset: input.toolOffset }),
@@ -37,13 +37,15 @@ export async function executeToolDistributionCommand(input: DistributionInput, i
       });
       if (input.json) emit({ ...result, command, status: "success" });
       else {
-        io.stdout.write(`Tools — ${result.source.location}\n`);
+        io.stdout.write(`${input.toolCommand === "list" ? "Community Tools" : "Tool search"}\n`);
+        if (result.source.kind !== "bundled") io.stdout.write(`Catalog: ${result.source.location}\n`);
         for (const tool of result.tools) {
+          const examples = tool.operations.slice(0, 4).map((operation) => operation.id);
           io.stdout.write(
-            `\n${tool.packageName}@${tool.version}${tool.installed ? " (installed)" : ""}\n  ${tool.description}\n`,
+            `\n${tool.title}${tool.installed ? " · installed" : ""}\n  ${tool.packageName}@${tool.version}\n  ${tool.description}\n`,
           );
           io.stdout.write(
-            `  Operations: ${tool.operations.map((operation) => operation.id).join(", ")}\n  Metadata: ${tool.metadataOrigin === "publisher" ? "publisher-declared" : "installed declaration"}\n`,
+            `  ${tool.operations.length} ${tool.operations.length === 1 ? "operation" : "operations"}${examples.length ? ` · ${examples.join(", ")}${tool.operations.length > examples.length ? ", …" : ""}` : ""}\n`,
           );
           io.stdout.write(`  Install: firedrill tool add ${sourceArgument(tool.installSource)} --install\n`);
           for (const limitation of tool.limitations) io.stdout.write(`  Limit: ${limitation}\n`);
@@ -53,9 +55,7 @@ export async function executeToolDistributionCommand(input: DistributionInput, i
         );
         if (result.offset + result.tools.length < result.total)
           io.stdout.write(`Next page: repeat with --offset ${result.offset + result.limit}\n`);
-        io.stdout.write(
-          "Discovery reads metadata only. Review code and run conformance before trusting a Tool.\n",
-        );
+        io.stdout.write("Review a Tool before installing it.\n");
       }
       return 0;
     }

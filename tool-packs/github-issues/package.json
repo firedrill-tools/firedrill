@@ -1,6 +1,7 @@
 {
   "name": "@firedrill/tool-github-issues",
   "version": "0.1.0-rc.1",
+  "private": true,
   "description": "A bounded, stateful GitHub Issues-compatible Tool pack for Firedrill",
   "keywords": [
     "ai-agent",
@@ -32,9 +33,6 @@
     "conformance",
     "README.md"
   ],
-  "publishConfig": {
-    "access": "public"
-  },
   "firedrill": {
     "layer": "tool-pack",
     "tool": "github-issues.tool.yaml",

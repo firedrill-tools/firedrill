@@ -379,10 +379,9 @@ describe("independent index selection through CLI", () => {
         commit: "c".repeat(40),
       };
       writeFileSync(index, JSON.stringify({ schemaVersion: 1, packages: [{ ...entry("rooms"), source }] }));
-      const result = await invoke(root, ["tool", "search", "--index", index]);
+      const result = await invoke(root, ["tool", "list", "--index", index]);
       expect(result.code, result.stderr).toBe(0);
-      expect(result.stdout).toContain("Operations: read");
-      expect(result.stdout).toContain("Metadata: publisher-declared");
+      expect(result.stdout).toContain("1 operation · read");
       const line = result.stdout
         .split("\n")
         .find((value) => value.trimStart().startsWith("Install: "))

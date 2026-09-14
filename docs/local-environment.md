@@ -55,7 +55,8 @@ not a replica of the service your agent uses. Replace its declaration and behavi
 with the real inputs, responses, errors and effects you need. A stateless tool is
 also supported: `firedrill tool create my-tool --template stateless`.
 
-Use `firedrill tool search [text]` to discover packages, or add `--index <path-or-url>`
+Use `firedrill tool list` to browse packages and `firedrill tool search <text>`
+to narrow the catalog, or add `--index <path-or-url>`
 to read an independently maintained index. `init --index <path-or-url>` uses that
 index in the same setup chooser. An index is optional; it doesn't own or certify
 the packages it lists.

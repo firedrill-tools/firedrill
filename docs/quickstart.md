@@ -127,7 +127,9 @@ Install the selected Tool package itself; do not add its Firedrill implementatio
 
 The generated [Tool-pack catalog](../registry/README.md) shows operation-level fidelity for known packs; the machine-readable form is [`registry/index.json`](../registry/index.json). The selected package's own documentation gives its Tool id, operations, state contract, and setup. `firedrill validate` reads and locks the selected declaration without executing behavior. Use `firedrill tool inspect <tool-id>` to see exactly what was selected, then `firedrill tool validate <tool-id>` or run a drill to execute it locally. Your repository still owns its initial data, actors, scenarios, targets, and drills. Firedrill never edits the installed package.
 
-The pre-release source tree includes [`@firedrill/tool-work-queue`](../tool-packs/work-queue/README.md) as a neutral contract and packaging proof. It is not yet a published dependency.
+Browse the reviewed community catalog with `firedrill tool list`, or find one
+integration with `firedrill tool search <text>`. The printed install source is
+exact and can be passed to `firedrill tool add <source> --install` after review.
 
 ## 3. Keep the agent integration at one seam
 

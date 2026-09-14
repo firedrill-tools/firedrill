@@ -1,6 +1,7 @@
 {
   "name": "@firedrill/tool-mailbox",
   "version": "0.1.0-rc.1",
+  "private": true,
   "description": "Stateful synthetic mailbox Tool pack for Firedrill",
   "keywords": [
     "ai-agent",
@@ -31,9 +32,6 @@
     "conformance",
     "README.md"
   ],
-  "publishConfig": {
-    "access": "public"
-  },
   "firedrill": {
     "layer": "tool-pack",
     "tool": "mailbox.tool.yaml",

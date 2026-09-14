@@ -115,6 +115,17 @@ try {
     throw new Error("public package archives are not byte-for-byte reproducible");
   }
   const archives = new Map(publishable.map((package_) => [package_.name, join(temporary, package_.archive)]));
+  for (const directory of ["github-issues", "mailbox", "object-storage", "work-queue"]) {
+    const packageRoot = join(root, "tool-packs", directory);
+    const manifest = JSON.parse(readFileSync(join(packageRoot, "package.json"), "utf8")) as {
+      name: string;
+    };
+    const existing = new Set(readdirSync(temporary));
+    run("pnpm", ["pack", "--pack-destination", temporary], packageRoot);
+    const created = readdirSync(temporary).filter((file) => file.endsWith(".tgz") && !existing.has(file));
+    if (created.length !== 1) throw new Error(`fixture ${manifest.name} did not produce exactly one archive`);
+    archives.set(manifest.name, join(temporary, created[0]));
+  }
   const publint = join(root, "node_modules", ".bin", "publint");
   const typesWrong = join(root, "node_modules", ".bin", "attw");
   for (const package_ of publishable) {

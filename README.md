@@ -310,8 +310,9 @@ firedrill tool create my-tool --package --name @your-team/my-tool --root <new-di
 
 Packages can live in any repository. Install one from npm, Git, a local directory,
 or an archive with `firedrill tool add <source> --install`. Without `--install`,
-the command selects an already installed package. Use `firedrill tool search`
-to browse the catalog, or `--index <file-or-HTTPS-url>` to use another index.
+the command selects an already installed package. Use `firedrill tool list` to
+browse the community catalog, `firedrill tool search <text>` to narrow it, or
+`--index <file-or-HTTPS-url>` to use another index.
 
 Installation pins source and disables lifecycle scripts. Tool execution uses
 your local permissions; review packages as executable test dependencies.

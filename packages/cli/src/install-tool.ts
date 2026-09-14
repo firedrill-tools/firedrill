@@ -4,9 +4,21 @@ import { NodePackageNameSchema, SemverSchema } from "@firedrill/contracts";
 import type { ReadyTool } from "./tool-catalog.js";
 import { installToolSource } from "./tool-installation.js";
 
-export function toolInstallPlan(root: string, tool: ReadyTool) {
+type InstallableTool = ReadyTool & { readonly installSource?: string };
+
+function sourceFor(tool: InstallableTool): string {
+  return tool.installSource ?? `${tool.packageName}@${tool.version}`;
+}
+
+export function toolInstallPlan(root: string, tool: InstallableTool) {
   NodePackageNameSchema.parse(tool.packageName);
   SemverSchema.parse(tool.version);
+  if (tool.installSource !== undefined) {
+    return {
+      executable: "firedrill",
+      arguments: ["tool", "add", tool.installSource, "--install"],
+    };
+  }
   const manager = existsSync(join(root, "pnpm-lock.yaml")) ? "pnpm" : "npm";
   return {
     executable: manager,
@@ -20,7 +32,7 @@ export function toolInstallPlan(root: string, tool: ReadyTool) {
 /** Only called after explicit installation consent; never runs package lifecycle scripts. */
 export async function installReadyTool(
   root: string,
-  tool: ReadyTool,
+  tool: InstallableTool,
   signal?: AbortSignal,
 ): Promise<boolean> {
   if (signal?.aborted) return false;
@@ -29,7 +41,7 @@ export async function installReadyTool(
     SemverSchema.parse(tool.version);
     await installToolSource({
       root,
-      source: `${tool.packageName}@${tool.version}`,
+      source: sourceFor(tool),
       ...(signal ? { signal } : {}),
     });
     return true;

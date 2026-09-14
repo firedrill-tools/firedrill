@@ -26,14 +26,14 @@ function repository(): string {
   return root;
 }
 
-function installed(root: string, name: string, id: string, value = id): void {
+function installed(root: string, name: string, id: string, value = id, version = "0.1.0-rc.1"): void {
   const pack = join(root, "node_modules", name);
   mkdirSync(pack, { recursive: true });
   writeFileSync(
     join(pack, "package.json"),
     JSON.stringify({
       name,
-      version: "0.1.0-rc.1",
+      version,
       type: "module",
       exports: { "./package.json": "./package.json" },
       firedrill: { layer: "tool-pack", lifecycle: "active", tool: "tool.json", starter: "starter.json" },
@@ -47,7 +47,7 @@ function installed(root: string, name: string, id: string, value = id): void {
       manifest: {
         schemaVersion: 1,
         id,
-        version: "0.1.0-rc.1",
+        version,
         engine: ">=0.1.0 <0.2.0",
         capabilities: ["state.read"],
         state: [
@@ -126,11 +126,11 @@ async function invoke(
 describe("tool-first init", () => {
   it("keeps bare non-TTY init and catalog search read-only and key-free", async () => {
     const root = repository();
-    const search = await invoke(root, ["init", "--search", "comments", "--json"]);
+    const search = await invoke(root, ["init", "--search", "gmail", "--json"]);
     expect(search.code).toBe(0);
     expect(JSON.parse(search.stdout)).toMatchObject({
       status: "catalog",
-      tools: [{ id: "github-issues", operations: expect.any(Array), limitations: expect.any(Array) }],
+      tools: [{ id: "gmail", operations: expect.any(Array), limitations: expect.any(Array) }],
     });
     const bare = await invoke(root, ["init", "--json"]);
     expect(JSON.parse(bare.stdout)).toMatchObject({ status: "inspection", tools: expect.any(Array) });
@@ -277,36 +277,51 @@ describe("tool-first init", () => {
 
   it("uses explicit pinned installation permission and resumes safely on failure", async () => {
     const root = repository();
-    const pack = join(root, "node_modules/@firedrill/tool-work-queue");
+    const pack = join(root, "node_modules/@firedrill-community/tool-gmail");
     mkdirSync(pack, { recursive: true });
     writeFileSync(
       join(pack, "package.json"),
-      JSON.stringify({ name: "@firedrill/tool-work-queue", exports: { "./package.json": "./package.json" } }),
+      JSON.stringify({
+        name: "@firedrill-community/tool-gmail",
+        exports: { "./package.json": "./package.json" },
+      }),
     );
-    const denied = await invoke(root, ["init", "--tool", "work-queue", "--json"]);
+    const denied = await invoke(root, ["init", "--tool", "gmail", "--json"]);
     expect(JSON.parse(denied.stdout)).toMatchObject({
       status: "setup-pending",
       code: "framework.TOOL_INSTALL_REQUIRED",
     });
     expect(installReadyTool).not.toHaveBeenCalled();
-    const failed = await invoke(root, ["init", "--tool", "work-queue", "--install", "--json"]);
+    const failed = await invoke(root, ["init", "--tool", "gmail", "--install", "--json"]);
     expect(JSON.parse(failed.stdout)).toMatchObject({
       code: "framework.TOOL_INSTALL_FAILED",
+      install: {
+        executable: "firedrill",
+        arguments: ["tool", "add", expect.stringContaining("::packages/gmail"), "--install"],
+      },
       next: expect.stringContaining("--install"),
     });
     expect(installReadyTool).toHaveBeenCalledOnce();
+    expect(installReadyTool).toHaveBeenCalledWith(
+      root,
+      expect.objectContaining({
+        id: "gmail",
+        installSource: expect.stringContaining("::packages/gmail"),
+      }),
+      undefined,
+    );
     expect(existsSync(join(root, "firedrill.json"))).toBe(false);
-    const tool = readyTools(root, "work-queue")[0];
+    const tool = readyTools(root, "gmail")[0];
     if (tool === undefined) throw new Error("catalog fixture missing");
     expect(toolInstallPlan(root, tool)).toMatchObject({
       executable: "npm",
-      arguments: ["install", "--save-dev", "--ignore-scripts", "@firedrill/tool-work-queue@0.1.0-rc.1"],
+      arguments: ["install", "--save-dev", "--ignore-scripts", "@firedrill-community/tool-gmail@0.1.0"],
     });
     vi.mocked(installReadyTool).mockImplementation(async (target) => {
-      installed(target, tool.packageName, tool.id);
+      installed(target, tool.packageName, tool.id, tool.id, tool.version);
       return true;
     });
-    const success = await invoke(root, ["init", "--tool", "work-queue", "--install", "--json"]);
+    const success = await invoke(root, ["init", "--tool", "gmail", "--install", "--json"]);
     expect(success.code, success.stdout).toBe(0);
     expect(JSON.parse(success.stdout)).toMatchObject({ status: "initialized", setup: { starterRows: 1 } });
   });
