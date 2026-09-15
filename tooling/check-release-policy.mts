@@ -43,7 +43,7 @@ interface PublicSurface {
 
 const root = resolve(import.meta.dirname, "..");
 const expectedRepository = "git+https://github.com/firedrill-tools/firedrill.git";
-const expectedHomepage = "https://firedrill.tools";
+const expectedHomepage = "https://firedrill.run";
 const expectedBugs = "https://github.com/firedrill-tools/firedrill/issues";
 const expectedNode = ">=20.19";
 const violations: string[] = [];

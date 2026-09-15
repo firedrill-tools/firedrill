@@ -61,7 +61,7 @@
     "url": "git+https://github.com/firedrill-tools/firedrill.git",
     "directory": "tool-packs/object-storage"
   },
-  "homepage": "https://firedrill.tools",
+  "homepage": "https://firedrill.run",
   "bugs": {
     "url": "https://github.com/firedrill-tools/firedrill/issues"
   }

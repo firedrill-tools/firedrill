@@ -26,6 +26,6 @@ for (const [name, schema] of Object.entries({
   const document = z.toJSONSchema(schema, { target: "draft-2020-12", io: "input" });
   writeFileSync(
     `${outputDirectory}/${fileName}`,
-    `${JSON.stringify({ $id: `https://firedrill.tools/schema/v1/${fileName}`, ...document }, null, 2)}\n`,
+    `${JSON.stringify({ $id: `https://firedrill.run/schema/v1/${fileName}`, ...document }, null, 2)}\n`,
   );
 }

@@ -377,7 +377,7 @@ describe("independent Tool discovery", () => {
   it("generates the public Draft 2020-12 input schema from the same validators", () => {
     const schema = toolIndexJsonSchema();
     expect(schema.$schema).toBe("https://json-schema.org/draft/2020-12/schema");
-    expect(schema.$id).toBe("https://firedrill.tools/schema/v1/tool-index.json");
+    expect(schema.$id).toBe("https://firedrill.run/schema/v1/tool-index.json");
     const bundled = JSON.parse(
       readFileSync(resolve(import.meta.dirname, "../../../registry/index.json"), "utf8"),
     );
