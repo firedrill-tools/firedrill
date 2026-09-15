@@ -15,6 +15,7 @@ import { dirname, join } from "node:path";
 import { compileWorld, inspectInstalledToolPackage } from "@firedrill/compiler";
 import { testTool } from "@firedrill/sdk";
 import { afterEach, describe, expect, it } from "vitest";
+import { installToolSource } from "../src/tool-installation.js";
 import { createToolPackage } from "../src/tool-package-scaffold.js";
 import { addToolPackage } from "../src/tool-setup.js";
 
@@ -53,21 +54,13 @@ async function consumerFixture() {
   const metadata = read(manifestPath);
   metadata.scripts.prepare = "node -e \"require('fs').writeFileSync('executed-marker','bad')\"";
   write(manifestPath, metadata);
-  const packed = JSON.parse(
-    execFileSync("npm", ["pack", "--json", "--ignore-scripts"], { cwd: author, encoding: "utf8" }),
-  );
-  const archive = join(author, packed[0].filename);
-  expect(existsSync(join(author, "executed-marker"))).toBe(false);
-  expect(packed[0].files.map((file: { path: string }) => file.path)).toContain("test/conformance.mjs");
-  expect(packed[0].files.some((file: { path: string }) => file.path.startsWith(".firedrill/"))).toBe(false);
   const consumer = join(root, "consumer");
   mkdirSync(consumer);
   write(join(consumer, "package.json"), { name: "independent-consumer", version: "1.0.0", private: true });
-  execFileSync(
-    "npm",
-    ["install", "--offline", "--ignore-scripts", "--no-package-lock", "--no-audit", "--no-fund", archive],
-    { cwd: consumer, stdio: "pipe" },
-  );
+  await installToolSource({ root: consumer, source: author });
+  expect(existsSync(join(author, "executed-marker"))).toBe(false);
+  expect(existsSync(join(consumer, "node_modules/@someone/records/test/conformance.mjs"))).toBe(true);
+  expect(existsSync(join(consumer, "node_modules/@someone/records/.firedrill"))).toBe(false);
   addToolPackage({ root: consumer, packageName: "@someone/records" });
   return { author, consumer, installed: join(consumer, "node_modules/@someone/records") };
 }

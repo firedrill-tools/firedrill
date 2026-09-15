@@ -1,19 +1,19 @@
 import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { createServer } from "node:http";
 import {
   cpSync,
   existsSync,
   mkdirSync,
   mkdtempSync,
-  readFileSync,
   readdirSync,
+  readFileSync,
   realpathSync,
   rmSync,
   symlinkSync,
   truncateSync,
   writeFileSync,
 } from "node:fs";
+import { createServer } from "node:http";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
@@ -262,6 +262,7 @@ describe("Tool acquisition", () => {
       `file:${result.archivePath}`,
     );
     expect(readFileSync(join(root, result.provenancePath), "utf8")).not.toContain(source);
+    expect(read(root, "node_modules/@independent/device-store/package.json").scripts).toBeUndefined();
     for (const filename of ["UNSAFE_PREPARE", "UNSAFE_PREPACK", "UNSAFE_INSTALL"]) {
       expect(existsSync(join(source, filename))).toBe(false);
       expect(existsSync(join(root, "node_modules/@independent/device-store", filename))).toBe(false);

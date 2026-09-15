@@ -95,9 +95,12 @@ conformance.
 
 ## Share and consume
 
-`npm pack --ignore-scripts` creates an archive without running package lifecycle
-scripts. Review its file list before sharing. Publish from your own registry or
-repository when ready; publishing is not part of Tool creation. Never include
+Pack or publish only source you have reviewed: npm 10 can run a local package's
+`prepare` hook during `npm pack` despite `--ignore-scripts`. For a third-party
+local or Git Tool, `firedrill tool add <source> --install` stages a scriptless
+copy before packing and installation. Review the file list before sharing.
+Publish from your own registry or repository when ready; publishing is not part
+of Tool creation. Never include
 `.firedrill/`, dependencies, credentials, private evidence, or test transcripts.
 
 An installed package is selected with its actual package name:
