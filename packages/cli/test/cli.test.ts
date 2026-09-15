@@ -296,7 +296,7 @@ describe("local CLI front door", () => {
 
     const tool = await invoke(root, ["tool", "--help"]);
     expect(tool.code).toBe(0);
-    expect(tool.stdout).toMatch(/Inspect and prove selected Tool behavior/);
+    expect(tool.stdout).toMatch(/Create, select, inspect, and prove Tool behavior/);
     expect(tool.stdout).toMatch(/installed package named[\s\S]*toolPackages/);
 
     const test = await invoke(root, ["tool", "test", "--help"]);
@@ -580,11 +580,7 @@ describe("local CLI front door", () => {
       `${JSON.stringify({ dependencies: { next: "latest", "@prisma/client": "latest" } })}\n`,
     );
     writeFileSync(join(root, "agent.ts"), "export const agent = {};\n");
-    const answers = [
-      "The agent also calls an internal queue through a repository adapter.",
-      "Never create the same side effect twice after a timeout.",
-      "1",
-    ];
+    const answers = ["c", "internal-queue", "manual", "n"];
     const questions: string[] = [];
     const result = await invoke(root, ["init"], { ANTHROPIC_API_KEY: "test-key" }, async (question) => {
       questions.push(question);
@@ -592,15 +588,14 @@ describe("local CLI front door", () => {
     });
 
     expect(result.code, `${result.stdout}\n${result.stderr}`).toBe(0);
-    expect(questions).toHaveLength(3);
-    expect(result.stdout).toMatch(
-      /Detected: [^\n]*next[^\n]*@prisma\/client[\s\S]*Initialized the firedrill-agent path[\s\S]*ANTHROPIC_API_KEY detected/,
-    );
-    const brief = readFileSync(join(root, ".agents", "firedrill", "BRIEF.md"), "utf8");
-    expect(brief).toContain(
-      '- Context note: "The agent also calls an internal queue through a repository adapter."',
-    );
-    expect(brief).toContain('- Prove: "Never create the same side effect twice after a timeout."');
+    expect(questions).toHaveLength(4);
+    expect(questions.join(" ")).not.toContain("first drill");
+    expect(result.stdout).toMatch(/stateful fake tools locally[\s\S]*Tool source validated: internal-queue/);
+    expect(existsSync(join(root, "firedrill", "tools", "internal-queue", "behavior.mjs"))).toBe(true);
+    expect(existsSync(join(root, ".agents", "firedrill", "BRIEF.md"))).toBe(false);
+    const plan = await invoke(root, ["plan", "--json"]);
+    expect(plan.code, plan.stdout).toBe(0);
+    expect(JSON.parse(plan.stdout)).toMatchObject({ drills: [], targets: [], scenarios: [] });
   });
 
   it("installs one canonical coding-agent skill and never overwrites a conflict", async () => {

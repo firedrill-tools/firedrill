@@ -32,6 +32,7 @@
     "build": "pnpm -r --if-present build",
     "schema:check": "tsx tooling/check-authoring-schemas.mts",
     "registry:write": "tsx tooling/generate-registry.mts",
+    "registry:sync-community": "tsx tooling/generate-registry.mts --source ../firedrill-community-tools",
     "registry:check": "tsx tooling/generate-registry.mts --check",
     "skill:check": "tsx tooling/check-skill.mts",
     "quickstart:check": "tsx tooling/check-quickstart.mts",
@@ -42,6 +43,7 @@
     "check": "pnpm format:check && pnpm lint && pnpm boundaries && pnpm genericity && pnpm determinism && pnpm public:check && pnpm release:check && pnpm build && pnpm docs:cli:check && pnpm schema:check && pnpm registry:check && pnpm skill:check && pnpm typecheck && pnpm test && pnpm quickstart:check && pnpm pack:check"
   },
   "devDependencies": {
+    "esbuild": "0.28.2",
     "@arethetypeswrong/cli": "0.18.5",
     "@biomejs/biome": "2.5.9",
     "@types/node": "26.2.0",
@@ -49,6 +51,6 @@
     "tar": "7.5.22",
     "tsx": "4.23.12",
     "typescript": "5.9.3",
-    "vitest": "3.2.7"
+    "vitest": "4.1.11"
   }
 }

@@ -1,0 +1,12 @@
+schemaVersion: 1
+target:
+  id: conformance-agent
+  kind: command
+  bindings:
+    - http
+    - mcp
+  executable: node
+  arguments:
+    - conformance/agent.mjs
+  workingDirectory: .
+  timeoutMs: 15000

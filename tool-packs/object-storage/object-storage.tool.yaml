@@ -1,0 +1,440 @@
+schemaVersion: 1
+module: ./dist/behavior.js
+ui:
+  root: dist/ui
+  entry: index.html
+manifest:
+  schemaVersion: 1
+  id: object-storage
+  version: 0.1.0-rc.1
+  engine: ">=0.1.0 <0.2.0"
+  capabilities:
+    - event.emit
+    - state.read
+    - state.write
+  state:
+    - namespace: objects
+      schema:
+        type: object
+        required:
+          - ownerId
+          - bucket
+          - key
+          - contentType
+          - metadata
+          - version
+          - byteLength
+          - content
+        properties:
+          ownerId:
+            type: string
+          bucket:
+            type: string
+            pattern: ^[a-z0-9][a-z0-9-]{0,62}$
+          key:
+            type: string
+            minLength: 1
+            maxLength: 512
+            pattern: ^[A-Za-z0-9][A-Za-z0-9._/ -]*$
+          contentType:
+            type: string
+            minLength: 1
+            maxLength: 128
+          metadata:
+            type: object
+            maxProperties: 16
+            propertyNames:
+              type: string
+              minLength: 1
+              maxLength: 64
+            additionalProperties:
+              type: string
+              maxLength: 256
+          version:
+            type: integer
+            minimum: 1
+            maximum: 2147483647
+          byteLength:
+            type: integer
+            minimum: 0
+            maximum: 65536
+          content:
+            type: string
+            maxLength: 16384
+        additionalProperties: false
+      description: Actor-owned synthetic UTF-8 text objects.
+  operations:
+    - id: objects.delete
+      description: Delete one actor-owned object, optionally requiring a matching version.
+      inputSchema:
+        type: object
+        required:
+          - bucket
+          - key
+        properties:
+          bucket:
+            type: string
+            pattern: ^[a-z0-9][a-z0-9-]{0,62}$
+          key:
+            type: string
+            minLength: 1
+            maxLength: 512
+            pattern: ^[A-Za-z0-9][A-Za-z0-9._/ -]*$
+          ifVersion:
+            type: integer
+            minimum: 0
+            maximum: 2147483646
+        additionalProperties: false
+      outputSchema:
+        type: object
+        required:
+          - bucket
+          - key
+          - deleted
+        properties:
+          bucket:
+            type: string
+            pattern: ^[a-z0-9][a-z0-9-]{0,62}$
+          key:
+            type: string
+            minLength: 1
+            maxLength: 512
+            pattern: ^[A-Za-z0-9][A-Za-z0-9._/ -]*$
+          deleted:
+            const: true
+        additionalProperties: false
+      declaredErrors:
+        - CONFLICT
+        - NOT_FOUND
+      idempotency: required
+      fidelity: stateful
+    - id: objects.get
+      description: Read one actor-owned UTF-8 text object.
+      inputSchema:
+        type: object
+        required:
+          - bucket
+          - key
+        properties:
+          bucket:
+            type: string
+            pattern: ^[a-z0-9][a-z0-9-]{0,62}$
+          key:
+            type: string
+            minLength: 1
+            maxLength: 512
+            pattern: ^[A-Za-z0-9][A-Za-z0-9._/ -]*$
+        additionalProperties: false
+      outputSchema:
+        type: object
+        required:
+          - object
+        properties:
+          object:
+            type: object
+            required:
+              - ownerId
+              - bucket
+              - key
+              - contentType
+              - metadata
+              - version
+              - byteLength
+              - content
+            properties:
+              ownerId:
+                type: string
+              bucket:
+                type: string
+                pattern: ^[a-z0-9][a-z0-9-]{0,62}$
+              key:
+                type: string
+                minLength: 1
+                maxLength: 512
+                pattern: ^[A-Za-z0-9][A-Za-z0-9._/ -]*$
+              contentType:
+                type: string
+                minLength: 1
+                maxLength: 128
+              metadata:
+                type: object
+                maxProperties: 16
+                propertyNames:
+                  type: string
+                  minLength: 1
+                  maxLength: 64
+                additionalProperties:
+                  type: string
+                  maxLength: 256
+              version:
+                type: integer
+                minimum: 1
+                maximum: 2147483647
+              byteLength:
+                type: integer
+                minimum: 0
+                maximum: 65536
+              content:
+                type: string
+                maxLength: 16384
+            additionalProperties: false
+        additionalProperties: false
+      declaredErrors:
+        - NOT_FOUND
+      idempotency: none
+      fidelity: stateful
+    - id: objects.list
+      description: List actor-owned object metadata with bounded, prefix-bound cursor pagination.
+      inputSchema:
+        type: object
+        required:
+          - bucket
+        properties:
+          bucket:
+            type: string
+            pattern: ^[a-z0-9][a-z0-9-]{0,62}$
+          prefix:
+            type: string
+            maxLength: 512
+          limit:
+            type: integer
+            minimum: 1
+            maximum: 100
+          cursor:
+            type: string
+            minLength: 1
+            maxLength: 2048
+        additionalProperties: false
+      outputSchema:
+        type: object
+        required:
+          - items
+        properties:
+          items:
+            type: array
+            maxItems: 100
+            items:
+              type: object
+              required:
+                - ownerId
+                - bucket
+                - key
+                - contentType
+                - metadata
+                - version
+                - byteLength
+              properties:
+                ownerId:
+                  type: string
+                bucket:
+                  type: string
+                  pattern: ^[a-z0-9][a-z0-9-]{0,62}$
+                key:
+                  type: string
+                  minLength: 1
+                  maxLength: 512
+                  pattern: ^[A-Za-z0-9][A-Za-z0-9._/ -]*$
+                contentType:
+                  type: string
+                  minLength: 1
+                  maxLength: 128
+                metadata:
+                  type: object
+                  maxProperties: 16
+                  propertyNames:
+                    type: string
+                    minLength: 1
+                    maxLength: 64
+                  additionalProperties:
+                    type: string
+                    maxLength: 256
+                version:
+                  type: integer
+                  minimum: 1
+                  maximum: 2147483647
+                byteLength:
+                  type: integer
+                  minimum: 0
+                  maximum: 65536
+              additionalProperties: false
+          nextCursor:
+            type: string
+            maxLength: 2048
+        additionalProperties: false
+      declaredErrors:
+        - INVALID_CURSOR
+      idempotency: none
+      fidelity: stateful
+    - id: objects.put
+      description: Create or replace an actor-owned UTF-8 text object, optionally requiring a matching version.
+      inputSchema:
+        type: object
+        required:
+          - bucket
+          - key
+          - content
+        properties:
+          bucket:
+            type: string
+            pattern: ^[a-z0-9][a-z0-9-]{0,62}$
+          key:
+            type: string
+            minLength: 1
+            maxLength: 512
+            pattern: ^[A-Za-z0-9][A-Za-z0-9._/ -]*$
+          content:
+            type: string
+            maxLength: 16384
+          contentType:
+            type: string
+            minLength: 1
+            maxLength: 128
+          metadata:
+            type: object
+            maxProperties: 16
+            propertyNames:
+              type: string
+              minLength: 1
+              maxLength: 64
+            additionalProperties:
+              type: string
+              maxLength: 256
+          ifVersion:
+            type: integer
+            minimum: 0
+            maximum: 2147483646
+        additionalProperties: false
+      outputSchema:
+        type: object
+        required:
+          - object
+        properties:
+          object:
+            type: object
+            required:
+              - ownerId
+              - bucket
+              - key
+              - contentType
+              - metadata
+              - version
+              - byteLength
+              - content
+            properties:
+              ownerId:
+                type: string
+              bucket:
+                type: string
+                pattern: ^[a-z0-9][a-z0-9-]{0,62}$
+              key:
+                type: string
+                minLength: 1
+                maxLength: 512
+                pattern: ^[A-Za-z0-9][A-Za-z0-9._/ -]*$
+              contentType:
+                type: string
+                minLength: 1
+                maxLength: 128
+              metadata:
+                type: object
+                maxProperties: 16
+                propertyNames:
+                  type: string
+                  minLength: 1
+                  maxLength: 64
+                additionalProperties:
+                  type: string
+                  maxLength: 256
+              version:
+                type: integer
+                minimum: 1
+                maximum: 2147483647
+              byteLength:
+                type: integer
+                minimum: 0
+                maximum: 65536
+              content:
+                type: string
+                maxLength: 16384
+            additionalProperties: false
+        additionalProperties: false
+      declaredErrors:
+        - CONFLICT
+      idempotency: required
+      fidelity: stateful
+  events:
+    - id: object.changed
+      payloadSchema:
+        type: object
+        required:
+          - bucket
+          - key
+          - ownerId
+          - action
+        properties:
+          bucket:
+            type: string
+            pattern: ^[a-z0-9][a-z0-9-]{0,62}$
+          key:
+            type: string
+            minLength: 1
+            maxLength: 512
+            pattern: ^[A-Za-z0-9][A-Za-z0-9._/ -]*$
+          ownerId:
+            type: string
+          action:
+            enum:
+              - put
+              - delete
+        additionalProperties: false
+  http:
+    - id: delete
+      operationId: objects.delete
+      method: DELETE
+      path: /storage/object
+      auth:
+        kind: bearer
+      requestBody: none
+      response:
+        successStatus: 200
+        errors:
+          - code: CONFLICT
+            status: 409
+          - code: NOT_FOUND
+            status: 404
+    - id: get
+      operationId: objects.get
+      method: GET
+      path: /storage/object
+      auth:
+        kind: bearer
+      requestBody: none
+      response:
+        successStatus: 200
+        errors:
+          - code: NOT_FOUND
+            status: 404
+    - id: list
+      operationId: objects.list
+      method: GET
+      path: /storage/objects
+      auth:
+        kind: bearer
+      requestBody: none
+      response:
+        successStatus: 200
+        errors:
+          - code: INVALID_CURSOR
+            status: 400
+    - id: put
+      operationId: objects.put
+      method: PUT
+      path: /storage/object
+      auth:
+        kind: bearer
+      requestBody: json
+      response:
+        successStatus: 200
+        errors:
+          - code: CONFLICT
+            status: 409

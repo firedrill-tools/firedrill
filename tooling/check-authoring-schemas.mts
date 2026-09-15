@@ -34,6 +34,18 @@ for (const [fileName, expected] of Object.entries(expectedRequired)) {
 }
 
 const project = JSON.parse(readFileSync(join(schemaRoot, "project-config.json"), "utf8")) as JsonSchema;
+const packageMetadata = JSON.parse(
+  readFileSync(join(schemaRoot, "installed-tool-package.json"), "utf8"),
+) as JsonSchema;
+if (
+  JSON.stringify([...(packageMetadata.required ?? [])].sort(compareStableStrings)) !==
+  JSON.stringify(["firedrill", "name", "version"])
+)
+  throw new Error(
+    "installed-tool-package.json must require the npm name/version and Firedrill metadata envelope",
+  );
+if (packageMetadata.properties?.firedrill?.properties?.conformance === undefined)
+  throw new Error("installed-tool-package.json must describe portable package conformance");
 if (!Array.isArray(project.properties?.toolPackages?.default)) {
   throw new Error("project-config.json must advertise the empty toolPackages default");
 }

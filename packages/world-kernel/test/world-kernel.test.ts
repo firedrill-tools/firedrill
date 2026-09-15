@@ -1,7 +1,12 @@
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import type { JsonObject, OperationInvocation, OperationRef } from "@firedrill/contracts";
+import type {
+  JsonObject,
+  OperationInvocation,
+  OperationRef,
+  ResolvedToolOverride,
+} from "@firedrill/contracts";
 import type { ToolDefinition, ToolOperationHandler } from "@firedrill/tool-sdk";
 import { defineTool } from "@firedrill/tool-sdk";
 import { SqliteWorldStore } from "@firedrill/world-store-sqlite";
@@ -227,6 +232,7 @@ function activityTool(): ToolDefinition {
 
 function createKernel(options: {
   readonly tools?: readonly ToolDefinition[];
+  readonly toolOverrides?: readonly ResolvedToolOverride[];
   readonly grants?: readonly OperationRef[];
   readonly activeFaults?: readonly { packageId: string; faultId: string }[];
   readonly state?: readonly { packageId: string; namespace: string; rowId: string; value: JsonObject }[];
@@ -269,6 +275,7 @@ function createKernel(options: {
       store,
       packageLockHash: HASH_B,
       tools: options.tools ?? [inventoryTool(), activityTool()],
+      ...(options.toolOverrides === undefined ? {} : { toolOverrides: options.toolOverrides }),
       ...(options.maxToolCalls === undefined ? {} : { budgets: { maxToolCalls: options.maxToolCalls } }),
       ...(options.onToolCallBudgetExceeded === undefined
         ? {}
@@ -899,6 +906,339 @@ describe("bound world client", () => {
     } finally {
       first.store.close();
       second.store.close();
+    }
+  });
+});
+
+describe("scenario Tool overrides", () => {
+  const operation = { packageId: "inventory", operationId: "stock.reserve" };
+  const scope = { kind: "baseline" } as const;
+  const returned = { reservationId: "synthetic", remaining: 30 };
+  const returnRule: ResolvedToolOverride = {
+    id: "return-reservation",
+    operation,
+    scope,
+    outcome: { kind: "return", value: returned },
+  };
+
+  it("returns schema-checked data without effects or faults, and replays without consuming again", () => {
+    const rules = [{ ...returnRule, times: 1 }];
+    const { kernel, store } = createKernel({
+      toolOverrides: rules,
+      activeFaults: [{ packageId: "inventory", faultId: "a-unavailable" }],
+    });
+    try {
+      const first = kernel.invoke(invocation());
+      expect(first.outcome).toEqual({ status: "ok", value: returned });
+      expect(first.evidence).toHaveLength(1);
+      expect(first.evidence[0]).toMatchObject({
+        toolOverride: { id: returnRule.id, scope, outcome: "return", matchIndex: 1 },
+      });
+      expect(store.readState("inventory", "items", "sku-1")?.value.available).toBe(5);
+      expect(store.listScheduledEvents()).toEqual([]);
+      expect(store.metadata().randomDraws).toBe(0);
+      const replay = kernel.invoke(invocation({ callId: "call_replayed" }));
+      expect(replay.outcome).toEqual(first.outcome);
+      expect(replay.evidence[0]).toMatchObject({
+        idempotency: "replayed",
+        replayedFromSequence: first.evidence[0]?.sequence,
+      });
+      expect(replay.evidence[0]).not.toHaveProperty("toolOverride");
+      const next = new WorldKernel({
+        store,
+        packageLockHash: HASH_B,
+        tools: [inventoryTool(), activityTool()],
+        toolOverrides: rules,
+      });
+      expect(next.invoke(invocation({ idempotencyKey: "another-request" })).outcome).toMatchObject({
+        status: "tool_error",
+        error: { code: "tool.UNAVAILABLE" },
+      });
+    } finally {
+      store.close();
+    }
+  });
+
+  it("consumes a one-shot error, then allows the same unrecorded request to succeed", () => {
+    const { kernel, store } = createKernel({
+      toolOverrides: [
+        {
+          id: "first-unavailable",
+          operation,
+          scope,
+          times: 1,
+          outcome: { kind: "error", code: "UNAVAILABLE", message: "temporary interruption", retryable: true },
+        },
+      ],
+    });
+    try {
+      const first = kernel.invoke(invocation());
+      expect(first.outcome).toMatchObject({
+        status: "tool_error",
+        error: { code: "tool.UNAVAILABLE", retryable: true },
+      });
+      expect(first.evidence).toHaveLength(1);
+      expect(first.evidence[0]).toMatchObject({
+        idempotency: "not_recorded",
+        toolOverride: { outcome: "error", matchIndex: 1 },
+      });
+      expect(kernel.invoke(invocation()).outcome.status).toBe("ok");
+      expect(store.readState("inventory", "items", "sku-1")?.value.available).toBe(3);
+    } finally {
+      store.close();
+    }
+  });
+
+  it("does not consume rules on denied, invalid, or conflicting calls", () => {
+    const { kernel, store } = createKernel({ toolOverrides: [{ ...returnRule, times: 2 }] });
+    try {
+      expect(kernel.invoke(invocation({ actorBindingId: "actor_absent" })).outcome.status).toBe("denied");
+      expect(kernel.invoke(invocation({ arguments: { sku: "sku-1", quantity: 0 } })).outcome.status).toBe(
+        "invalid",
+      );
+      expect(kernel.invoke(invocation({ idempotencyKey: undefined })).outcome.status).toBe("invalid");
+      const first = kernel.invoke(invocation());
+      expect(first.evidence[0]).toMatchObject({ toolOverride: { matchIndex: 1 } });
+      expect(kernel.invoke(invocation({ arguments: { sku: "sku-1", quantity: 3 } })).outcome.status).toBe(
+        "invalid",
+      );
+      const second = kernel.invoke(invocation({ idempotencyKey: "second-valid" }));
+      expect(second.evidence[0]).toMatchObject({ toolOverride: { matchIndex: 2 } });
+    } finally {
+      store.close();
+    }
+    const denied = createKernel({ toolOverrides: [{ ...returnRule, times: 1 }], grants: [] });
+    try {
+      expect(denied.kernel.invoke(invocation()).outcome.status).toBe("denied");
+      expect(denied.store.readEvidence().filter((entry) => entry.kind === "operation")).not.toContainEqual(
+        expect.objectContaining({ toolOverride: expect.anything() }),
+      );
+    } finally {
+      denied.store.close();
+    }
+  });
+
+  it.each(["a-unavailable", "z-response-timeout"])(
+    "an original override retains %s and shields lower rules",
+    (faultId) => {
+      const { kernel, store } = createKernel({
+        activeFaults: [{ packageId: "inventory", faultId }],
+        toolOverrides: [
+          returnRule,
+          {
+            id: "keep-behavior",
+            operation,
+            scope: { kind: "scenario", scenarioId: "faulted" },
+            outcome: { kind: "original" },
+            times: 1,
+          },
+        ],
+      });
+      try {
+        const result = kernel.invoke(invocation());
+        expect(result.outcome.status).toBe("tool_error");
+        expect(result.evidence[0]).toMatchObject({
+          toolOverride: { id: "keep-behavior", outcome: "original", matchIndex: 1 },
+        });
+        expect(result.evidence.some((entry) => entry.kind === "fault" && entry.faultId === faultId)).toBe(
+          true,
+        );
+        expect(store.readState("inventory", "items", "sku-1")?.value.available).toBe(
+          faultId === "a-unavailable" ? 5 : 3,
+        );
+        expect(kernel.invoke(invocation({ idempotencyKey: "next-request" })).outcome).toEqual({
+          status: "ok",
+          value: returned,
+        });
+      } finally {
+        store.close();
+      }
+    },
+  );
+
+  it("retains original-rule provenance and consumption when a handler rolls back", () => {
+    const crashing = inventoryTool();
+    const tools = [
+      defineTool({
+        manifest: crashing.manifest,
+        operations: {
+          ...crashing.operations,
+          "stock.reserve": (_input, context) => {
+            context.state.put("items", "sku-1", { sku: "sku-1", available: 0 });
+            context.random.nextU64();
+            context.events.emit("reservation.created", { sku: "sku-1", reservationId: "rolled-back" });
+            context.events.scheduleAt("reservation.expired", { sku: "sku-1" }, 2_000);
+            throw new Error("fail after effects");
+          },
+        },
+      }),
+      activityTool(),
+    ];
+    const rules: ResolvedToolOverride[] = [
+      returnRule,
+      { id: "crash-once", operation, scope, outcome: { kind: "original" }, times: 1 },
+    ];
+    const { kernel, store, filePath } = createKernel({ tools, toolOverrides: rules });
+    const failed = kernel.invoke(invocation());
+    expect(failed.outcome).toMatchObject({
+      status: "tool_error",
+      error: { code: "world.TOOL_HANDLER_CRASH" },
+    });
+    expect(failed.evidence).toHaveLength(1);
+    expect(failed.evidence[0]).toMatchObject({ toolOverride: { id: "crash-once", matchIndex: 1 } });
+    expect(store.readState("inventory", "items", "sku-1")?.value.available).toBe(5);
+    expect(store.metadata().randomDraws).toBe(0);
+    expect(store.listScheduledEvents()).toEqual([]);
+    store.close();
+    const reopened = SqliteWorldStore.open(filePath);
+    try {
+      const resumed = new WorldKernel({
+        store: reopened,
+        packageLockHash: HASH_B,
+        tools,
+        toolOverrides: rules,
+      });
+      expect(resumed.invoke(invocation()).outcome).toEqual({ status: "ok", value: returned });
+    } finally {
+      reopened.close();
+    }
+  });
+
+  it("restores exact nonzero consumption across forks, full reset and package reset", () => {
+    const rules = [{ ...returnRule, times: 2 }];
+    const { kernel, store, directory } = createKernel({ toolOverrides: rules });
+    const fresh = () =>
+      new WorldKernel({
+        store,
+        packageLockHash: HASH_B,
+        tools: [inventoryTool(), activityTool()],
+        toolOverrides: rules,
+      });
+    try {
+      kernel.invoke(invocation());
+      const snapshot = join(directory, "used-once.sqlite");
+      const snapshotId = store.createSnapshot(snapshot, "corr_override_snap");
+      const fork = SqliteWorldStore.forkFromSnapshot({
+        snapshotPath: snapshot,
+        snapshotId,
+        destinationPath: join(directory, "fork.sqlite"),
+        worldInstanceId: "world_overrides_fork",
+        correlationId: "corr_override_fork",
+      });
+      try {
+        const forkKernel = new WorldKernel({
+          store: fork,
+          packageLockHash: HASH_B,
+          tools: [inventoryTool(), activityTool()],
+          toolOverrides: rules,
+        });
+        expect(forkKernel.invoke(invocation({ idempotencyKey: "fork-next" })).evidence[0]).toMatchObject({
+          toolOverride: { matchIndex: 2 },
+        });
+      } finally {
+        fork.close();
+      }
+      expect(kernel.invoke(invocation({ idempotencyKey: "second" })).evidence[0]).toMatchObject({
+        toolOverride: { matchIndex: 2 },
+      });
+      expect(kernel.invoke(invocation({ idempotencyKey: "third" })).evidence[0]).not.toHaveProperty(
+        "toolOverride",
+      );
+      store.resetPackagesFromSnapshot(snapshot, ["inventory"], "corr_override_pkg_reset");
+      expect(fresh().invoke(invocation({ idempotencyKey: "after-package-reset" })).evidence[0]).toMatchObject(
+        { toolOverride: { matchIndex: 2 } },
+      );
+      store.resetFromSnapshot(snapshot, "corr_override_reset");
+      expect(fresh().invoke(invocation({ idempotencyKey: "after-full-reset" })).evidence[0]).toMatchObject({
+        toolOverride: { matchIndex: 2 },
+      });
+    } finally {
+      store.close();
+    }
+  });
+
+  it("rejects unknown operations, duplicate ids, undeclared errors and invalid returns", () => {
+    const { store } = createKernel({});
+    try {
+      const make = (toolOverrides: readonly ResolvedToolOverride[]) =>
+        new WorldKernel({
+          store,
+          packageLockHash: HASH_B,
+          tools: [inventoryTool(), activityTool()],
+          toolOverrides,
+        });
+      expect(() => make([{ ...returnRule, operation: { ...operation, operationId: "missing" } }])).toThrow(
+        "unavailable operation",
+      );
+      expect(() => make([returnRule, returnRule])).toThrow("duplicate Tool override id");
+      expect(() =>
+        make([{ ...returnRule, outcome: { kind: "error", code: "UNKNOWN", message: "not declared" } }]),
+      ).toThrow("undeclared error");
+      expect(() => make([{ ...returnRule, outcome: { kind: "return", value: { wrong: true } } }])).toThrow(
+        "output schema",
+      );
+    } finally {
+      store.close();
+    }
+  });
+
+  it("matches actors and complete nested JSON values, not recursive subsets", () => {
+    const tool = defineTool({
+      manifest: {
+        schemaVersion: 1,
+        id: "echo-service",
+        version: "1.0.0",
+        engine: ">=0.1.0",
+        capabilities: [],
+        operations: [
+          {
+            id: "respond",
+            inputSchema: { type: "object" },
+            outputSchema: { type: "string" },
+            idempotency: "none",
+            fidelity: "contract",
+          },
+        ],
+      },
+      operations: { respond: () => "original" },
+    });
+    const ref = { packageId: "echo-service", operationId: "respond" };
+    const { kernel, store } = createKernel({
+      tools: [tool],
+      grants: [ref],
+      toolOverrides: [
+        { id: "fallback", operation: ref, scope, outcome: { kind: "return", value: "fallback" } },
+        {
+          id: "matched",
+          operation: ref,
+          scope,
+          when: { actorId: "operator", arguments: { object: { a: 1, b: [2, 3] } } },
+          outcome: { kind: "return", value: "matched" },
+        },
+        {
+          id: "other-actor",
+          operation: ref,
+          scope,
+          when: { actorId: "someone-else" },
+          outcome: { kind: "return", value: "wrong-actor" },
+        },
+      ],
+    });
+    const invoke = (args: JsonObject) =>
+      kernel.invoke(invocation({ operation: ref, arguments: args, idempotencyKey: undefined }));
+    try {
+      expect(invoke({ object: { b: [2, 3], a: 1 }, extra: true }).outcome).toEqual({
+        status: "ok",
+        value: "matched",
+      });
+      expect(invoke({ object: { a: 1, b: [2, 3], extra: true } }).outcome).toEqual({
+        status: "ok",
+        value: "fallback",
+      });
+      expect(invoke({ object: { a: 1, b: [3, 2] } }).outcome).toEqual({ status: "ok", value: "fallback" });
+      expect(invoke({}).outcome).toEqual({ status: "ok", value: "fallback" });
+    } finally {
+      store.close();
     }
   });
 });

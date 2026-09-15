@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Object storage · Firedrill</title><link rel="stylesheet" href="./base.css"><script type="module" src="./app.js"></script></head>
+<body class="app">
+  <header class="topbar"><svg class="brand-icon" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><path d="m12 3 9 5-9 5-9-5 9-5Z M3 8v9l9 5 9-5V8 M12 13v9"/></svg><strong>Object storage</strong><span class="synthetic">Synthetic text files · stored locally</span><span id="identity" class="identity"></span></header>
+  <div id="feedback" class="feedback" role="status" hidden></div>
+  <main class="workspace">
+    <section id="listing" class="workspace">
+      <div class="toolbar"><h1 class="grow">Objects</h1><button id="new" class="primary" type="button">New object</button></div>
+      <form id="filter-form" class="toolbar"><label>Bucket<input id="bucket" value="documents" required maxlength="128"></label><label>Key starts with<input id="prefix" placeholder="Any prefix" maxlength="512"></label><button type="submit">Browse</button><button id="refresh" type="button">Refresh</button></form>
+      <div class="content"><div class="list-heading"><span>Object key</span><span>Content type</span><span>Size</span></div><div id="objects" class="list"></div></div><nav id="pagination" class="pager" aria-label="Object pages"></nav>
+    </section>
+    <section id="editor" class="workspace" hidden>
+      <div class="toolbar"><button id="back" type="button">Back to objects</button><span class="grow"></span><button id="delete" class="danger" type="button">Delete object</button></div>
+      <div class="content"><div class="document"><h1 id="editor-title">New object</h1>
+        <form id="object-form" class="form editor-form">
+          <div class="form-row"><label>Bucket<input id="object-bucket" required maxlength="128"></label><label>Key<input id="object-key" required maxlength="512" placeholder="notes/welcome.txt"></label></div>
+          <label>Content type<input id="content-type" value="text/plain; charset=utf-8" required maxlength="256"></label>
+          <label>Text content<textarea id="content" rows="14" maxlength="16384" spellcheck="false"></textarea></label>
+          <div class="actions"><button class="primary" type="submit">Save object</button><span id="version" class="muted"></span></div>
+        </form>
+      </div></div>
+    </section>
+  </main>
+  <dialog id="confirmation" aria-labelledby="confirmation-title" aria-describedby="confirmation-description"><form method="dialog"><h2 id="confirmation-title">Confirm action</h2><p id="confirmation-description"></p><div class="actions"><button type="submit" value="cancel" autofocus>Cancel</button><button type="submit" id="confirm-action" class="danger" value="confirm">Delete</button></div></form></dialog>
+</body>
+</html>

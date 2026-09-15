@@ -6,6 +6,7 @@ import type {
   ErrorEnvelope,
   JsonObject,
   JsonValue,
+  RunCaptureHandle,
   TargetDescriptor,
   TargetFileAttachment,
   TargetInvocation,
@@ -25,12 +26,27 @@ import { boundedDiagnosticMessage } from "./diagnostics.js";
 const MAX_INPUT_BYTES = 1024 * 1024;
 const MAX_OUTPUT_BYTES = 1024 * 1024;
 
+export interface DrillToolApp {
+  readonly packageId: string;
+  readonly title: string;
+  /** Ephemeral actor- and package-scoped credential. Do not persist or share this link. */
+  readonly url: string;
+}
+
+export interface DrillExecutionBinding {
+  /** Optional Tool apps owned by this interaction. Always an array when supplied by the drill runner. */
+  readonly apps: readonly DrillToolApp[];
+}
+
 export interface TargetExecutionContext {
   readonly signal: AbortSignal;
+  readonly binding?: DrillExecutionBinding;
   /** Present only when the target explicitly declares the direct binding. */
   readonly world?: BoundWorldClient;
   /** Copies one caller-owned file into the eventual report bundle. */
   readonly attach?: (input: TargetFileAttachmentInput) => TargetFileAttachment;
+  /** Optional supporting capture supplied by the embedding runner. */
+  readonly capture?: RunCaptureHandle;
 }
 
 export interface TargetFileAttachmentInput {
@@ -66,6 +82,8 @@ export interface InvokeTargetOptions {
   readonly externalHandler?: TargetHandler;
   /** Invocation-scoped client. Exposed only for a declared direct binding and revoked when the target ends. */
   readonly worldClient?: BoundWorldClient;
+  /** Runtime-owned app links; no world-control capability is included. */
+  readonly binding?: DrillExecutionBinding;
   /** Defaults to process.env. Only explicitly mapped values are exposed to the target. */
   readonly hostEnvironment?: Readonly<Record<string, string | undefined>>;
   /** Remote agent triggers can receive world credentials, so local execution denies them by default. */
@@ -74,6 +92,7 @@ export interface InvokeTargetOptions {
   readonly signal?: AbortSignal;
   /** Runtime-owned sink used to stage portable report files. */
   readonly attachmentSink?: TargetAttachmentSink;
+  readonly captureFactory?: (invocation: TargetInvocation, signal: AbortSignal) => RunCaptureHandle;
 }
 
 export class TargetAttachmentError extends Error {
@@ -293,6 +312,59 @@ function completed(invocation: TargetInvocation, completion: TargetCompletion): 
   });
 }
 
+/** Remove issued credentials before target output or inline diagnostics enter durable run evidence. */
+function redactBindingCredentials(
+  result: TargetResult,
+  invocation: TargetInvocation,
+  binding: DrillExecutionBinding | undefined,
+): TargetResult {
+  const secrets = new Set<string>();
+  const addApp = (url: string) => {
+    if (url.length === 0) return;
+    secrets.add(url);
+    try {
+      const token = new URLSearchParams(new URL(url).hash.slice(1)).get("token");
+      if (token !== null && token.length > 0) secrets.add(token);
+    } catch {
+      // Only the complete opaque value can be redacted when the input is not a URL.
+    }
+  };
+  for (const app of binding?.apps ?? []) addApp(app.url);
+  for (const [name, value] of Object.entries(invocation.bindingEnvironment)) {
+    if (/^FIREDRILL_(?:HTTP|MCP|CLI)_TOKEN$/.test(name) && value.length > 0) secrets.add(value);
+  }
+  const serializedApps = invocation.bindingEnvironment.FIREDRILL_TOOL_APPS;
+  if (serializedApps !== undefined && serializedApps !== "[]") {
+    secrets.add(serializedApps);
+    try {
+      const apps: unknown = JSON.parse(serializedApps);
+      if (Array.isArray(apps)) {
+        for (const app of apps) {
+          if (typeof app === "object" && app !== null && "url" in app && typeof app.url === "string")
+            addApp(app.url);
+        }
+      }
+    } catch {
+      // A standalone invokeTarget caller can supply opaque environment values.
+    }
+  }
+  if (secrets.size === 0) return result;
+  const values = [...secrets].sort((left, right) => right.length - left.length);
+  const redactText = (value: string): string => {
+    let redacted = value;
+    for (const secret of values) redacted = redacted.replaceAll(secret, "[REDACTED]");
+    return redacted;
+  };
+  const redact = (value: unknown): unknown => {
+    if (typeof value === "string") return redactText(value);
+    if (Array.isArray(value)) return value.map(redact);
+    if (typeof value === "object" && value !== null)
+      return Object.fromEntries(Object.entries(value).map(([key, item]) => [redactText(key), redact(item)]));
+    return value;
+  };
+  return TargetResultSchema.parse(redact(result));
+}
+
 async function withinTimeout<T>(
   timeoutMs: number,
   work: (signal: AbortSignal) => Promise<T>,
@@ -412,8 +484,9 @@ function commandEnvironment(
   host: Readonly<Record<string, string | undefined>>,
 ): NodeJS.ProcessEnv {
   const environment: NodeJS.ProcessEnv = {
-    ...invocation.bindingEnvironment,
     ...mappedEnvironment(descriptor.environmentFromHost, host),
+    // Issued synthetic bindings cannot be replaced by an ambient host value.
+    ...invocation.bindingEnvironment,
   };
   for (const name of ["PATH", "PATHEXT", "SystemRoot", "ComSpec"]) {
     if (host[name] !== undefined) environment[name] = host[name];
@@ -750,7 +823,13 @@ export async function invokeTarget(options: InvokeTargetOptions): Promise<Target
     const completion = await withinTimeout(
       descriptor.timeoutMs,
       async (signal) => {
-        const context = executionContext(descriptor, signal, options.worldClient, attach);
+        const context = {
+          ...executionContext(descriptor, signal, options.worldClient, attach),
+          ...(options.binding === undefined ? {} : { binding: options.binding }),
+          ...(options.captureFactory === undefined
+            ? {}
+            : { capture: options.captureFactory(invocation, signal) }),
+        };
         if (descriptor.kind === "module") {
           return {
             output: await invokeModule(descriptor, invocation, options, context),
@@ -769,9 +848,13 @@ export async function invokeTarget(options: InvokeTargetOptions): Promise<Target
       options.signal,
       () => options.worldClient?.revoke(),
     );
-    return completed(invocation, completion);
+    return redactBindingCredentials(completed(invocation, completion), invocation, options.binding);
   } catch (error) {
-    return failure(invocation, error, registeredAttachments);
+    return redactBindingCredentials(
+      failure(invocation, error, registeredAttachments),
+      invocation,
+      options.binding,
+    );
   } finally {
     options.worldClient?.revoke();
   }

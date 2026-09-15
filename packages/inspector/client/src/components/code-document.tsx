@@ -1,7 +1,7 @@
 import { Check, Copy, WrapText } from "lucide-react";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { Button } from "./primitives";
-import { jsonLineTokens } from "./json-tokens";
+import { sourceLines } from "./source-tokens";
 import "./data-viewer.css";
 
 /** Read-only document surface shared by authored source and captured data. */
@@ -9,15 +9,17 @@ export function CodeDocument({
   content,
   language,
   context,
+  startLine = 1,
 }: {
   readonly content: string;
   readonly language?: string;
   readonly context?: string;
+  readonly startLine?: number;
 }) {
   const [wrap, setWrap] = useState(false);
   const [copied, setCopied] = useState(false);
   const [copyError, setCopyError] = useState(false);
-  const lines = content.split("\n");
+  const lines = useMemo(() => sourceLines(content, language), [content, language]);
   const copy = async () => {
     try {
       await navigator.clipboard.writeText(content);
@@ -32,11 +34,11 @@ export function CodeDocument({
     <>
       <div className="fd-document-toolbar">
         {context === undefined ? null : <span className="fd-document-context">{context}</span>}
-        <Button variant="quiet" size="compact" aria-pressed={wrap} onClick={() => setWrap(!wrap)}>
+        <Button size="compact" aria-pressed={wrap} onClick={() => setWrap(!wrap)}>
           <WrapText size={15} aria-hidden="true" />
           Wrap lines
         </Button>
-        <Button variant="quiet" size="compact" onClick={() => void copy()}>
+        <Button size="compact" onClick={() => void copy()}>
           {copied ? <Check size={15} aria-hidden="true" /> : <Copy size={15} aria-hidden="true" />}
           {copied ? "Copied" : "Copy"}
         </Button>
@@ -56,16 +58,14 @@ export function CodeDocument({
               // biome-ignore lint/suspicious/noArrayIndexKey: read-only line positions
               <span className="fd-document-line" key={index}>
                 <span className="fd-document-line__number" aria-hidden="true">
-                  {index + 1}
+                  {index + startLine}
                 </span>
                 <span className="fd-document-line__text">
-                  {language === "json"
-                    ? jsonLineTokens(line).map((token) => (
-                        <span key={token.offset} data-token={token.kind}>
-                          {token.text}
-                        </span>
-                      ))
-                    : line}
+                  {line.map((token) => (
+                    <span key={token.offset} data-token={token.kind}>
+                      {token.text}
+                    </span>
+                  ))}
                 </span>
               </span>
             ))}

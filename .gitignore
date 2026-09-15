@@ -4,6 +4,7 @@ dist/
 coverage/
 .turbo/
 .cache/
+.impeccable/
 *.tsbuildinfo
 
 .idea/

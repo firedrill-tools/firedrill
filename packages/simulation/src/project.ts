@@ -1,9 +1,11 @@
 import { resolve } from "node:path";
 import { compileWorld } from "@firedrill/compiler";
 import type { Diagnostic, Sha256 } from "@firedrill/contracts";
+import { mergeToolOverrides } from "@firedrill/contracts";
 import { FiredrillProjectError } from "@firedrill/sdk";
-import type { SimulationProject } from "./contracts.js";
+import type { SimulationProject, SimulationToolSourceDocument } from "./contracts.js";
 import { SimulationProjectSchema } from "./contracts.js";
+import { captureToolSources } from "./tool-source.js";
 
 export interface LoadSimulationProjectOptions {
   readonly root?: string;
@@ -16,6 +18,8 @@ export interface LoadedSimulationProject {
   readonly buildHash: Sha256;
   readonly diagnostics: readonly Diagnostic[];
   readonly project: SimulationProject;
+  /** Captured source text, served only by Tool/file identities from the public catalog. */
+  readonly toolSourceDocuments: ReadonlyMap<string, ReadonlyMap<string, SimulationToolSourceDocument>>;
 }
 
 /** Compiles repository source and produces the stable World/Drill catalog consumed by inspectors. */
@@ -42,6 +46,7 @@ export async function loadSimulationProject(
     ]),
   );
   const targetKinds = new Map(compiled.build.worldIr.targets.map((target) => [target.id, target.kind]));
+  const toolSources = captureToolSources(repositoryRoot, compiled.build);
   const project = SimulationProjectSchema.parse({
     schemaVersion: 1,
     world: {
@@ -65,6 +70,7 @@ export async function loadSimulationProject(
       state: scenario.state,
       faults: scenario.faults,
       initialEvents: scenario.initialEvents,
+      ...(scenario.toolOverrides === undefined ? {} : { toolOverrides: scenario.toolOverrides }),
       ...(source.get(`scenario:${scenario.id}`) === undefined
         ? {}
         : { source: source.get(`scenario:${scenario.id}`) }),
@@ -72,11 +78,14 @@ export async function loadSimulationProject(
     tools: compiled.build.worldIr.tools.map((tool) => ({
       id: tool.id,
       version: tool.version,
+      definition: tool,
+      implementation: toolSources.implementations.get(tool.id),
       operations: tool.operations.map((operation) => ({
         id: operation.id,
         ...(operation.description === undefined ? {} : { description: operation.description }),
         inputSchema: operation.inputSchema,
         outputSchema: operation.outputSchema,
+        declaredErrors: operation.declaredErrors,
         fidelity: operation.fidelity,
         idempotency: operation.idempotency,
       })),
@@ -104,41 +113,47 @@ export async function loadSimulationProject(
         ? {}
         : { source: source.get(`target:${target.id}`) }),
     })),
-    drills: compiled.build.worldIr.drills.map((drill) => ({
-      id: drill.id,
-      ...(drill.title === undefined ? {} : { title: drill.title }),
-      tags: [...drill.tags],
-      targetId: drill.targetId,
-      ...(drill.scenarioId === undefined ? {} : { scenarioId: drill.scenarioId }),
-      inlineScenario: drill.inlineScenario !== undefined,
-      trials: drill.trials,
-      timeline: {
-        interactions: drill.timeline.interactions.length,
-        workloads: drill.timeline.workloads.length,
-        horizonUs: drill.timeline.horizonUs,
-        maxToolCalls: drill.timeline.maxToolCalls,
-        maxEvents: drill.timeline.maxEvents,
-      },
-      execution: drill.timeline,
-      assertions: drill.assertions.length + drill.timeline.invariants.length,
-      expectations: [
-        ...drill.timeline.invariants.map((assertion) => ({
-          id: assertion.id,
-          kind: assertion.kind,
-          gate: assertion.gate,
-          checkpoint: "invariant" as const,
-          definition: assertion,
-        })),
-        ...drill.assertions.map((assertion) => ({
-          id: assertion.id,
-          kind: assertion.kind,
-          gate: assertion.gate,
-          checkpoint: "final" as const,
-          definition: assertion,
-        })),
-      ],
-      ...(source.get(`drill:${drill.id}`) === undefined ? {} : { source: source.get(`drill:${drill.id}`) }),
-    })),
+    drills: compiled.build.worldIr.drills.map((drill) => {
+      const scenario =
+        drill.inlineScenario ?? compiled.build.worldIr.scenarios.find((item) => item.id === drill.scenarioId);
+      const toolOverrides = mergeToolOverrides(scenario?.toolOverrides, drill.toolOverrides);
+      return {
+        id: drill.id,
+        ...(drill.title === undefined ? {} : { title: drill.title }),
+        tags: [...drill.tags],
+        targetId: drill.targetId,
+        ...(drill.scenarioId === undefined ? {} : { scenarioId: drill.scenarioId }),
+        inlineScenario: drill.inlineScenario !== undefined,
+        trials: drill.trials,
+        timeline: {
+          interactions: drill.timeline.interactions.length,
+          workloads: drill.timeline.workloads.length,
+          horizonUs: drill.timeline.horizonUs,
+          maxToolCalls: drill.timeline.maxToolCalls,
+          maxEvents: drill.timeline.maxEvents,
+        },
+        execution: drill.timeline,
+        ...(toolOverrides.length === 0 ? {} : { toolOverrides }),
+        assertions: drill.assertions.length + drill.timeline.invariants.length,
+        expectations: [
+          ...drill.timeline.invariants.map((assertion) => ({
+            id: assertion.id,
+            kind: assertion.kind,
+            gate: assertion.gate,
+            checkpoint: "invariant" as const,
+            definition: assertion,
+          })),
+          ...drill.assertions.map((assertion) => ({
+            id: assertion.id,
+            kind: assertion.kind,
+            gate: assertion.gate,
+            checkpoint: "final" as const,
+            definition: assertion,
+          })),
+        ],
+        ...(source.get(`drill:${drill.id}`) === undefined ? {} : { source: source.get(`drill:${drill.id}`) }),
+      };
+    }),
     suites: compiled.build.worldIr.suites.map((suite) => ({
       id: suite.id,
       ...(suite.title === undefined ? {} : { title: suite.title }),
@@ -165,5 +180,6 @@ export async function loadSimulationProject(
     buildHash: compiled.build.manifest.buildHash,
     diagnostics: compiled.diagnostics,
     project,
+    toolSourceDocuments: toolSources.documents,
   };
 }

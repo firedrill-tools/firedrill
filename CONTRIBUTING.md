@@ -26,7 +26,13 @@ Every behavior change needs a focused test at the lowest useful layer and an acc
 
 ## Tool contributions
 
-Keep private or project-specific Tools in the project that uses them. Reusable community Tool packs live under [`tool-packs/`](tool-packs/README.md); framework packages must never dispatch on their operation names.
+Keep private or project-specific Tools in the project that uses them. Reusable
+Tools may live in any independently owned repository or package; see the
+[open Tool contract](docs/tool-compatibility.md). Contribution here is optional.
+Packs maintained in this repository live under [`tool-packs/`](tool-packs/README.md);
+framework packages must never dispatch on their operation names. The licensing
+and contribution-bundle requirements below apply to submissions here, not to
+running independently authored Tools.
 
 Before proposing a reusable Tool, run its ordinary repository-owned conformance drills:
 

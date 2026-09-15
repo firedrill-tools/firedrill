@@ -25,15 +25,11 @@
   flex-wrap: wrap;
   align-items: center;
   justify-content: flex-end;
-  gap: 4px;
+  gap: 8px;
   padding: 6px 12px;
   border-bottom: 1px solid var(--border-subtle);
   color: var(--text-secondary);
   font: 13px / 1.5 var(--font-sans);
-}
-.fd-document-toolbar [aria-pressed="true"] {
-  background: var(--hover);
-  color: var(--text);
 }
 .fd-document-context {
   margin-right: auto;
@@ -93,11 +89,22 @@
 .fd-document-code [data-token="string"] {
   color: var(--code);
 }
-.fd-document-code [data-token="literal"] {
+.fd-document-code
+  :is([data-token="literal"], [data-token="keyword"], [data-token="boolean"], [data-token="number"]) {
   color: var(--cobalt-600);
 }
-[data-theme="dark"] .fd-document-code [data-token="literal"] {
+[data-theme="dark"]
+  .fd-document-code
+  :is([data-token="literal"], [data-token="keyword"], [data-token="boolean"], [data-token="number"]) {
   color: var(--cobalt-200);
+}
+.fd-document-code [data-token="comment"] {
+  color: var(--text-secondary);
+  font-style: italic;
+}
+.fd-document-code :is([data-token="function"], [data-token="class-name"]) {
+  color: var(--text);
+  font-weight: 600;
 }
 @media (max-width: 639px) {
   .fd-dialog.fd-document-dialog,

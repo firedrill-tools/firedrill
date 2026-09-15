@@ -1,5 +1,7 @@
 export * from "./assertions.js";
 export * from "./attestation.js";
+export * from "./capture.js";
+export * from "./data-import.js";
 export * from "./diagnostics.js";
 export * from "./drill.js";
 export * from "./engine.js";
@@ -15,3 +17,5 @@ export * from "./schemas.js";
 export * from "./setup.js";
 export * from "./suite.js";
 export * from "./target.js";
+export * from "./tool-overrides.js";
+export * from "./tool-ui.js";

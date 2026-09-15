@@ -191,6 +191,103 @@ afterEach(() => {
 });
 
 describe("SQLite world transactions", () => {
+  it("rolls back a savepoint's SQL, clock and buffered evidence without losing outer usage", () => {
+    const store = createStore(temporaryDirectory());
+    try {
+      const committed = store.transact(CORRELATION, (transaction) => {
+        expect(transaction.consumeToolOverride("calendar", "bounded-rule")).toBe(1);
+        expect(() =>
+          transaction.withSavepoint(() => {
+            transaction.consumeToolOverride("calendar", "bounded-rule");
+            transaction.putState("calendar", "events", "rolled-back", { title: "discard" });
+            transaction.setVirtualTime(2_000);
+            transaction.nextRandomU64("calendar");
+            transaction.setFaultActive("calendar", "slow-write", false);
+            transaction.putIdempotencyReceipt(INVOCATION, "request-hash", SUCCESS);
+            transaction.scheduleEvent(
+              { packageId: "calendar", eventId: "created" },
+              {},
+              3_000,
+              "actor_primary",
+            );
+            throw new Error("rollback effects");
+          }),
+        ).toThrow("rollback effects");
+        expect(transaction.virtualTimeUs).toBe(1_000);
+        expect(transaction.toolOverrideMatchCount("calendar", "bounded-rule")).toBe(1);
+        expect(transaction.getIdempotencyReceipt(INVOCATION)).toBeNull();
+        expect(transaction.activeFaultIds("calendar")).toEqual(["slow-write"]);
+        transaction.putState("calendar", "events", "kept", { title: "kept" });
+        return {
+          value: undefined,
+          primary: {
+            kind: "operation",
+            invocation: INVOCATION,
+            outcome: SUCCESS,
+            idempotency: "not_recorded",
+            toolOverride: {
+              id: "bounded-rule",
+              scope: { kind: "baseline" },
+              outcome: "original",
+              matchIndex: 1,
+            },
+          },
+        };
+      });
+      expect(committed.evidence.map((entry) => entry.kind)).toEqual(["operation", "state_change"]);
+      expect(store.readState("calendar", "events", "rolled-back")).toBeNull();
+      expect(store.readState("calendar", "events", "kept")?.value).toEqual({ title: "kept" });
+      expect(store.metadata()).toMatchObject({ virtualTimeUs: 1_000, randomDraws: 0 });
+      expect(store.listScheduledEvents()).toEqual([]);
+      store.transact(CORRELATION, (transaction) => {
+        expect(() => transaction.withSavepoint(() => Promise.resolve(true))).toThrow("synchronous");
+        expect(transaction.toolOverrideMatchCount("calendar", "bounded-rule")).toBe(1);
+        return {
+          value: undefined,
+          primary: {
+            kind: "operation",
+            invocation: INVOCATION,
+            outcome: SUCCESS,
+            idempotency: "not_recorded",
+          },
+        };
+      });
+    } finally {
+      store.close();
+    }
+  });
+
+  it("package reset restores snapshot counters without clearing other packages", () => {
+    const directory = temporaryDirectory();
+    const store = createScopedResetStore(directory);
+    const count = (packageId: string, consume = false) =>
+      store.transact(CORRELATION, (transaction) => ({
+        value: consume
+          ? transaction.consumeToolOverride(packageId, "same-id")
+          : transaction.toolOverrideMatchCount(packageId, "same-id"),
+        primary: { kind: "lifecycle", action: "world_reset", worldInstanceId: "world_scoped01" },
+      })).value;
+    try {
+      const empty = join(directory, "zero-counts.sqlite");
+      store.createSnapshot(empty, CORRELATION);
+      expect(count("calendar", true)).toBe(1);
+      expect(count("messaging", true)).toBe(1);
+      const snapshot = join(directory, "used-counts.sqlite");
+      store.createSnapshot(snapshot, CORRELATION);
+      expect(count("calendar", true)).toBe(2);
+      expect(count("messaging", true)).toBe(2);
+      store.resetPackagesFromSnapshot(snapshot, ["calendar"], CORRELATION);
+      expect(count("calendar")).toBe(1);
+      expect(count("messaging")).toBe(2);
+      store.resetPackagesFromSnapshot(empty, ["calendar"], CORRELATION);
+      expect(count("calendar")).toBe(0);
+      expect(count("messaging")).toBe(2);
+      expect(count("calendar", true)).toBe(1);
+    } finally {
+      store.close();
+    }
+  });
+
   it("provides a query-only concurrent reader for live inspection", () => {
     const directory = temporaryDirectory();
     const store = createStore(directory);
@@ -229,6 +326,63 @@ describe("SQLite world transactions", () => {
     reader.close();
     expect(() => reader.metadata()).toThrow(/reader is closed/);
     store.close();
+  });
+
+  it("reads bounded per-kind journal heads without letting operation receipts advance a state revision", () => {
+    const store = createStore(temporaryDirectory());
+    const reader = SqliteWorldReader.open(store.filePath);
+    try {
+      const initial = store.latestEvidenceSequence(["state_change", "lifecycle"]);
+      store.transact(CORRELATION, () => ({
+        value: undefined,
+        primary: {
+          kind: "operation",
+          invocation: INVOCATION,
+          outcome: SUCCESS,
+          idempotency: "not_requested",
+        },
+      }));
+      expect(store.latestEvidenceSequence()).toBeGreaterThan(initial);
+      expect(store.latestEvidenceSequence(["state_change", "lifecycle"])).toBe(initial);
+      expect(reader.latestEvidenceSequence(["state_change", "lifecycle"])).toBe(initial);
+      store.transact(CORRELATION, (transaction) => {
+        transaction.putState("calendar", "events", "event_0", { id: "event_0", title: "Changed" });
+        return {
+          value: undefined,
+          primary: {
+            kind: "operation",
+            invocation: INVOCATION,
+            outcome: SUCCESS,
+            idempotency: "not_requested",
+          },
+        };
+      });
+      const changed = store.latestEvidenceSequence(["state_change"]);
+      expect(changed).toBeGreaterThan(initial);
+      expect(reader.latestEvidenceSequence(["state_change"])).toBe(changed);
+      expect(store.latestEvidenceSequence(["state_change", "state_change"])).toBe(changed);
+      expect(reader.latestEvidenceSequence([])).toBe(0);
+      expect(reader.latestEvidenceSequence(["callback"])).toBe(0);
+      expect(() => store.latestEvidenceSequence(["not-a-kind"] as never)).toThrow(/evidence kinds/);
+      expect(() => reader.latestEvidenceSequence(Array(100).fill("operation"))).toThrow(/evidence kinds/);
+      expect(() => reader.latestEvidenceSequence(null as never)).toThrow(/evidence kinds/);
+      const inspect = new Database(store.filePath, { readonly: true });
+      try {
+        const plan = inspect
+          .prepare(
+            "EXPLAIN QUERY PLAN SELECT COALESCE(MAX(sequence), 0) AS sequence FROM evidence WHERE kind = ?",
+          )
+          .all("state_change") as Array<{ detail: string }>;
+        expect(
+          plan.some((row) => row.detail.includes("evidence_kind_idx") && row.detail.includes("SEARCH")),
+        ).toBe(true);
+      } finally {
+        inspect.close();
+      }
+    } finally {
+      reader.close();
+      store.close();
+    }
   });
 
   it("atomically commits state, random progress, pending work, receipts, and ordered evidence", () => {

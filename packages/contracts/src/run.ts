@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { AssertionResultSchema } from "./assertions.js";
+import { RunCaptureSchema } from "./capture.js";
 import { DrillTaskSchema } from "./drill.js";
 import { ErrorEnvelopeSchema } from "./errors.js";
 import {
@@ -11,8 +12,8 @@ import {
   VirtualTimeSchema,
   WorldInstanceIdSchema,
 } from "./identifiers.js";
-import { TargetResultSchema } from "./target.js";
 import { RunSetupRecordSchema } from "./setup.js";
+import { TargetResultSchema } from "./target.js";
 
 export const RunPhaseSchema = z.enum([
   "created",
@@ -159,6 +160,7 @@ const TerminalRunBase = {
   schemaVersion: z.literal(1),
   identity: RunIdentitySchema,
   setup: RunSetupRecordSchema.optional(),
+  capture: RunCaptureSchema.optional(),
   startedAtVirtualUs: VirtualTimeSchema,
   finishedAtVirtualUs: VirtualTimeSchema,
   bindingEvidence: BindingEvidenceSchema,

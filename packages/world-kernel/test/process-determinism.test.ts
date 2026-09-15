@@ -34,11 +34,19 @@ function runInFreshProcess(name: string, seed: string): ProcessResult {
   return JSON.parse(output) as ProcessResult;
 }
 
-function runIdempotencyWorker(filePath: string, workerId: string): Promise<{ readonly idempotency: string }> {
+function runIdempotencyWorker(
+  filePath: string,
+  workerId: string,
+  mode?: string,
+): Promise<{ readonly idempotency: string }> {
   return new Promise((resolve, reject) => {
-    const child = spawn(process.execPath, [idempotencyWorker, filePath, workerId], {
-      stdio: ["ignore", "pipe", "pipe"],
-    });
+    const child = spawn(
+      process.execPath,
+      [idempotencyWorker, filePath, workerId, ...(mode === undefined ? [] : [mode])],
+      {
+        stdio: ["ignore", "pipe", "pipe"],
+      },
+    );
     let stdout = "";
     let stderr = "";
     child.stdout.setEncoding("utf8");
@@ -70,6 +78,47 @@ async function waitForFile(path: string, childExited: () => boolean): Promise<vo
 }
 
 describe("cross-process determinism", () => {
+  it("atomically consumes an original-once override even when competing handler effects fail", async () => {
+    const directory = mkdtempSync(join(tmpdir(), "firedrill-process-override-"));
+    temporaryDirectories.push(directory);
+    const filePath = join(directory, "world.sqlite");
+    const store = SqliteWorldStore.create({
+      filePath,
+      worldInstanceId: "world_override_process",
+      buildHash: `sha256:${"e".repeat(64)}`,
+      packageLockHash: `sha256:${"f".repeat(64)}`,
+      seed: "2026",
+      virtualTimeUs: 0,
+      correlationId: "corr_override_create",
+      actors: [
+        {
+          bindingId: "actor_process01",
+          actorId: "developer",
+          grants: [{ packageId: "atomic-counter", operationId: "counters.increment" }],
+        },
+      ],
+      state: [{ packageId: "atomic-counter", namespace: "counters", rowId: "main", value: { value: 0 } }],
+    });
+    store.close();
+    await Promise.all([
+      runIdempotencyWorker(filePath, "1", "original-once"),
+      runIdempotencyWorker(filePath, "2", "original-once"),
+    ]);
+    const reopened = SqliteWorldStore.open(filePath);
+    try {
+      expect(reopened.readState("atomic-counter", "counters", "main")?.value).toEqual({ value: 0 });
+      const operations = reopened.readEvidence().filter((entry) => entry.kind === "operation");
+      expect(operations.map((entry) => entry.outcome.status)).toEqual(["tool_error", "ok"]);
+      expect(operations.map((entry) => entry.toolOverride)).toEqual([
+        { id: "original-once", scope: { kind: "baseline" }, outcome: "original", matchIndex: 1 },
+        { id: "fallback", scope: { kind: "baseline" }, outcome: "return", matchIndex: 1 },
+      ]);
+      expect(operations.map((entry) => entry.idempotency)).toEqual(["not_recorded", "recorded"]);
+    } finally {
+      reopened.close();
+    }
+  });
+
   it("produces equal semantic hashes for the same seed and diverges for a different seed", () => {
     const left = runInFreshProcess("left", "2026");
     const right = runInFreshProcess("right", "2026");

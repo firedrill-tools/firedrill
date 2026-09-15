@@ -1,0 +1,27 @@
+{
+  "schemaVersion": 1,
+  "virtualTimeUs": 1767225600000000,
+  "state": [
+    {
+      "action": "upsert",
+      "packageId": "github-issues",
+      "namespace": "issues",
+      "rowId": "octo/example#42",
+      "value": {
+        "owner": "octo",
+        "repo": "example",
+        "number": 42,
+        "id": 420042,
+        "nodeId": "I_synthetic_420042",
+        "title": "Release checklist is incomplete",
+        "body": "Confirm the final release evidence before closing.",
+        "state": "open",
+        "locked": false,
+        "comments": 0,
+        "author": "repository-owner",
+        "createdAt": "2025-12-31T23:00:00.000Z",
+        "updatedAt": "2025-12-31T23:30:00.000Z"
+      }
+    }
+  ]
+}

@@ -1,5 +1,5 @@
 import { createHash, randomUUID } from "node:crypto";
-import { existsSync, lstatSync, readdirSync, readFileSync, realpathSync, statSync } from "node:fs";
+import { existsSync, lstatSync, readdirSync, readFileSync, realpathSync } from "node:fs";
 import { extname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import type { ErrorEnvelope, RunId, RunResult, StableId } from "@firedrill/contracts";
 import { PackageIdSchema, RunIdSchema, StableIdSchema } from "@firedrill/contracts";
@@ -20,6 +20,7 @@ import type {
   SimulationSourceDocument,
   SimulationSourceKind,
   SimulationStatePage,
+  SimulationToolSourceDocument,
   StartSimulationRun,
 } from "./contracts.js";
 import {
@@ -33,11 +34,13 @@ import {
   SimulationSourceDocumentSchema,
   SimulationSourceKindSchema,
   SimulationStatePageSchema,
+  SimulationToolSourceIdSchema,
   StartSimulationRunSchema,
 } from "./contracts.js";
 import { loadSimulationProject } from "./project.js";
 
-const MAX_REPORTS = 500;
+const DEFAULT_REPORT_PAGE_SIZE = 100;
+const MAX_REPORT_PAGE_SIZE = 500;
 const MAX_REQUEST_HISTORY = 1_000;
 const MAX_SOURCE_BYTES = 1024 * 1024;
 
@@ -63,6 +66,90 @@ export class LocalSimulationError extends Error {
       issues: [],
       ...(details === undefined ? {} : { details }),
     };
+  }
+}
+
+export interface SimulationRunListOptions {
+  /** Opaque continuation returned by the preceding saved-report page. */
+  readonly cursor?: string;
+  /** Saved report directories per page, including invalid reports. Defaults to 100; maximum 500. */
+  readonly limit?: number;
+}
+
+interface SavedRunPosition {
+  readonly runId: RunId;
+  readonly modified: number;
+}
+
+function compareSavedRuns(left: SavedRunPosition, right: SavedRunPosition): number {
+  return (
+    right.modified - left.modified || (left.runId === right.runId ? 0 : left.runId < right.runId ? 1 : -1)
+  );
+}
+
+function reportDirectoryHash(reportDirectory: string): string {
+  return createHash("sha256").update(reportDirectory).digest("hex");
+}
+
+function savedRunCursor(position: SavedRunPosition, reportDirectory: string): string {
+  return Buffer.from(
+    JSON.stringify({ version: 1, directory: reportDirectoryHash(reportDirectory), ...position }),
+  ).toString("base64url");
+}
+
+function readSavedRunCursor(cursor: unknown, reportDirectory: string): SavedRunPosition {
+  const invalid = () =>
+    new LocalSimulationError(
+      400,
+      "framework.INVALID_ARGUMENT",
+      "saved-run cursor is invalid for this report directory",
+    );
+  if (
+    typeof cursor !== "string" ||
+    cursor.length === 0 ||
+    cursor.length > 512 ||
+    !/^[A-Za-z0-9_-]+$/.test(cursor)
+  ) {
+    throw invalid();
+  }
+  let decoded: unknown;
+  try {
+    const bytes = Buffer.from(cursor, "base64url");
+    if (bytes.toString("base64url") !== cursor) throw invalid();
+    decoded = JSON.parse(bytes.toString("utf8"));
+  } catch {
+    throw invalid();
+  }
+  if (typeof decoded !== "object" || decoded === null || Array.isArray(decoded)) throw invalid();
+  const value = decoded as Record<string, unknown>;
+  const runId = RunIdSchema.safeParse(value.runId);
+  if (
+    Object.keys(value).length !== 4 ||
+    value.version !== 1 ||
+    value.directory !== reportDirectoryHash(reportDirectory) ||
+    typeof value.modified !== "number" ||
+    !Number.isFinite(value.modified) ||
+    !runId.success
+  ) {
+    throw invalid();
+  }
+  return { runId: runId.data, modified: value.modified };
+}
+
+function savedRunPosition(reportDirectory: string, runId: RunId): SavedRunPosition | undefined {
+  try {
+    const metadata = lstatSync(join(reportDirectory, runId));
+    return metadata.isDirectory() ? { runId, modified: metadata.mtimeMs } : undefined;
+  } catch (error) {
+    // A report removed between directory enumeration and stat must not break later pages.
+    if (
+      typeof error === "object" &&
+      error !== null &&
+      "code" in error &&
+      (error.code === "ENOENT" || error.code === "ENOTDIR")
+    )
+      return undefined;
+    throw error;
   }
 }
 
@@ -234,6 +321,7 @@ export class LocalSimulationSupervisor {
   private readonly requests = new Map<StableId, MutableRunRequest>();
   private readonly attempts = new Map<RunId, ActiveAttempt>();
   private projectValue: SimulationProject;
+  private toolSourceDocuments: ReadonlyMap<string, ReadonlyMap<string, SimulationToolSourceDocument>>;
   private buildHash: string;
   private closed = false;
 
@@ -242,11 +330,13 @@ export class LocalSimulationSupervisor {
     project: SimulationProject,
     buildHash: string,
     options: LocalSimulationSupervisorOptions,
+    toolSourceDocuments: ReadonlyMap<string, ReadonlyMap<string, SimulationToolSourceDocument>>,
   ) {
     this.repositoryRoot = repositoryRoot;
     this.runDirectory = resolve(repositoryRoot, options.runDirectory ?? join(".firedrill", "runs"));
     this.reportDirectory = resolve(repositoryRoot, options.reportDirectory ?? join(".firedrill", "reports"));
     this.projectValue = project;
+    this.toolSourceDocuments = toolSourceDocuments;
     this.buildHash = buildHash;
     this.options = options;
     this.maxConcurrency = options.maxConcurrency ?? 4;
@@ -261,12 +351,41 @@ export class LocalSimulationSupervisor {
       ...(options.root === undefined ? {} : { root: options.root }),
       externalAgentAvailable: options.agent !== undefined,
     });
-    return new LocalSimulationSupervisor(loaded.repositoryRoot, loaded.project, loaded.buildHash, options);
+    return new LocalSimulationSupervisor(
+      loaded.repositoryRoot,
+      loaded.project,
+      loaded.buildHash,
+      options,
+      loaded.toolSourceDocuments,
+    );
   }
 
   project(): SimulationProject {
     this.assertOpen();
     return this.projectValue;
+  }
+
+  /** Looks up a captured compiler-selected file; callers cannot request arbitrary filesystem paths. */
+  toolSource(toolId: string, fileId: string): SimulationToolSourceDocument {
+    this.assertOpen();
+    const tool = PackageIdSchema.safeParse(toolId);
+    const file = SimulationToolSourceIdSchema.safeParse(fileId);
+    if (!tool.success || !file.success) {
+      throw new LocalSimulationError(
+        400,
+        "framework.INVALID_ARGUMENT",
+        "select a Tool implementation file from the current project",
+      );
+    }
+    const document = this.toolSourceDocuments.get(tool.data)?.get(file.data);
+    if (document === undefined) {
+      throw new LocalSimulationError(
+        404,
+        "framework.SOURCE_NOT_FOUND",
+        "this Tool implementation source is unavailable; refresh source to check the current project",
+      );
+    }
+    return document;
   }
 
   source(kind: string, id: string): SimulationSourceDocument {
@@ -377,6 +496,7 @@ export class LocalSimulationSupervisor {
       externalAgentAvailable: this.options.agent !== undefined,
     });
     this.projectValue = loaded.project;
+    this.toolSourceDocuments = loaded.toolSourceDocuments;
     this.buildHash = loaded.buildHash;
     return this.projectValue;
   }
@@ -480,23 +600,45 @@ export class LocalSimulationSupervisor {
     return publicRequest(request);
   }
 
-  listRuns(): SimulationRunList {
+  listRuns(options: SimulationRunListOptions = {}): SimulationRunList {
     this.assertOpen();
+    if (
+      typeof options !== "object" ||
+      options === null ||
+      Array.isArray(options) ||
+      Object.keys(options).some((key) => key !== "cursor" && key !== "limit") ||
+      (options.limit !== undefined &&
+        (!Number.isSafeInteger(options.limit) || options.limit < 1 || options.limit > MAX_REPORT_PAGE_SIZE))
+    ) {
+      throw new LocalSimulationError(
+        400,
+        "framework.INVALID_ARGUMENT",
+        "saved-run limit must be an integer from 1 through 500",
+      );
+    }
+    const limit = options.limit ?? DEFAULT_REPORT_PAGE_SIZE;
+    const after =
+      options.cursor === undefined ? undefined : readSavedRunCursor(options.cursor, this.reportDirectory);
+    // Active attempts remain visible on every page and do not consume saved-report slots.
     const runs = [...this.attempts.values()].map((attempt) => this.activeSummary(attempt));
     const activeIds = new Set(runs.map((run) => run.runId));
     const unavailable: SimulationRunList["unavailable"] = [];
+    let nextCursor: string | undefined;
     if (existsSync(this.reportDirectory)) {
       const candidates = readdirSync(this.reportDirectory, { withFileTypes: true })
         .filter((entry) => entry.isDirectory() && RunIdSchema.safeParse(entry.name).success)
-        .map((entry) => ({
-          name: entry.name,
-          modified: statSync(join(this.reportDirectory, entry.name)).mtimeMs,
-        }))
-        .sort((left, right) => right.modified - left.modified)
-        .slice(0, MAX_REPORTS);
-      for (const candidate of candidates) {
-        const runId = RunIdSchema.parse(candidate.name);
-        if (activeIds.has(runId)) continue;
+        .filter((entry) => !activeIds.has(entry.name))
+        .flatMap((entry) => {
+          const position = savedRunPosition(this.reportDirectory, RunIdSchema.parse(entry.name));
+          return position === undefined ? [] : [position];
+        })
+        .filter((candidate) => after === undefined || compareSavedRuns(candidate, after) > 0)
+        .sort(compareSavedRuns);
+      const page = candidates.slice(0, limit);
+      const last = page.at(-1);
+      if (candidates.length > limit && last !== undefined)
+        nextCursor = savedRunCursor(last, this.reportDirectory);
+      for (const { runId } of page) {
         try {
           const report = verifyLocalReport(join(this.reportDirectory, runId));
           runs.push(terminalSummary(report.result, { reportAvailable: true }));
@@ -517,7 +659,12 @@ export class LocalSimulationSupervisor {
         }
       }
     }
-    return SimulationRunListSchema.parse({ schemaVersion: 1, runs, unavailable });
+    return SimulationRunListSchema.parse({
+      schemaVersion: 1,
+      runs,
+      unavailable,
+      ...(nextCursor === undefined ? {} : { nextCursor }),
+    });
   }
 
   run(runId: string): SimulationRunDetail {

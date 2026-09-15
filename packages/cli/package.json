@@ -17,7 +17,12 @@
     ".": {
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js"
-    }
+    },
+    "./tool-discovery": {
+      "types": "./dist/tool-discovery.d.ts",
+      "import": "./dist/tool-discovery.js"
+    },
+    "./schema/tool-index.json": "./dist/registry/tool-index.schema.json"
   },
   "files": [
     "dist",
@@ -38,25 +43,34 @@
     "test": "vitest run"
   },
   "dependencies": {
+    "@modelcontextprotocol/server": "2.0.0",
     "@firedrill/compiler": "workspace:*",
     "@firedrill/contracts": "workspace:*",
     "@firedrill/inspector": "workspace:*",
     "@firedrill/protocol-cli": "workspace:*",
     "@firedrill/sdk": "workspace:*",
-    "@firedrill/world-build": "workspace:*"
+    "@firedrill/world-build": "workspace:*",
+    "tar": "7.5.22",
+    "zod": "4.4.3"
   },
   "peerDependencies": {
+    "@firedrill/browser-tests": "workspace:*",
     "@firedrill/agent": "workspace:*"
   },
   "peerDependenciesMeta": {
+    "@firedrill/browser-tests": {
+      "optional": true
+    },
     "@firedrill/agent": {
       "optional": true
     }
   },
   "devDependencies": {
+    "@firedrill/browser-tests": "workspace:*",
+    "@modelcontextprotocol/client": "2.0.0",
     "@firedrill/agent": "workspace:*",
     "typescript": "5.9.3",
-    "vitest": "3.2.7"
+    "vitest": "4.1.11"
   },
   "repository": {
     "type": "git",

@@ -15,7 +15,7 @@ Every project, run, state, evidence, and control request requires `Authorization
 
 ## What a client can do
 
-- Read the compiled World, Tools, targets, drills, suites, diagnostics, and repository-relative source provenance. Tool views include their declared state schemas and operation input/output schemas without inferring extra fields or relationships.
+- Read the compiled World, Tools, targets, drills, suites, diagnostics, and repository-relative source provenance. Tool views include the complete compiled manifest and references to captured implementation files, without inferring extra fields, relationships, or operation-to-function mappings.
 - Start one drill or a named suite with optional seed, trial, retry, and concurrency overrides.
 - Follow a run request until its real drill-run IDs exist, then inspect those runs while the agent is still acting.
 - Page the ordered evidence journal and current synthetic Tool state.
@@ -26,6 +26,41 @@ Every project, run, state, evidence, and control request requires `Authorization
 The fixed routes are rooted at `/api/v1`: `project`, `runs`, `run-requests`, and `comparisons`, with bounded child routes for evidence and state. A run request is transport-level correlation only: one request can create several real drill runs when trials or retries are enabled. Product evidence and reports always use the real run IDs.
 
 An `external` target is available only when the embedding application supplies its agent callback to `startLocalSimulationServer()`. Module, command, and HTTP targets continue to use their declared target adapters even when an external callback is present.
+
+## Tool implementation source
+
+`GET /api/v1/tools/:toolId/implementation/:fileId` reads one compiler-selected
+implementation file. Get opaque file IDs from `project.tools[].implementation.files`;
+the request never accepts a path. Both repository Tools and explicitly installed
+packages expose source when available. `definition` is the full compiled Tool
+manifest, separate from executable behavior. The compiler's actual entry module
+is marked `role: entry`; imported files are helpers.
+
+Source documents are captured in memory after compilation at project load/refresh,
+not read afresh on each browser request or persisted with reports. `contentHash`
+hashes the exact captured UTF-8 bytes; `buildHash` and `artifactHash` identify the
+associated compilation, not proof that later-captured source bytes reconstruct its
+bundle. Builds retain executable bundles, not original TypeScript. Refresh after
+editing source. Each file is limited to 1 MiB, with a 16 MiB total snapshot budget.
+Missing sources, unsupported file types, restricted paths, symlinks below a declared
+root, changed package identity, invalid text and budget limits are reported explicitly.
+Inspection does not execute source. As with any source viewer, ordinary code can
+contain embedded secrets; this is local inspection, not automatically redacted output.
+
+## Saved-run pagination
+
+`GET /api/v1/runs?limit=100&cursor=<nextCursor>` returns a bounded saved-report
+page. `limit` accepts 1–500 (default 100); omit `cursor` for the latest page. Follow
+the optional `nextCursor` until it is absent. Invalid reports are returned under
+`unavailable` and consume slots so pagination advances even through unreadable
+history. Ordering uses report-directory modification time, then run ID.
+
+Active attempts appear on every page, outside the saved-report limit. Merge by
+run ID and prefer newer responses when polling; do not append duplicate active
+runs. The cursor is opaque and bound to the configured report directory. It
+survives source refresh and deletion of its anchor directory. Poll only the newest
+page and load older pages on demand; search over accumulated client pages must
+be labeled as loaded-history search until all saved reports have been loaded.
 
 ## Report files
 

@@ -1,5 +1,5 @@
 import { spawnSync } from "node:child_process";
-import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { cpSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { packPublicPackages } from "./public-packages.mts";
@@ -115,6 +115,17 @@ try {
     throw new Error("public package archives are not byte-for-byte reproducible");
   }
   const archives = new Map(publishable.map((package_) => [package_.name, join(temporary, package_.archive)]));
+  for (const directory of ["github-issues", "mailbox", "object-storage", "work-queue"]) {
+    const packageRoot = join(root, "tool-packs", directory);
+    const manifest = JSON.parse(readFileSync(join(packageRoot, "package.json"), "utf8")) as {
+      name: string;
+    };
+    const existing = new Set(readdirSync(temporary));
+    run("pnpm", ["pack", "--pack-destination", temporary], packageRoot);
+    const created = readdirSync(temporary).filter((file) => file.endsWith(".tgz") && !existing.has(file));
+    if (created.length !== 1) throw new Error(`fixture ${manifest.name} did not produce exactly one archive`);
+    archives.set(manifest.name, join(temporary, created[0]));
+  }
   const publint = join(root, "node_modules", ".bin", "publint");
   const typesWrong = join(root, "node_modules", ".bin", "attw");
   for (const package_ of publishable) {
@@ -163,6 +174,7 @@ try {
       'import { startHttpWorldBinding } from "@firedrill/protocol-http";',
       'import { mcpToolName, startMcpWorldBinding } from "@firedrill/protocol-mcp";',
       'import { createLocalWorld, runDrills, verifyReport } from "@firedrill/sdk";',
+      'import { mockTool } from "@firedrill/sdk/testing";',
       'import { startLocalSimulationServer } from "@firedrill/simulation";',
       'import { defineTool } from "@firedrill/tool-sdk";',
       'import { loadWorldBuild } from "@firedrill/world-build";',
@@ -314,6 +326,16 @@ try {
       '  const injectedBehaviorTrial = injectedBehavior.drills[0]?.trials[0]; if (injectedBehavior.verdict !== "passed" || injectedBehaviorTrial?.result.bindingEvidence !== "observed" || injectedBehaviorTrial?.result.assertionResults.some((assertion) => assertion.status !== "passed")) throw new Error("packed Tool behavior setup failed");',
       '  const setupLock = JSON.parse(readFileSync(join(repository, ".firedrill", "builds", injectedBehavior.buildHash.slice("sha256:".length), "packages.lock.json"), "utf8")); const overriddenPackage = setupLock.packages.find((item) => item.packageId === "packed-tool"); if (overriddenPackage?.source?.kind !== "repository_override" || overriddenPackage.source.module !== "test-support/packed-override.js") throw new Error("packed Tool override provenance missing");',
       '  const reproducedSetup = await runDrills({ root: repository, drill: "put-record", buildHash: injectedBehavior.buildHash, agent: setupAgent }); if (reproducedSetup.verdict !== "passed" || reproducedSetup.setup?.setupHash !== injectedBehavior.setup?.setupHash || reproducedSetup.buildHash !== injectedBehavior.buildHash) throw new Error("packed setup reproduction failed");',
+      '  const stubbedMcp = await runDrills({ root: repository, drill: "put-record", setup: { bindings: { environment: { PACKED_MCP_URL: "FIREDRILL_MCP_URL", PACKED_MCP_TOKEN: "FIREDRILL_MCP_TOKEN" } }, scenario: { toolOverrides: [{ id: "one-response", operation: { packageId: "packed-tool", operationId: "records.put" }, times: 1, outcome: { kind: "return", value: { count: 77 } } }] } }, agent: setupAgent });',
+      '  const stubTrial = stubbedMcp.drills[0]?.trials[0]; const stubCalls = stubTrial?.evidence.filter((entry) => entry.kind === "operation") ?? []; if (stubbedMcp.verdict !== "failed" || stubCalls.length !== 1 || stubCalls[0].outcome.value?.count !== 77 || stubCalls[0].toolOverride?.scope.kind !== "run" || !readFileSync(stubTrial.report.files.html, "utf8").includes("Override: one-response")) throw new Error("packed MCP override fabricated a state effect or lost its provenance");',
+      "  verifyReport({ report: stubTrial.report.directory });",
+      '  writeFileSync(join(repository, "world", "native.target.json"), JSON.stringify({ schemaVersion: 1, target: { id: "native-agent", kind: "external", bindings: ["direct"], timeoutMs: 5000 } }));',
+      '  const nativeDrill = JSON.parse(readFileSync(join(repository, "world", "put-record.drill.json"), "utf8")); nativeDrill.id = "native-record"; nativeDrill.targetId = "native-agent"; writeFileSync(join(repository, "world", "native-record.drill.json"), JSON.stringify(nativeDrill));',
+      '  writeFileSync(join(repository, "test-support", "client.mjs"), `export const records = { async save(count) { throw new Error("Real client not configured"); } };`);',
+      '  writeFileSync(join(repository, "test-support", "agent.mjs"), `import { records } from "./client.mjs"; export async function run() { return "Saved " + await records.save(9); }`);',
+      '  const { records } = await import(join(repository, "test-support", "client.mjs")); const { run: nativeAgent } = await import(join(repository, "test-support", "agent.mjs")); const realSave = records.save;',
+      '  const nativeResult = await runDrills({ root: repository, drill: "native-record", agent: async ({ binding }) => { records.save = mockTool(binding, { mode: "async", operation: { packageId: "packed-tool", operationId: "records.put" }, input: (count) => ({ count }), output: (value) => value.count, idempotencyKey: (count) => "native-" + count }); try { const reply = await nativeAgent(); if (reply !== "Saved 9") throw new Error("native result mapping failed"); return reply; } finally { records.save = realSave; } } });',
+      '  if (nativeResult.verdict !== "passed" || records.save !== realSave) throw new Error("packed native mock did not preserve state or restore the original dependency"); verifyReport({ report: nativeResult.drills[0].trials[0].report.directory });',
       '  const selectedPackage = await runDrills({ root: repository, drill: "package-setup", setup: { scenario: { actors: [{ id: "operator", grants: [{ packageId: "work-queue", operationId: "items.claim" }, { packageId: "work-queue", operationId: "items.complete" }] }], state: [{ action: "upsert", packageId: "work-queue", namespace: "items", rowId: "item-1", value: { title: "Prove run-local package selection", status: "available" } }] }, tools: { packages: ["@firedrill/tool-work-queue"] } }, agent: async ({ binding }) => { const runnerMcp = new Client({ name: "packed-package-runner", version: "1.0.0" }, { versionNegotiation: { mode: "auto" } }); await runnerMcp.connect(new StreamableHTTPClientTransport(new URL(binding.environment.FIREDRILL_MCP_URL), { authProvider: { token: async () => binding.environment.FIREDRILL_MCP_TOKEN } })); try { const claimed = await runnerMcp.callTool({ name: mcpToolName("work-queue", "items.claim"), arguments: { id: "item-1" }, _meta: { "dev.firedrill/idempotency-key": "runner-claim-item-1" } }); const completed = await runnerMcp.callTool({ name: mcpToolName("work-queue", "items.complete"), arguments: { id: "item-1", result: "done" }, _meta: { "dev.firedrill/idempotency-key": "runner-complete-item-1" } }); return { claimed: !claimed.isError, completed: !completed.isError }; } finally { await runnerMcp.close(); } } });',
       '  const selectedPackageTrial = selectedPackage.drills[0]?.trials[0]; const selectedPackageCalls = selectedPackageTrial?.evidence.filter((entry) => entry.kind === "operation" && entry.invocation.operation.packageId === "work-queue") ?? []; if (selectedPackage.verdict !== "passed" || selectedPackageCalls.length !== 2 || selectedPackageCalls.some((entry) => entry.outcome.status !== "ok")) throw new Error("packed run-local Tool package selection failed");',
       '  const selectedPackageLock = JSON.parse(readFileSync(join(repository, ".firedrill", "builds", selectedPackage.buildHash.slice("sha256:".length), "packages.lock.json"), "utf8")); const selectedPackageEntry = selectedPackageLock.packages.find((item) => item.packageId === "work-queue"); if (selectedPackageEntry?.source?.kind !== "npm" || selectedPackageEntry.source.packageName !== "@firedrill/tool-work-queue") throw new Error("packed selected Tool package provenance missing");',
@@ -423,6 +445,8 @@ try {
         dependencies: {
           "@firedrill/cli": `file:${archives.get("@firedrill/cli")}`,
           "@firedrill/tool-github-issues": `file:${archives.get("@firedrill/tool-github-issues")}`,
+          "@firedrill/tool-mailbox": `file:${archives.get("@firedrill/tool-mailbox")}`,
+          "@firedrill/tool-object-storage": `file:${archives.get("@firedrill/tool-object-storage")}`,
           "@firedrill/tool-work-queue": `file:${archives.get("@firedrill/tool-work-queue")}`,
           "@octokit/rest": "21.1.1",
         },
@@ -446,6 +470,18 @@ try {
     );
   }
   const installedPackCli = join(installedPackProject, "node_modules", ".bin", "firedrill");
+  writeFileSync(
+    join(consumer, "tool-first.mjs"),
+    readFileSync(join(root, "tooling", "packed-tool-first.mjs")),
+  );
+  run("node", ["tool-first.mjs", installedPackProject], consumer);
+  writeFileSync(
+    join(consumer, "mailbox-storage.mjs"),
+    readFileSync(join(root, "tooling", "packed-mailbox-storage.mjs")),
+  );
+  run("node", ["mailbox-storage.mjs", installedPackProject], consumer);
+  writeFileSync(join(consumer, "tool-apps.mjs"), readFileSync(join(root, "tooling", "packed-tool-apps.mjs")));
+  run("node", ["tool-apps.mjs", installedPackProject], consumer);
   mkdirSync(join(installedPackProject, "world"), { recursive: true });
   writeFileSync(
     join(installedPackProject, "firedrill.json"),
@@ -664,6 +700,20 @@ try {
   }
 
   run("node", ["index.mjs"], consumer);
+  const captureProject = join(temporary, "capture-project");
+  cpSync(join(root, "examples", "quickstart"), captureProject, { recursive: true });
+  writeFileSync(join(consumer, "capture.mjs"), readFileSync(join(root, "tooling", "packed-capture.mjs")));
+  run("node", ["capture.mjs", captureProject], consumer);
+  writeFileSync(
+    join(consumer, "browser-tests.mjs"),
+    readFileSync(join(root, "tooling", "packed-browser-tests.mjs")),
+  );
+  run("node", ["browser-tests.mjs", installedPackProject], consumer);
+  writeFileSync(
+    join(consumer, "independent-tools.mjs"),
+    readFileSync(join(root, "tooling", "packed-independent-tools.mjs")),
+  );
+  run("node", ["independent-tools.mjs"], consumer);
   process.stdout.write(`packed consumer check passed for ${publishable.length} package(s)\n`);
 } finally {
   if (temporary.startsWith(`${tmpdir()}/firedrill-pack-`)) {

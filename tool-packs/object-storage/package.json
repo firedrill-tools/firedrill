@@ -1,0 +1,68 @@
+{
+  "name": "@firedrill/tool-object-storage",
+  "version": "0.1.0-rc.1",
+  "private": true,
+  "description": "Stateful synthetic text object storage Tool pack for Firedrill",
+  "keywords": [
+    "ai-agent",
+    "firedrill",
+    "testing",
+    "tool-pack",
+    "object-storage"
+  ],
+  "maintainers": [
+    {
+      "name": "Firedrill contributors"
+    }
+  ],
+  "license": "Apache-2.0",
+  "engines": {
+    "node": ">=20.19"
+  },
+  "type": "module",
+  "sideEffects": false,
+  "exports": {
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "dist",
+    "object-storage.tool.yaml",
+    "starter.json",
+    "firedrill.json",
+    "conformance",
+    "README.md"
+  ],
+  "firedrill": {
+    "layer": "tool-pack",
+    "tool": "object-storage.tool.yaml",
+    "starter": "starter.json",
+    "lifecycle": "active",
+    "conformance": {
+      "schemaVersion": 1,
+      "project": "firedrill.json",
+      "suite": "object-storage-conformance"
+    }
+  },
+  "scripts": {
+    "build": "tsx ../../tooling/package-files.mts clean && tsc -p tsconfig.build.json && tsx ../../tooling/build-tool-app.mts && tsx ../../tooling/package-files.mts finalize",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "node ../../packages/cli/dist/bin.js format --check --root . && node ../../packages/cli/dist/bin.js tool test object-storage --root . && node --test test/public-world.test.mjs"
+  },
+  "dependencies": {
+    "@firedrill/tool-sdk": "workspace:*"
+  },
+  "devDependencies": {
+    "@firedrill/sdk": "workspace:*",
+    "@modelcontextprotocol/client": "2.0.0",
+    "typescript": "5.9.3"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/firedrill-tools/firedrill.git",
+    "directory": "tool-packs/object-storage"
+  },
+  "homepage": "https://firedrill.tools",
+  "bugs": {
+    "url": "https://github.com/firedrill-tools/firedrill/issues"
+  }
+}

@@ -1,6 +1,17 @@
 .fd-run-main .fd-run-titlebar {
+  flex: none;
   align-items: flex-start;
   gap: 16px;
+}
+
+.fd-workspace-main.fd-run-main {
+  overflow: hidden;
+}
+
+@media (max-width: 760px) {
+  .fd-workspace-main.fd-run-main {
+    overflow: visible;
+  }
 }
 
 .fd-run-main .fd-run-actions {
@@ -71,6 +82,19 @@
   gap: 16px;
   list-style: none;
   cursor: pointer;
+  min-height: 36px;
+  padding: 8px;
+  margin-inline: -8px;
+  border-radius: 7px;
+  transition: background-color 140ms ease;
+}
+
+.fd-result-check > summary:hover {
+  background: var(--hover);
+}
+
+.fd-result-check > summary:active {
+  background: var(--pressed);
 }
 
 .fd-result-check > summary::-webkit-details-marker {
@@ -109,28 +133,6 @@
   line-height: 1.6;
 }
 
-.fd-result-comparison {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 20px;
-  margin: 14px 0;
-}
-
-.fd-result-comparison > div {
-  min-width: 0;
-}
-
-.fd-result-comparison dt {
-  margin: 0 0 8px;
-  color: var(--text-secondary);
-  font-size: 13px;
-  line-height: 1.5;
-}
-
-.fd-result-comparison dd {
-  margin: 0;
-}
-
 .fd-result-value {
   color: var(--text);
   font-size: 14px;
@@ -139,15 +141,14 @@
   overflow-wrap: anywhere;
 }
 
-.fd-result-expectation,
 .fd-result-actions {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
   gap: 8px;
+  margin-top: 12px;
 }
 
-.fd-result-expectation > span:first-child,
 .fd-result-actions > span {
   color: var(--text-secondary);
   font-size: 13px;
@@ -166,10 +167,6 @@
   line-height: 1.5;
 }
 
-.fd-details-panel .fd-result-comparison {
-  grid-template-columns: minmax(0, 1fr);
-}
-
 .fd-run-main .fd-state-table td {
   padding-top: 12px;
   padding-bottom: 12px;
@@ -185,13 +182,17 @@
   color: var(--text-secondary);
 }
 
-.fd-compare-dialog > .fd-inline-message {
-  margin: 0 18px 16px;
+.fd-run-main .fd-timeline-section > .fd-pagination {
+  padding-inline: 12px;
+}
+
+.fd-run-rail .fd-run-list-item__top strong {
+  font-weight: 500;
 }
 
 @media (max-width: 680px) {
-  .fd-result-comparison {
-    grid-template-columns: minmax(0, 1fr);
+  .fd-result-check > summary {
+    min-height: 44px;
   }
 
   .fd-run-main .fd-run-actions {

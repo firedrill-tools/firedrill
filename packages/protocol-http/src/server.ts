@@ -18,7 +18,7 @@ import {
 const MAX_BODY_BYTES = 1024 * 1024;
 
 export interface StartHttpWorldBindingOptions {
-  readonly client: BoundWorldClient;
+  readonly client: Pick<BoundWorldClient, "invoke">;
   readonly tools: readonly ToolDefinition[];
   /** Internal composition seam used by protocol wrappers that need only the generic operation surface. */
   readonly syntheticRoutes?: boolean;
@@ -160,7 +160,7 @@ function toolIndex(tools: readonly ToolDefinition[]) {
 }
 
 function handler(options: {
-  readonly client: BoundWorldClient;
+  readonly client: Pick<BoundWorldClient, "invoke">;
   readonly tools: readonly ToolDefinition[];
   readonly token: string;
   readonly syntheticRoutes: boolean;
@@ -276,6 +276,8 @@ function listen(server: Server, port: number, hostname: string): Promise<void> {
 function close(server: Server): Promise<void> {
   return new Promise((resolve, reject) => {
     server.close((error) => (error === undefined ? resolve() : reject(error)));
+    // An incomplete client body must not keep a revoked local listener alive.
+    server.closeAllConnections();
   });
 }
 
@@ -306,7 +308,7 @@ export async function startHttpWorldBinding(
   }
   const displayHost = hostname === "::1" ? "[::1]" : hostname;
   const baseUrl = `http://${displayHost}:${address.port}`;
-  let closed = false;
+  let closing: Promise<void> | undefined;
   return {
     kind: "http",
     baseUrl,
@@ -315,10 +317,9 @@ export async function startHttpWorldBinding(
       FIREDRILL_HTTP_URL: baseUrl,
       FIREDRILL_HTTP_TOKEN: token,
     }),
-    async close() {
-      if (closed) return;
-      closed = true;
-      await close(server);
+    close() {
+      closing ??= close(server);
+      return closing;
     },
   };
 }

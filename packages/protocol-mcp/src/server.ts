@@ -1,22 +1,53 @@
 import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
 import type { IncomingMessage, Server, ServerResponse } from "node:http";
 import { createServer } from "node:http";
-import type { JsonObject, JsonValue, OperationContract, ToolPackageManifest } from "@firedrill/contracts";
-import { FIREDRILL_FRAMEWORK_VERSION, JsonObjectSchema, JsonValueSchema } from "@firedrill/contracts";
-import type { BoundWorldClient } from "@firedrill/world-kernel";
+import type {
+  JsonObject,
+  JsonValue,
+  OperationContract,
+  OperationOutcome,
+  OperationRef,
+  ToolPackageManifest,
+} from "@firedrill/contracts";
+import {
+  FIREDRILL_FRAMEWORK_VERSION,
+  JsonObjectSchema,
+  JsonValueSchema,
+  McpToolAliasSchema,
+} from "@firedrill/contracts";
 import {
   localhostHostValidation,
   localhostOriginValidation,
   toNodeHandler,
 } from "@modelcontextprotocol/node";
-import type { BaseContext, CallToolResult, McpHttpHandler } from "@modelcontextprotocol/server";
+import type { BaseContext, CallToolResult } from "@modelcontextprotocol/server";
 import { createMcpHandler, fromJsonSchema, McpServer } from "@modelcontextprotocol/server";
 
 const EXPLICIT_IDEMPOTENCY_KEY = "dev.firedrill/idempotency-key";
 const MAX_BODY_BYTES = 1024 * 1024;
 
+export interface McpWorldClient {
+  invoke(
+    operation: OperationRef,
+    arguments_: JsonObject,
+    options?: { readonly idempotencyKey?: string },
+  ): { readonly outcome: OperationOutcome } | Promise<{ readonly outcome: OperationOutcome }>;
+}
+
+export interface McpWorldHandler {
+  fetch(request: Request, options?: { readonly parsedBody?: unknown }): Promise<Response>;
+  close(): Promise<void>;
+}
+
+export interface CreateMcpWorldHandlerOptions {
+  readonly client: McpWorldClient;
+  readonly tools: readonly Pick<ToolPackageManifest, "id" | "operations">[];
+  /** Stable, non-secret scope separating request-derived idempotency keys. */
+  readonly bindingScope: string;
+}
+
 export interface StartMcpWorldBindingOptions {
-  readonly client: BoundWorldClient;
+  readonly client: McpWorldClient;
   readonly tools: readonly ToolPackageManifest[];
   readonly hostname?: "127.0.0.1" | "::1";
   readonly port?: number;
@@ -35,6 +66,7 @@ interface RegisteredOperation {
   readonly packageId: string;
   readonly operation: OperationContract;
   readonly toolName: string;
+  readonly description?: string;
 }
 
 /**
@@ -45,7 +77,9 @@ export function mcpToolName(packageId: string, operationId: string): string {
   return `${packageId}.${operationId}`;
 }
 
-function operations(tools: readonly ToolPackageManifest[]): readonly RegisteredOperation[] {
+function operations(
+  tools: readonly Pick<ToolPackageManifest, "id" | "operations">[],
+): readonly RegisteredOperation[] {
   const names = new Set<string>();
   const registered: RegisteredOperation[] = [];
   for (const tool of tools) {
@@ -53,7 +87,29 @@ function operations(tools: readonly ToolPackageManifest[]): readonly RegisteredO
       const toolName = mcpToolName(tool.id, operation.id);
       if (names.has(toolName)) throw new TypeError(`duplicate MCP tool name ${toolName}`);
       names.add(toolName);
-      registered.push({ packageId: tool.id, operation, toolName });
+      registered.push({
+        packageId: tool.id,
+        operation,
+        toolName,
+        ...(operation.description === undefined ? {} : { description: operation.description }),
+      });
+    }
+  }
+  // Reserve every canonical name first so aliases cannot steal another operation.
+  for (const tool of tools) {
+    for (const operation of tool.operations) {
+      if (operation.mcp === undefined) continue;
+      const alias = McpToolAliasSchema.parse(operation.mcp);
+      if (alias.name === mcpToolName(tool.id, operation.id)) continue;
+      if (names.has(alias.name)) throw new TypeError(`duplicate MCP tool name ${alias.name}`);
+      names.add(alias.name);
+      const description = alias.description ?? operation.description;
+      registered.push({
+        packageId: tool.id,
+        operation,
+        toolName: alias.name,
+        ...(description === undefined ? {} : { description }),
+      });
     }
   }
   return registered;
@@ -114,7 +170,7 @@ function toolError(value: JsonObject): CallToolResult {
 }
 
 function buildServer(
-  client: BoundWorldClient,
+  client: McpWorldClient,
   registered: readonly RegisteredOperation[],
   bindingScope: string,
 ): McpServer {
@@ -126,14 +182,14 @@ function buildServer(
     server.registerTool(
       item.toolName,
       {
-        ...(item.operation.description === undefined ? {} : { description: item.operation.description }),
+        ...(item.description === undefined ? {} : { description: item.description }),
         inputSchema: fromJsonSchema(item.operation.inputSchema),
         outputSchema: fromJsonSchema(item.operation.outputSchema),
       },
-      (argumentsInput, context) => {
+      async (argumentsInput, context) => {
         try {
           const arguments_ = JsonObjectSchema.parse(argumentsInput);
-          const result = client.invoke(
+          const result = await client.invoke(
             { packageId: item.packageId, operationId: item.operation.id },
             arguments_,
             callOptions(item.operation, context, bindingScope),
@@ -231,11 +287,12 @@ function listen(server: Server, port: number, hostname: string): Promise<void> {
 function closeServer(server: Server): Promise<void> {
   return new Promise((resolve, reject) => {
     server.close((error) => (error === undefined ? resolve() : reject(error)));
+    server.closeAllConnections();
   });
 }
 
 function requestHandler(options: {
-  readonly handler: McpHttpHandler;
+  readonly handler: McpWorldHandler;
   readonly token: string;
 }): (request: IncomingMessage, response: ServerResponse) => Promise<void> {
   const validateHost = localhostHostValidation();
@@ -278,13 +335,25 @@ function requestHandler(options: {
   };
 }
 
+/**
+ * Embeds the canonical MCP operation adapter in an existing HTTP server.
+ * The caller owns authentication, origin checks, body limits and request-time
+ * authorization. Supply only the permitted Tool surface and an actor-bound client.
+ */
+export function createMcpWorldHandler(options: CreateMcpWorldHandlerOptions): McpWorldHandler {
+  if (options.bindingScope.length === 0 || options.bindingScope.length > 1024)
+    throw new TypeError("MCP binding scope must contain between 1 and 1024 characters");
+  const registered = operations(options.tools);
+  const handler = createMcpHandler(() => buildServer(options.client, registered, options.bindingScope));
+  return { fetch: handler.fetch, close: handler.close };
+}
+
 export async function startMcpWorldBinding(options: StartMcpWorldBindingOptions): Promise<McpWorldBinding> {
   const hostname = options.hostname ?? "127.0.0.1";
   const token = options.token ?? randomBytes(32).toString("base64url");
   if (token.length < 16) throw new TypeError("world token must contain at least 16 characters");
-  const registered = operations(options.tools);
   const bindingScope = createHash("sha256").update(token).digest("hex");
-  const handler = createMcpHandler(() => buildServer(options.client, registered, bindingScope));
+  const handler = createMcpWorldHandler({ client: options.client, tools: options.tools, bindingScope });
   const serve = requestHandler({ handler, token });
   const server = createServer((request, response) => {
     void serve(request, response).catch(() => {
@@ -307,7 +376,7 @@ export async function startMcpWorldBinding(options: StartMcpWorldBindingOptions)
   }
   const displayHost = hostname === "::1" ? "[::1]" : hostname;
   const url = `http://${displayHost}:${address.port}/mcp`;
-  let closed = false;
+  let closing: Promise<void> | undefined;
   return {
     kind: "mcp",
     url,
@@ -316,17 +385,18 @@ export async function startMcpWorldBinding(options: StartMcpWorldBindingOptions)
       FIREDRILL_MCP_URL: url,
       FIREDRILL_MCP_TOKEN: token,
     }),
-    async close() {
-      if (closed) return;
-      closed = true;
-      try {
-        // Closing the MCP handler terminates active Streamable HTTP/SSE
-        // sessions. The TCP server can then drain instead of waiting forever
-        // on a client-held stream.
-        await handler.close();
-      } finally {
-        await closeServer(server);
-      }
+    close() {
+      closing ??= (async () => {
+        try {
+          // Closing the MCP handler terminates active Streamable HTTP/SSE
+          // sessions. The TCP server can then drain instead of waiting forever
+          // on a client-held stream.
+          await handler.close();
+        } finally {
+          await closeServer(server);
+        }
+      })();
+      return closing;
     },
   };
 }

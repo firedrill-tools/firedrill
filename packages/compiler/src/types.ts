@@ -29,14 +29,24 @@ export interface SourceProvenance {
 export interface BundledTool {
   readonly lock: ToolArtifactLock;
   readonly bytes: Uint8Array;
+  /** Canonical entry label resolved in the same guarded pass as sourcePaths. */
+  readonly entryPath: string;
   /** Exact repository-relative source closure used to produce the locked artifact. */
   readonly sourcePaths: readonly string[];
+  readonly ui?: {
+    readonly assets: readonly { readonly artifactPath: string; readonly bytes: Uint8Array }[];
+    readonly sourcePaths: readonly string[];
+  };
 }
 
 export interface ToolSourceSet {
   readonly packageId: string;
   readonly declarationPath: string;
+  /** Compiler-resolved entry module, using the same labels as behaviorPaths. */
+  readonly entryPath?: string;
   readonly behaviorPaths: readonly string[];
+  /** Exact static UI closure, separate from executable Tool behavior. */
+  readonly uiPaths?: readonly string[];
   readonly origin: ToolSourceOrigin;
 }
 

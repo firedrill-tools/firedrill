@@ -21,6 +21,7 @@ import type {
   Sha256,
   SnapshotId,
   StableId,
+  ToolOverrideEvidence,
   VirtualTime,
   WorldInstanceId,
 } from "@firedrill/contracts";
@@ -137,6 +138,7 @@ export type EvidenceDraft =
       readonly outcome: OperationOutcome;
       readonly idempotency: "not_requested" | "recorded" | "replayed" | "not_recorded";
       readonly replayedFromSequence?: number;
+      readonly toolOverride?: ToolOverrideEvidence;
       readonly causeSequence?: number;
     }
   | {
@@ -216,6 +218,11 @@ export interface CallbackTransition {
 export interface WorldTransaction {
   readonly primarySequence: number;
   readonly virtualTimeUs: VirtualTime;
+  /** Roll back only this synchronous block's SQL changes and buffered evidence on failure. */
+  withSavepoint<T>(execute: () => T): T;
+  /** Controller-owned usage, separate from Tool-readable state. */
+  toolOverrideMatchCount(packageId: PackageId, overrideId: StableId): number;
+  consumeToolOverride(packageId: PackageId, overrideId: StableId): number;
   getActor(bindingId: ActorBindingId): StoredActor | null;
   getState(packageId: PackageId, namespace: StableId, rowId: string): StoredStateRecord | null;
   scanState(
@@ -281,7 +288,8 @@ export interface WorldReader {
     namespace: StableId,
     options?: StateScanOptions,
   ): readonly StoredStateRecord[];
-  latestEvidenceSequence(): number;
+  /** Omit kinds for the journal head; an empty filter returns zero. Filtering reads only indexed heads. */
+  latestEvidenceSequence(kinds?: readonly EvidenceEntry["kind"][]): number;
   readEvidence(fromSequence?: number, limit?: number): readonly EvidenceEntry[];
   listScheduledEvents(status?: ScheduledEvent["status"]): readonly ScheduledEvent[];
   listCallbackDeliveries(status?: CallbackDelivery["status"]): readonly CallbackDelivery[];

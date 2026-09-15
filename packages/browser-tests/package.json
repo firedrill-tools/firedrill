@@ -1,0 +1,56 @@
+{
+  "name": "@firedrill/browser-tests",
+  "version": "0.1.0-rc.1",
+  "description": "Optional local browser tests and reusable browser flows for Firedrill",
+  "license": "Apache-2.0",
+  "engines": {
+    "node": ">=20.19"
+  },
+  "type": "module",
+  "sideEffects": false,
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    "./contracts": {
+      "types": "./dist/contracts.d.ts",
+      "import": "./dist/contracts.js"
+    },
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
+  "firedrill": {
+    "layer": "adapter"
+  },
+  "scripts": {
+    "build": "tsx ../../tooling/package-files.mts clean && tsc -p tsconfig.build.json && tsx ../../tooling/package-files.mts finalize",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "playwright": "1.62.1",
+    "tar": "7.5.22",
+    "zod": "4.1.12"
+  },
+  "devDependencies": {
+    "typescript": "5.9.3",
+    "vitest": "4.1.11"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/firedrill-tools/firedrill.git",
+    "directory": "packages/browser-tests"
+  },
+  "homepage": "https://firedrill.tools",
+  "bugs": {
+    "url": "https://github.com/firedrill-tools/firedrill/issues"
+  }
+}

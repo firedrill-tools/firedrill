@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Mailbox · Firedrill</title>
+    <link rel="stylesheet" href="./base.css" />
+    <script type="module" src="./app.js"></script>
+  </head>
+  <body>
+    <div class="app">
+      <header class="topbar">
+        <svg class="brand-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="3"/><path d="m4 7 8 6 8-6"/></svg>
+        <h1>Mailbox</h1>
+        <span class="synthetic">Synthetic email · nothing is sent externally</span>
+        <span class="identity" id="identity">Connecting…</span>
+      </header>
+      <div id="feedback" class="feedback" role="status" aria-live="polite" hidden></div>
+      <div class="body">
+        <aside class="sidebar">
+          <button type="button" class="primary" id="compose">Compose</button>
+          <nav aria-label="Mail folders">
+            <button type="button" data-folder="inbox" aria-current="page">Inbox</button>
+            <button type="button" data-folder="draft">Drafts</button>
+            <button type="button" data-folder="sent">Sent</button>
+            <button type="button" data-folder="archive">Archive</button>
+          </nav>
+          <p class="help">This app and your agent use the same local mailbox.</p>
+        </aside>
+        <main class="workspace">
+          <section id="listing" class="workspace" aria-labelledby="folder-title">
+            <div class="toolbar"><h2 id="folder-title" class="grow">Inbox</h2><button type="button" id="refresh">Refresh</button></div>
+            <div class="content"><div id="messages" class="list"></div></div>
+            <nav id="pagination" class="pager" aria-label="Message pages"></nav>
+          </section>
+          <section id="reading" class="workspace" aria-labelledby="subject" hidden>
+            <div class="toolbar"><button type="button" id="back">Back to messages</button><span class="grow"></span><button type="button" id="reply">Reply</button><button type="button" class="danger" id="delete">Delete</button></div>
+            <div class="content"><article class="document"><h2 id="subject">Message</h2><div id="headers" class="metadata"></div><p id="message-body"></p><button type="button" id="edit-draft" hidden>Edit draft</button></article></div>
+          </section>
+          <section id="composing" class="workspace" aria-labelledby="compose-title" hidden>
+            <div class="toolbar"><h2 id="compose-title" class="grow">New message</h2><button type="button" id="close-compose">Close</button></div>
+            <div class="content">
+              <form id="compose-form" class="form">
+                <div class="form-row"><label>From<input id="from" type="email" required maxlength="254" placeholder="you@example.test" /></label><label>To<input id="to" required maxlength="5118" placeholder="recipient@example.test" /></label></div>
+                <label>Subject<input id="subject-input" maxlength="512" /></label>
+                <label>Message<textarea id="body-input" maxlength="16384" rows="12"></textarea></label>
+                <div class="actions"><button type="submit" class="primary" id="send">Send message</button><button type="button" id="save">Save draft</button></div>
+              </form>
+            </div>
+          </section>
+        </main>
+      </div>
+    </div>
+    <dialog id="confirmation" aria-labelledby="confirmation-title" aria-describedby="confirmation-description">
+      <h2 id="confirmation-title">Confirm action</h2><p id="confirmation-description"></p>
+      <form method="dialog" class="actions"><button type="submit" value="cancel" autofocus>Cancel</button><button type="submit" value="confirm" class="danger" id="confirm-action">Delete</button></form>
+    </dialog>
+  </body>
+</html>

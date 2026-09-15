@@ -486,7 +486,7 @@ export async function invokeWireRoute(input: {
   readonly match: MatchedWireRoute;
   readonly request: IncomingMessage;
   readonly url: URL;
-  readonly client: BoundWorldClient;
+  readonly client: Pick<BoundWorldClient, "invoke">;
 }): Promise<{
   readonly status: number;
   readonly headers: Readonly<Record<string, string>>;

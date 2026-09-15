@@ -1,0 +1,26 @@
+.fd-pagination {
+  display: flex;
+  flex: none;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 10px 0;
+  color: var(--text-secondary);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+.fd-pagination > span {
+  white-space: nowrap;
+}
+
+.fd-pagination > div {
+  display: flex;
+  gap: 4px;
+}
+
+.fd-pagination--rail {
+  padding: 10px 12px;
+  border-top: 1px solid var(--border);
+}

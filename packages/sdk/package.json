@@ -14,6 +14,10 @@
     ".": {
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js"
+    },
+    "./testing": {
+      "types": "./dist/testing.d.ts",
+      "import": "./dist/testing.js"
     }
   },
   "files": [
@@ -35,6 +39,9 @@
     "@firedrill/compiler": "workspace:*",
     "@firedrill/contracts": "workspace:*",
     "@firedrill/drills": "workspace:*",
+    "@firedrill/protocol-cli": "workspace:*",
+    "@firedrill/protocol-http": "workspace:*",
+    "@firedrill/protocol-mcp": "workspace:*",
     "@firedrill/reporters": "workspace:*",
     "@firedrill/world-build": "workspace:*",
     "@firedrill/world-kernel": "workspace:*",
@@ -42,8 +49,9 @@
     "@firedrill/world-store-sqlite": "workspace:*"
   },
   "devDependencies": {
+    "@modelcontextprotocol/client": "2.0.0",
     "typescript": "5.9.3",
-    "vitest": "3.2.7"
+    "vitest": "4.1.11"
   },
   "repository": {
     "type": "git",

@@ -1,4 +1,14 @@
-import { AlertTriangle, Check, ChevronDown, CircleAlert, Info, LoaderCircle, Search, X } from "lucide-react";
+import {
+  AlertTriangle,
+  Check,
+  ChevronDown,
+  ChevronRight,
+  CircleAlert,
+  Info,
+  LoaderCircle,
+  Search,
+  X,
+} from "lucide-react";
 import type { ButtonHTMLAttributes, InputHTMLAttributes, ReactNode } from "react";
 import { useEffect, useRef } from "react";
 
@@ -9,7 +19,7 @@ export function Button({
   children,
   ...props
 }: ButtonHTMLAttributes<HTMLButtonElement> & {
-  readonly variant?: "primary" | "secondary" | "quiet" | "danger";
+  readonly variant?: "primary" | "secondary" | "quiet" | "link" | "danger";
   readonly size?: "default" | "compact";
 }) {
   return (
@@ -19,6 +29,16 @@ export function Button({
       {...props}
     >
       {children}
+    </button>
+  );
+}
+
+/** A selectable list row. The trailing cue distinguishes it from a static record. */
+export function RowButton({ className = "", children, ...props }: ButtonHTMLAttributes<HTMLButtonElement>) {
+  return (
+    <button type={props.type ?? "button"} className={`fd-row-button ${className}`.trim()} {...props}>
+      {children}
+      <ChevronRight className="fd-row-button__chevron" size={15} aria-hidden="true" />
     </button>
   );
 }

@@ -1,5 +1,6 @@
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
+import type { Readable, Writable } from "node:stream";
 import type { CompileWorldResult } from "@firedrill/compiler";
 import { compileWorld, formatWorldSources } from "@firedrill/compiler";
 import type { Diagnostic } from "@firedrill/contracts";
@@ -23,9 +24,16 @@ import {
   verifyReport,
 } from "@firedrill/sdk";
 import { loadWorldBuild } from "@firedrill/world-build";
+import { executeAgentCommand } from "./agent-command.js";
+import { executeBrowserCommand } from "./browser-command.js";
 import { executeCloudCommand } from "./cloud-command.js";
-import type { InitInspection, InitializedProject, InitPath } from "./init-project.js";
-import { FiredrillInitError, initProject } from "./init-project.js";
+import { executeDataCommand } from "./data-command.js";
+import { executeInitCommand, type InitCommandInput } from "./init-command.js";
+import type { InitPath } from "./init-project.js";
+import { executeMcpCommand } from "./mcp-command.js";
+import { executeServeCommand } from "./serve-command.js";
+import { executeToolDistributionCommand } from "./tool-distribution-command.js";
+import { addToolPackage, createTool, FiredrillToolSetupError } from "./tool-setup.js";
 import { watchFiles } from "./watch-files.js";
 import { executeWorldCommand } from "./world-command.js";
 
@@ -37,6 +45,8 @@ export interface CliIo {
   readonly cwd: string;
   readonly stdout: CliWriter;
   readonly stderr: CliWriter;
+  /** Explicit protocol streams when embedding the standalone MCP command. */
+  readonly stdio?: { readonly input: Readable; readonly output: Writable };
   /** Defaults to process.env. Injectable so embedding test runners do not mutate global state. */
   readonly environment?: Readonly<Record<string, string | undefined>>;
   readonly signal?: AbortSignal;
@@ -59,18 +69,34 @@ interface ParsedArguments {
     | "plan"
     | "report"
     | "run"
+    | "serve"
     | "tool"
     | "validate"
     | "world";
   readonly reportCommand?: "verify";
   readonly reportPath?: string;
-  readonly toolCommand?: "contribute" | "inspect" | "test" | "validate";
+  readonly toolCommand?:
+    | "add"
+    | "contribute"
+    | "create"
+    | "inspect"
+    | "list"
+    | "search"
+    | "test"
+    | "validate";
+  readonly toolTemplate?: "stateful" | "stateless";
+  readonly toolPackage?: boolean;
+  readonly toolName?: string;
+  readonly toolIndex?: string;
+  readonly toolLimit?: number;
+  readonly toolOffset?: number;
   readonly worldCommand?: "call" | "tools";
   readonly toolId?: string;
   readonly worldToolId?: string;
   readonly operationId?: string;
   readonly operationInput?: string;
   readonly idempotencyKey?: string;
+  readonly agentWorkflow?: "environment" | "drill";
   readonly agentPrompt?: string;
   readonly agentModel?: string;
   readonly agentEffort?: "low" | "medium" | "high" | "xhigh" | "max";
@@ -86,6 +112,10 @@ interface ParsedArguments {
   readonly shard?: { readonly index: number; readonly total: number };
   readonly root: string;
   readonly inspectorPort?: number;
+  readonly scenarioId?: string;
+  readonly actorId?: string;
+  readonly mcpPort?: number;
+  readonly cliPort?: number;
   readonly noOpen?: boolean;
   readonly reportDirectory?: string;
   readonly callbackReceiverOrigins?: Readonly<Record<string, string>>;
@@ -98,6 +128,13 @@ interface ParsedArguments {
   readonly concurrency?: number;
   readonly watch: boolean;
   readonly initPath?: InitPath;
+  readonly initTool?: readonly string[];
+  readonly initCustom?: string;
+  readonly initSearch?: string;
+  readonly initAuthoring?: NonNullable<InitCommandInput["initAuthoring"]>;
+  readonly initInstall?: boolean;
+  readonly initAllowAgent?: boolean;
+  readonly initStart?: boolean;
   readonly json: boolean;
   readonly check: boolean;
   readonly acceptApache2?: boolean;
@@ -111,8 +148,11 @@ Firedrill starts a fresh synthetic world for each trial, connects your existing
 agent through its declared target, then verifies state and tool-call consequences.
 
 Usage:
+  firedrill browser <run|verify> [options]  (optional browser tests)
+  firedrill data <preview|save> [options]  (review selected data before importing)
+  firedrill mcp [--allow-execution] [--root <path>]  (coding-agent control over stdio)
   firedrill cloud <command> [options]  (optional destination extension)
-  firedrill agent [--prompt <task>] [--model <model>] [--effort <level>] [--max-turns <count>] [--max-budget-usd <amount>] [--timeout-ms <milliseconds>] [--json] [--root <path>]
+  firedrill agent [--workflow <environment|drill>] [--prompt <task>] [--model <model>] [--effort <level>] [--max-turns <count>] [--max-budget-usd <amount>] [--timeout-ms <milliseconds>] [--json] [--root <path>]
   firedrill [run] [drill-id] [--suite <id>] [--tag <tag>] [--filter <text>] [--shard <index>/<total>] [--trials <count>] [--retries <count>] [--concurrency <count>] [--seed <seed>] [--build-hash <hash>] [--report-dir <path>] [--callback-receiver <id>=<origin>] [--callback-secret-env <id>=<variable>] [--watch] [--json] [--root <path>]
   firedrill validate [--json] [--root <path>]
   firedrill plan [--json] [--root <path>]
@@ -120,8 +160,13 @@ Usage:
   firedrill format [--check] [--json] [--root <path>]
   firedrill compare <baseline-report> <candidate-report> [--json]
   firedrill report verify <report-directory> [--json]
-  firedrill init [--path <firedrill-agent|coding-agent|template|manual>] [--json] [--root <path>]
+  firedrill init [--tool <source-or-catalog-id> | --custom <tool-id> | --search <text> | --path <path>] [--index <path-or-url>] [--install] [--authoring <manual|firedrill-agent|coding-agent>] [--allow-agent] [--start] [--no-open] [--json] [--root <path>]
   firedrill inspect [--port <port>] [--no-open] [--json] [--root <path>]
+  firedrill serve [--scenario <id>] [--actor <id>] [--seed <seed>] [--port <port>] [--mcp-port <port>] [--cli-port <port>] [--no-open] [--json] [--root <path>]
+  firedrill tool list [--index <path-or-url>] [--limit <1-100>] [--offset <count>] [--json]
+  firedrill tool search <text> [--index <path-or-url>] [--limit <1-100>] [--offset <count>] [--json]
+  firedrill tool create <tool-id> [--template <stateful|stateless>] [--package] [--name <npm-name>] [--json] [--root <path>]
+  firedrill tool add <source> [--install] [--json] [--root <path>]
   firedrill tool inspect <tool-id> [--json] [--root <path>]
   firedrill tool validate <tool-id> [--json] [--root <path>]
   firedrill tool test <tool-id> [--suite <id>] [--seed <seed>] [--callback-receiver <id>=<origin>] [--callback-secret-env <id>=<variable>] [--json] [--root <path>]
@@ -132,6 +177,7 @@ Usage:
 Commands:
   agent     Author or repair Firedrill source with the optional local Firedrill Agent
   run       Run every drill, or one named drill; this is the default command
+  serve     Start a local Tool backend without an agent, target, or drill
   validate  Parse and validate source without writing a build
   plan      Show the exact semantic build that source would produce
   build     Materialize and verify an immutable executable world build
@@ -166,9 +212,17 @@ Tool contribution options:
 
 Init options:
   --path <path>         Use firedrill-agent, coding-agent, template, or manual
+  --tool <source|id>    Select a reusable Tool; repeat to compose several
+  --custom <tool-id>    Create your own stateful Tool; no key required
+  --search <text>       Search Tool metadata without writing or installing
+  --index <path-or-url> Use an independently maintained index for init/tool list/search
+  --install             Authorize pinned dependency installation, scripts disabled
+  --authoring <mode>    Optional manual, firedrill-agent, or coding-agent help
+  --allow-agent         Authorize the optional Anthropic-backed authoring session
+  --start               Start selected Tools and their inspector in the foreground
 
 Bare init is guided only in an interactive terminal. JSON, CI, and piped use is
-read-only unless --path explicitly selects a setup.
+read-only unless --tool, --custom, or --path explicitly selects a setup.
 `;
 
 const COMMAND_HELP: Readonly<
@@ -177,7 +231,7 @@ const COMMAND_HELP: Readonly<
   agent: `Author or repair this repository with the optional Firedrill Agent
 
 Usage:
-  firedrill agent [--prompt <task>] [--model <model>] [--effort <level>]
+  firedrill agent [--workflow <environment|drill>] [--prompt <task>] [--model <model>] [--effort <level>]
                   [--max-turns <count>] [--max-budget-usd <amount>]
                   [--timeout-ms <milliseconds>]
                   [--json] [--root <path>]
@@ -249,14 +303,32 @@ Firedrill verifies both bundles, reports input compatibility first, then shows
 factual verdict, state, trajectory, Tool-call, and assertion deltas. It does not
 infer that one run is better when inputs are incompatible.
 `,
-  init: `Choose a clear starting path for this repository
+  init: `Choose a clear starting path for this repository's local fake tools
 
 Usage:
-  firedrill init [--path <firedrill-agent|coding-agent|template|manual>] [--json] [--root <path>]
+  firedrill init [--tool <source-or-catalog-id> | --custom <tool-id> | --search <text>]
+                [--index <path-or-url>] [--install] [--authoring <manual|firedrill-agent|coding-agent>]
+                [--allow-agent] [--start] [--no-open] [--json] [--root <path>]
+  firedrill init --path <firedrill-agent|coding-agent|template|manual> [--allow-agent] [--start] [--json]
 
-In an interactive terminal, bare init confirms detected context, asks for the
-first outcome, and lets you choose one of four paths. In JSON, CI, or another
-non-interactive caller, bare init remains a read-only inspection:
+Interactive init lets you pick/search a ready-made Tool or create your own,
+optionally customize it, and start local HTTP, MCP, CLI and inspector interfaces.
+No account, model key, agent target, scenario, or drill is needed. Catalog entries
+show only their declared operations and limitations, not full-service emulation.
+Missing packages require installation consent (--install without a TTY).
+Installation pins the resolved package and disables lifecycle scripts; unpublished
+packages may require a separately supplied local package archive.
+
+Bare JSON, CI, and piped init remains read-only. --search is always read-only.
+--tool selects a package, catalog id, Git source, or local package directory.
+--index explicitly reads an independently maintained local/HTTPS Tool index.
+--custom creates a stateful get/set Tool scaffold.
+--start explicitly runs selected Tool code until Ctrl+C.
+The Agent is optional: --authoring firedrill-agent --allow-agent uses your shell's
+ANTHROPIC_API_KEY. Never put key text in command arguments. Missing keys leave a
+resumable setup. --authoring coding-agent installs the canonical skill and brief.
+
+The existing --path alternatives remain available:
   firedrill-agent Install the skill and brief for Firedrill's optional local agent
   coding-agent  Install the canonical skill and a bounded repository brief
   template      Install a complete neutral world, Tool, target, and passing drill
@@ -278,6 +350,24 @@ External targets remain owned by the caller. Start @firedrill/inspector from the
 process that supplies the agent callback when you need to run them from the UI.
 Use --no-open for terminal-only launch. JSON mode never opens a browser.
 `,
+  serve: `Start a standalone local Tool backend
+
+Usage:
+  firedrill serve [--scenario <id>] [--actor <id>] [--seed <seed>]
+                 [--port <port>] [--mcp-port <port>] [--cli-port <port>]
+                 [--no-open] [--json] [--root <path>]
+
+Uses the repository world baseline, or a named scenario, without executing an
+agent or any tests. Starts HTTP, MCP, and Firedrill CLI interfaces on loopback.
+Opens the inspector on the same running world; --no-open skips browser launch.
+Ports default to 0 (choose available ports); --port sets the HTTP interface.
+The single available actor is selected automatically; use --actor when needed.
+
+Connection environment values include scoped local tokens: keep them private.
+The command stays in the foreground until Ctrl+C. It does not modify .env files.
+JSON mode emits a ready event with actual endpoints, then a stopped or failed
+event on shutdown. Each launch creates a fresh retained world under .firedrill/.
+`,
 };
 
 const REPORT_HELP = `Verify a portable local Firedrill report bundle
@@ -291,9 +381,13 @@ It detects corruption and inconsistency; an unsigned local bundle does not prove
 who authored it.
 `;
 
-const TOOL_HELP = `Inspect and prove selected Tool behavior
+const TOOL_HELP = `Create, select, inspect, and prove Tool behavior
 
 Usage:
+  firedrill tool list [--index <path-or-url>] [--limit <1-100>] [--offset <count>] [--json]
+  firedrill tool search <text> [--index <path-or-url>] [--limit <1-100>] [--offset <count>] [--json]
+  firedrill tool create <tool-id> [--template <stateful|stateless>] [--package] [--name <npm-name>] [--json] [--root <path>]
+  firedrill tool add <source> [--install] [--json] [--root <path>]
   firedrill tool inspect <tool-id> [--json] [--root <path>]
   firedrill tool validate <tool-id> [--json] [--root <path>]
   firedrill tool test <tool-id> [--suite <id>] [--seed <seed>]
@@ -301,6 +395,11 @@ Usage:
             [--json] [--root <path>]
   firedrill tool contribute <tool-id> --accept-apache-2.0 [--output <path>]
 
+create writes editable behavior and a declaration; it defaults to stateful.
+--package scaffolds a distributable Tool with starter state and conformance drills.
+add selects an installed package; --install explicitly acquires an npm, Git, or
+local source first. No Tool behavior runs. Existing actor grants stay unchanged.
+search can read anyone's index; indexing and contributing are never required.
 A selected Tool can come from this repository or from an installed package named
 once in firedrill.json under toolPackages. inspect never executes behavior.
 validate and test execute the selected module locally with your authority. test
@@ -316,12 +415,65 @@ Usage:
   firedrill world call <tool-id> <operation-id> [--input <json-object>]
             [--idempotency-key <key>] [--json]
 
-This command is available inside an agent target whose bindings include cli.
+Use the environment printed by firedrill serve, or run this command inside an
+agent target whose bindings include cli.
 It discovers or invokes the same typed Tool operations used by HTTP, MCP, and
 direct bindings. It does not create a world or run a drill by itself.
 `;
 
 const TOOL_COMMAND_HELP: Readonly<Record<Exclude<ParsedArguments["toolCommand"], undefined>, string>> = {
+  list: `List community and independently indexed Tool packages
+
+Usage:
+  firedrill tool list [--index <path-or-url>] [--limit <1-100>] [--offset <count>]
+            [--json] [--root <path>]
+
+Reads the community catalog bundled with this CLI by default. --index explicitly
+reads another local or HTTPS catalog. Listing never installs or runs Tool code.
+Use tool search when you know a service, capability, or operation you need.
+`,
+  search: `Find independently maintained Tool packages
+
+Usage:
+  firedrill tool search <text> [--index <path-or-url>] [--limit <1-100>] [--offset <count>]
+            [--json] [--root <path>]
+
+Reads bundled metadata by default. --index explicitly reads a local or HTTPS
+index maintained by anyone. No package installation or behavior execution occurs.
+Publisher metadata is not a security endorsement or a service-parity certificate.
+Install a selected source with firedrill tool add <source> --install.
+`,
+  create: `Create an editable repository Tool
+
+Usage:
+  firedrill tool create <tool-id> [--template <stateful|stateless>] [--package]
+            [--name <npm-package-name>] [--json] [--root <path>]
+
+Creates an actual local behavior module and its Tool declaration without
+executing behavior. --template defaults to stateful; stateless provides a plain
+function. Existing files are never overwritten. A missing Firedrill project is
+initialized with a minimal backend world, not an agent target or test drill.
+Existing actor permissions are not expanded; follow the printed grant guidance.
+Use firedrill serve when ready to connect a client to the local backend.
+--package creates a standalone distributable package in a new or empty --root,
+including starter state and conformance drills. --name sets its npm name.
+You can maintain and distribute it from your own repository; contribution to
+Firedrill is optional. No publication or installation happens during creation.
+`,
+  add: `Select or explicitly install a Tool package
+
+Usage:
+  firedrill tool add <source> [--install] [--json] [--root <path>]
+
+Reads the installed package's Tool metadata and adds its exact package name to
+firedrill.json under toolPackages. Without --install, the package must already be
+installed; no download occurs. With --install, accept npm name[@version], a local
+package directory/tarball, github:owner/repo#ref::subdirectory, or
+git+https://host/repo.git#ref::subdirectory. Git is pinned to its resolved commit.
+Lifecycle scripts are disabled; Tool behavior is not executed by this command.
+Commit the dependency manifest/lock and .firedrill-tools/ source archives if created.
+Existing actor permissions stay intact. Review third-party code before execution.
+`,
   inspect: `Inspect a Tool contract and exact selected source closure without executing its module
 
 Usage:
@@ -383,6 +535,7 @@ function parseArguments(arguments_: readonly string[], cwd: string): ParsedArgum
         "plan",
         "report",
         "run",
+        "serve",
         "tool",
         "validate",
         "world",
@@ -391,7 +544,9 @@ function parseArguments(arguments_: readonly string[], cwd: string): ParsedArgum
     const toolCommand =
       command === "tool"
         ? arguments_.find((argument): argument is NonNullable<ParsedArguments["toolCommand"]> =>
-            ["contribute", "inspect", "test", "validate"].includes(argument),
+            ["add", "contribute", "create", "inspect", "list", "search", "test", "validate"].includes(
+              argument,
+            ),
           )
         : undefined;
     return {
@@ -421,6 +576,7 @@ function parseArguments(arguments_: readonly string[], cwd: string): ParsedArgum
   let operationId: string | undefined;
   let operationInput: string | undefined;
   let idempotencyKey: string | undefined;
+  let agentWorkflow: ParsedArguments["agentWorkflow"];
   let agentPrompt: string | undefined;
   let agentModel: string | undefined;
   let agentEffort: ParsedArguments["agentEffort"];
@@ -445,7 +601,24 @@ function parseArguments(arguments_: readonly string[], cwd: string): ParsedArgum
   let concurrency: number | undefined;
   let watch = false;
   let initPath: InitPath | undefined;
+  const initTools: string[] = [];
+  let initCustom: string | undefined;
+  let initSearch: string | undefined;
+  let initAuthoring: ParsedArguments["initAuthoring"];
+  let initInstall = false;
+  let initAllowAgent = false;
+  let initStart = false;
   let inspectorPort: number | undefined;
+  let scenarioId: string | undefined;
+  let actorId: string | undefined;
+  let mcpPort: number | undefined;
+  let cliPort: number | undefined;
+  let toolTemplate: ParsedArguments["toolTemplate"];
+  let toolPackage = false;
+  let toolName: string | undefined;
+  let toolIndex: string | undefined;
+  let toolLimit: number | undefined;
+  let toolOffset: number | undefined;
   let noOpen = false;
   for (let index = 0; index < arguments_.length; index += 1) {
     const argument = arguments_[index];
@@ -479,6 +652,7 @@ function parseArguments(arguments_: readonly string[], cwd: string): ParsedArgum
       inspectorPort = Number(value);
       if (
         value === undefined ||
+        !/^\d+$/.test(value) ||
         !Number.isSafeInteger(inspectorPort) ||
         inspectorPort < 0 ||
         inspectorPort > 65_535
@@ -493,6 +667,82 @@ function parseArguments(arguments_: readonly string[], cwd: string): ParsedArgum
           error: "--port must be an integer from 0 through 65535",
         };
       }
+      index += 1;
+      continue;
+    }
+    if (argument === "--mcp-port" || argument === "--cli-port") {
+      const value = arguments_[index + 1];
+      const port = Number(value);
+      if (
+        value === undefined ||
+        !/^\d+$/.test(value) ||
+        !Number.isSafeInteger(port) ||
+        port < 0 ||
+        port > 65_535
+      )
+        return {
+          root,
+          watch,
+          json,
+          check,
+          help,
+          error: `${argument} must be an integer from 0 through 65535`,
+        };
+      if (argument === "--mcp-port") mcpPort = port;
+      else cliPort = port;
+      index += 1;
+      continue;
+    }
+    if (argument === "--scenario" || argument === "--actor") {
+      const value = arguments_[index + 1];
+      if (!StableIdSchema.safeParse(value).success)
+        return { root, watch, json, check, help, error: `${argument} requires a valid Firedrill id` };
+      if (argument === "--scenario") scenarioId = value;
+      else actorId = value;
+      index += 1;
+      continue;
+    }
+    if (argument === "--package") {
+      toolPackage = true;
+      continue;
+    }
+    if (argument === "--name" || argument === "--index") {
+      const value = arguments_[index + 1];
+      if (value === undefined || value.startsWith("-") || value.trim().length === 0 || value.length > 2048)
+        return { root, watch, json, check, help, error: `${argument} requires a non-empty value` };
+      if (argument === "--name") toolName = value;
+      else toolIndex = value;
+      index += 1;
+      continue;
+    }
+    if (argument === "--limit" || argument === "--offset") {
+      const value = arguments_[index + 1];
+      const number = Number(value);
+      if (
+        value === undefined ||
+        !/^\d+$/.test(value) ||
+        !Number.isSafeInteger(number) ||
+        number < (argument === "--limit" ? 1 : 0) ||
+        (argument === "--limit" && number > 100)
+      )
+        return {
+          root,
+          watch,
+          json,
+          check,
+          help,
+          error: `${argument} must be ${argument === "--limit" ? "1 through 100" : "a non-negative integer"}`,
+        };
+      if (argument === "--limit") toolLimit = number;
+      else toolOffset = number;
+      index += 1;
+      continue;
+    }
+    if (argument === "--template") {
+      const value = arguments_[index + 1];
+      if (value !== "stateful" && value !== "stateless")
+        return { root, watch, json, check, help, error: "--template must be stateful or stateless" };
+      toolTemplate = value;
       index += 1;
       continue;
     }
@@ -832,6 +1082,57 @@ function parseArguments(arguments_: readonly string[], cwd: string): ParsedArgum
       index += 1;
       continue;
     }
+    if (argument === "--install" || argument === "--allow-agent" || argument === "--start") {
+      if (argument === "--install") initInstall = true;
+      if (argument === "--allow-agent") initAllowAgent = true;
+      if (argument === "--start") initStart = true;
+      continue;
+    }
+    if (argument === "--tool" || argument === "--custom" || argument === "--search") {
+      const value = arguments_[index + 1];
+      if (
+        value === undefined ||
+        value.startsWith("-") ||
+        value.trim().length === 0 ||
+        value.length > (argument === "--tool" ? 4096 : 500)
+      )
+        return {
+          root,
+          watch,
+          json,
+          check,
+          help,
+          error: `${argument} requires 1 through ${argument === "--tool" ? 4096 : 500} characters`,
+        };
+      if (argument === "--tool") initTools.push(value);
+      if (argument === "--custom") initCustom = value;
+      if (argument === "--search") initSearch = value;
+      index += 1;
+      continue;
+    }
+    if (argument === "--authoring") {
+      const value = arguments_[index + 1];
+      if (value !== "manual" && value !== "firedrill-agent" && value !== "coding-agent")
+        return {
+          root,
+          watch,
+          json,
+          check,
+          help,
+          error: "--authoring must be manual, firedrill-agent, or coding-agent",
+        };
+      initAuthoring = value;
+      index += 1;
+      continue;
+    }
+    if (argument === "--workflow") {
+      const value = arguments_[index + 1];
+      if (value !== "environment" && value !== "drill")
+        return { root, watch, json, check, help, error: "--workflow must be environment or drill" };
+      agentWorkflow = value;
+      index += 1;
+      continue;
+    }
     if (argument === "--path") {
       const value = arguments_[index + 1];
       if (
@@ -860,8 +1161,12 @@ function parseArguments(arguments_: readonly string[], cwd: string): ParsedArgum
     if (command === "tool") {
       if (toolCommand === undefined) {
         if (
+          argument !== "add" &&
           argument !== "contribute" &&
+          argument !== "create" &&
           argument !== "inspect" &&
+          argument !== "list" &&
+          argument !== "search" &&
           argument !== "test" &&
           argument !== "validate"
         ) {
@@ -871,7 +1176,7 @@ function parseArguments(arguments_: readonly string[], cwd: string): ParsedArgum
             json,
             check,
             help,
-            error: `unknown tool command ${argument}; use inspect, validate, test, or contribute`,
+            error: `unknown tool command ${argument}; use list, search, create, add, inspect, validate, test, or contribute`,
           };
         }
         toolCommand = argument;
@@ -940,6 +1245,7 @@ function parseArguments(arguments_: readonly string[], cwd: string): ParsedArgum
       argument === "plan" ||
       argument === "report" ||
       argument === "run" ||
+      argument === "serve" ||
       argument === "tool" ||
       argument === "validate" ||
       argument === "world"
@@ -961,6 +1267,7 @@ function parseArguments(arguments_: readonly string[], cwd: string): ParsedArgum
     ...(operationId === undefined ? {} : { operationId }),
     ...(operationInput === undefined ? {} : { operationInput }),
     ...(idempotencyKey === undefined ? {} : { idempotencyKey }),
+    ...(agentWorkflow === undefined ? {} : { agentWorkflow }),
     ...(agentPrompt === undefined ? {} : { agentPrompt }),
     ...(agentModel === undefined ? {} : { agentModel }),
     ...(agentEffort === undefined ? {} : { agentEffort }),
@@ -976,6 +1283,16 @@ function parseArguments(arguments_: readonly string[], cwd: string): ParsedArgum
     ...(shard === undefined ? {} : { shard }),
     root,
     ...(inspectorPort === undefined ? {} : { inspectorPort }),
+    ...(scenarioId === undefined ? {} : { scenarioId }),
+    ...(actorId === undefined ? {} : { actorId }),
+    ...(mcpPort === undefined ? {} : { mcpPort }),
+    ...(cliPort === undefined ? {} : { cliPort }),
+    ...(toolTemplate === undefined ? {} : { toolTemplate }),
+    ...(toolPackage ? { toolPackage } : {}),
+    ...(toolName === undefined ? {} : { toolName }),
+    ...(toolIndex === undefined ? {} : { toolIndex }),
+    ...(toolLimit === undefined ? {} : { toolLimit }),
+    ...(toolOffset === undefined ? {} : { toolOffset }),
     noOpen,
     ...(reportDirectory === undefined ? {} : { reportDirectory }),
     ...(Object.keys(callbackReceiverOrigins).length === 0 ? {} : { callbackReceiverOrigins }),
@@ -988,6 +1305,13 @@ function parseArguments(arguments_: readonly string[], cwd: string): ParsedArgum
     ...(concurrency === undefined ? {} : { concurrency }),
     watch,
     ...(initPath === undefined ? {} : { initPath }),
+    ...(initTools.length === 0 ? {} : { initTool: initTools }),
+    ...(initCustom === undefined ? {} : { initCustom }),
+    ...(initSearch === undefined ? {} : { initSearch }),
+    ...(initAuthoring === undefined ? {} : { initAuthoring }),
+    ...(initInstall ? { initInstall } : {}),
+    ...(initAllowAgent ? { initAllowAgent } : {}),
+    ...(initStart ? { initStart } : {}),
     json,
     check,
     acceptApache2,
@@ -1314,6 +1638,7 @@ function summarizedConformance(result: ToolConformanceResult) {
     status: result.status,
     tool: result.tool,
     suiteId: result.suiteId,
+    suiteSource: result.suiteSource,
     deterministic: result.deterministic,
     coverage: result.coverage,
     violations: result.violations,
@@ -1344,6 +1669,9 @@ function summarizedConformance(result: ToolConformanceResult) {
 
 function writeToolConformance(io: CliIo, result: ToolConformanceResult): void {
   io.stdout.write(`Tool ${result.tool.toolId} conformance ${result.status} — suite ${result.suiteId}\n`);
+  io.stdout.write(
+    `Suite source: ${result.suiteSource === "package" ? "installed package" : "consumer repository"}\n`,
+  );
   io.stdout.write(`Reproducible with identical seed: ${result.deterministic ? "yes" : "no"}\n`);
   const covered = result.coverage.operations.filter(
     (operation) => operation.attempts > 0 && operation.statuses.ok > 0,
@@ -1364,14 +1692,50 @@ function writeToolConformance(io: CliIo, result: ToolConformanceResult): void {
 }
 
 async function toolCommand(parsed: ParsedArguments, io: CliIo): Promise<number> {
+  if (parsed.toolCommand === "list" && parsed.toolId !== undefined) {
+    return writeUsageFailure(parsed, io, "tool list does not accept search text; use tool search <text>");
+  }
+  if (parsed.toolCommand === "search" && parsed.toolId === undefined) {
+    return writeUsageFailure(parsed, io, "tool search requires text; use tool list to browse every Tool");
+  }
+  if (
+    parsed.toolCommand === "list" ||
+    parsed.toolCommand === "search" ||
+    (parsed.toolCommand === "create" && parsed.toolPackage) ||
+    (parsed.toolCommand === "add" && parsed.initInstall)
+  )
+    return executeToolDistributionCommand(parsed, io);
   if (parsed.toolCommand === undefined || parsed.toolId === undefined) {
     return writeUsageFailure(
       parsed,
       io,
-      "tool requires inspect, validate, test, or contribute followed by <tool-id>",
+      "tool requires list, search, create, inspect, validate, test, or contribute, or add <installed-package>",
     );
   }
   try {
+    if (parsed.toolCommand === "create" || parsed.toolCommand === "add") {
+      const setup =
+        parsed.toolCommand === "create"
+          ? createTool({
+              root: parsed.root,
+              id: parsed.toolId,
+              ...(parsed.toolTemplate === undefined ? {} : { template: parsed.toolTemplate }),
+            })
+          : addToolPackage({ root: parsed.root, packageName: parsed.toolId });
+      if (parsed.json)
+        writeJson(io, { schemaVersion: 1, command: `tool.${parsed.toolCommand}`, status: "success", setup });
+      else {
+        io.stdout.write(
+          `Tool ${setup.packageId} ${parsed.toolCommand === "create" ? "created" : "selected"}\n`,
+        );
+        for (const path of setup.created) io.stdout.write(`Created ${path}\n`);
+        for (const path of setup.updated) io.stdout.write(`Updated ${path}\n`);
+        for (const path of setup.unchanged) io.stdout.write(`Unchanged ${path}\n`);
+        for (const guidance of setup.grantGuidance) io.stdout.write(`${guidance}\n`);
+        io.stdout.write("No agent or tests were executed. Start the backend with firedrill serve.\n");
+      }
+      return 0;
+    }
     if (parsed.toolCommand === "inspect") {
       const result = await inspectTool({ root: parsed.root, toolId: parsed.toolId });
       if (parsed.json) {
@@ -1437,6 +1801,22 @@ async function toolCommand(parsed: ParsedArguments, io: CliIo): Promise<number> 
     }
     return result.status === "passed" ? 0 : 1;
   } catch (error) {
+    if (error instanceof FiredrillToolSetupError) {
+      if (parsed.json)
+        writeJson(io, {
+          schemaVersion: 1,
+          command: `tool.${parsed.toolCommand}`,
+          status: "failed",
+          code: error.code,
+          message: error.message,
+          paths: error.paths,
+        });
+      else {
+        io.stderr.write(`${error.code} ${error.message}\n`);
+        for (const path of error.paths) io.stderr.write(`  ${path}\n`);
+      }
+      return error.code === "framework.TOOL_SETUP_INVALID_ARGUMENT" ? 2 : 1;
+    }
     if (!(error instanceof FiredrillProjectError)) throw error;
     if (parsed.json) {
       writeJson(io, {
@@ -1779,178 +2159,6 @@ function compareCommand(parsed: ParsedArguments, io: CliIo): number {
   }
 }
 
-function writeDetection(io: CliIo, result: InitInspection): void {
-  const detected = [
-    ...result.detection.languages,
-    ...result.detection.packageManagers,
-    ...result.detection.testRunners,
-    ...result.detection.applicationFrameworks,
-    ...result.detection.agentLibraries,
-    ...result.detection.dataSystems,
-    ...(result.detection.mcpConfiguration.length > 0 ? ["MCP configuration"] : []),
-  ];
-  io.stdout.write(
-    "Firedrill gives this agent a local synthetic world, runs drills, and verifies consequences.\n",
-  );
-  io.stdout.write(
-    `Detected: ${detected.length === 0 ? "no recognized agent seam yet" : detected.join(", ")}\n\n`,
-  );
-  for (const choice of orderedInitChoices(result)) {
-    io.stdout.write(
-      `${choice.recommended ? "Recommended" : "Option"}: ${choice.command}\n  ${choice.effect}\n`,
-    );
-  }
-}
-
-function orderedInitChoices(result: InitInspection) {
-  return [...result.choices].sort((left, right) => Number(right.recommended) - Number(left.recommended));
-}
-
-function writeInitialized(io: CliIo, result: InitializedProject): void {
-  io.stdout.write(`Initialized the ${result.path} path.\n`);
-  for (const path of result.written) io.stdout.write(`Created ${path}\n`);
-  for (const path of result.updated) io.stdout.write(`Updated ${path}\n`);
-  for (const path of result.unchanged) io.stdout.write(`Kept identical ${path}\n`);
-  for (const step of result.next) io.stdout.write(`Next: ${step}\n`);
-}
-
-async function guidedInit(parsed: ParsedArguments, io: CliIo, inspection: InitInspection): Promise<number> {
-  const ask = io.ask;
-  if (ask === undefined) return 0;
-  const contextNote = (
-    await ask("Anything the detector missed about frameworks, data systems, or agent boundaries? (optional) ")
-  )
-    .replace(/\s+/g, " ")
-    .trim();
-  const objective = (await ask("What should the first drill prove? (optional) ")).replace(/\s+/g, " ").trim();
-  if (contextNote.length > 500 || objective.length > 500) {
-    io.stderr.write("init answers must be at most 500 characters each\n");
-    return 2;
-  }
-  const choices = orderedInitChoices(inspection);
-  io.stdout.write("\nChoose a setup:\n");
-  choices.forEach((choice, index) => {
-    io.stdout.write(`  ${index + 1}. ${choice.path}${choice.recommended ? " (recommended)" : ""}\n`);
-  });
-  const answer = (await ask("Setup [1]: ")).trim();
-  const selected =
-    answer === ""
-      ? choices[0]
-      : choices.find((choice, index) => answer === String(index + 1) || answer === choice.path);
-  if (selected === undefined) {
-    io.stderr.write(
-      `Choose 1-${choices.length} or one of: ${choices.map((choice) => choice.path).join(", ")}\n`,
-    );
-    return 2;
-  }
-  const result = initProject(parsed.root, selected.path, {
-    ...(contextNote === "" ? {} : { contextNote }),
-    ...(objective === "" ? {} : { objective }),
-  });
-  if (result.status !== "initialized") throw new Error("guided init did not select a path");
-  writeInitialized(io, result);
-  if (selected.path === "firedrill-agent" && io.environment?.ANTHROPIC_API_KEY) {
-    io.stdout.write("ANTHROPIC_API_KEY detected. Start the authoring session with: firedrill agent\n");
-  }
-  return 0;
-}
-
-async function initCommand(parsed: ParsedArguments, io: CliIo): Promise<number> {
-  try {
-    const result = initProject(parsed.root, parsed.initPath);
-    if (parsed.json) writeJson(io, { command: "init", ...result });
-    else if (result.status === "inspection") {
-      writeDetection(io, result);
-      if (io.ask !== undefined) return guidedInit(parsed, io, result);
-    } else writeInitialized(io, result);
-    return 0;
-  } catch (error) {
-    if (!(error instanceof FiredrillInitError)) throw error;
-    if (parsed.json) {
-      writeJson(io, {
-        schemaVersion: 1,
-        command: "init",
-        status: "failed",
-        code: error.code,
-        message: error.message,
-        paths: error.paths,
-      });
-    } else {
-      io.stderr.write(`${error.code} ${error.message}\n`);
-      for (const path of error.paths) io.stderr.write(`  ${path}\n`);
-    }
-    return 2;
-  }
-}
-
-async function agentCommand(parsed: ParsedArguments, io: CliIo): Promise<number> {
-  let agentPackage: typeof import("@firedrill/agent");
-  try {
-    agentPackage = await import("@firedrill/agent");
-  } catch (error) {
-    const code = (error as NodeJS.ErrnoException).code;
-    const message =
-      code === "ERR_MODULE_NOT_FOUND" || code === "MODULE_NOT_FOUND"
-        ? "Install the optional authoring package beside the CLI: pnpm add -D @firedrill/agent"
-        : "The optional Firedrill Agent package could not be loaded.";
-    if (parsed.json) {
-      writeJson(io, {
-        schemaVersion: 1,
-        command: "agent",
-        status: "failed",
-        code: "agent.NOT_AVAILABLE",
-        message,
-      });
-    } else io.stderr.write(`agent.NOT_AVAILABLE ${message}\n`);
-    return 2;
-  }
-
-  let wroteText = false;
-  try {
-    const result = await agentPackage.runFiredrillAgent({
-      root: parsed.root,
-      ...(parsed.agentPrompt === undefined ? {} : { prompt: parsed.agentPrompt }),
-      ...(parsed.agentModel === undefined ? {} : { model: parsed.agentModel }),
-      ...(parsed.agentEffort === undefined ? {} : { effort: parsed.agentEffort }),
-      ...(parsed.agentMaxTurns === undefined ? {} : { maxTurns: parsed.agentMaxTurns }),
-      ...(parsed.agentMaxBudgetUsd === undefined ? {} : { maxBudgetUsd: parsed.agentMaxBudgetUsd }),
-      ...(parsed.agentTimeoutMs === undefined ? {} : { timeoutMs: parsed.agentTimeoutMs }),
-      ...(io.environment === undefined ? {} : { environment: io.environment }),
-      ...(io.signal === undefined ? {} : { signal: io.signal }),
-      ...(parsed.json
-        ? {}
-        : {
-            onEvent: (event: import("@firedrill/agent").FiredrillAgentEvent) => {
-              if (event.type === "session") {
-                io.stdout.write(`Firedrill Agent · ${event.model}\n\n`);
-              } else if (event.type === "text") {
-                wroteText = true;
-                io.stdout.write(`${event.text}${event.text.endsWith("\n") ? "" : "\n"}`);
-              } else if (event.type === "tool") {
-                io.stdout.write(`  → ${event.name.replace(/^mcp__firedrill__/, "firedrill ")}\n`);
-              } else io.stderr.write(`${event.message}\n`);
-            },
-          }),
-    });
-    if (parsed.json) writeJson(io, { command: "agent", ...result });
-    else {
-      if (!wroteText && result.result !== undefined) io.stdout.write(`${result.result}\n`);
-      io.stdout.write(
-        `\nAgent ${result.status} · ${result.turns} turn${result.turns === 1 ? "" : "s"} · $${result.estimatedCostUsd.toFixed(4)} estimated\n`,
-      );
-    }
-    return result.status === "completed" ? 0 : 1;
-  } catch (error) {
-    const known = error instanceof agentPackage.FiredrillAgentError;
-    const code = known ? error.code : "agent.EXECUTION_FAILED";
-    const message = known ? error.message : "Firedrill Agent failed before producing a result.";
-    if (parsed.json) {
-      writeJson(io, { schemaVersion: 1, command: "agent", status: "failed", code, message });
-    } else io.stderr.write(`${code} ${message}\n`);
-    return code === "agent.API_KEY_MISSING" || code === "agent.INVALID_OPTIONS" ? 2 : 1;
-  }
-}
-
 async function waitForShutdown(signal: AbortSignal | undefined): Promise<void> {
   if (signal?.aborted) return;
   await new Promise<void>((resolve) => {
@@ -2018,6 +2226,9 @@ async function inspectCommand(parsed: ParsedArguments, io: CliIo): Promise<numbe
 }
 
 export async function runCli(arguments_: readonly string[], io: CliIo): Promise<number> {
+  if (arguments_[0] === "data") return executeDataCommand(arguments_.slice(1), io);
+  if (arguments_[0] === "browser") return executeBrowserCommand(arguments_.slice(1), io);
+  if (arguments_[0] === "mcp") return executeMcpCommand(arguments_.slice(1), io);
   if (arguments_[0] === "cloud") {
     return executeCloudCommand(arguments_.slice(1), io);
   }
@@ -2061,11 +2272,15 @@ export async function runCli(arguments_: readonly string[], io: CliIo): Promise<
         "drill selection, retry, concurrency, build, report, and callback options are only valid with run",
       );
     }
-    if (command !== "run" && !toolExecution && (parsed.suite !== undefined || parsed.seed !== undefined)) {
+    if (
+      command !== "run" &&
+      !toolExecution &&
+      (parsed.suite !== undefined || (parsed.seed !== undefined && command !== "serve"))
+    ) {
       return writeUsageFailure(
         parsed,
         io,
-        "--suite and --seed are only valid with run, tool test, or tool contribute",
+        "--suite requires run, tool test, or tool contribute; --seed also supports serve",
       );
     }
     if (
@@ -2087,18 +2302,115 @@ export async function runCli(arguments_: readonly string[], io: CliIo): Promise<
         "--output and --accept-apache-2.0 are only valid with tool contribute",
       );
     }
-    if (parsed.initPath !== undefined && command !== "init") {
-      return writeUsageFailure(parsed, io, "--path is only valid with init");
+    const hasInitOptions =
+      parsed.initPath !== undefined ||
+      parsed.initTool !== undefined ||
+      parsed.initCustom !== undefined ||
+      parsed.initSearch !== undefined ||
+      parsed.initAuthoring !== undefined ||
+      (parsed.initInstall && !(command === "tool" && parsed.toolCommand === "add")) ||
+      parsed.initAllowAgent ||
+      parsed.initStart;
+    if (hasInitOptions && command !== "init")
+      return writeUsageFailure(parsed, io, "setup options are only valid with init");
+    if (
+      (parsed.toolPackage || parsed.toolName !== undefined) &&
+      !(command === "tool" && parsed.toolCommand === "create" && parsed.toolPackage)
+    )
+      return writeUsageFailure(parsed, io, "--package and --name are only valid with tool create --package");
+    if (
+      parsed.toolIndex !== undefined &&
+      !(command === "tool" && (parsed.toolCommand === "list" || parsed.toolCommand === "search")) &&
+      command !== "init"
+    )
+      return writeUsageFailure(parsed, io, "--index is only valid with tool list, tool search, or init");
+    if (
+      (parsed.toolLimit !== undefined || parsed.toolOffset !== undefined) &&
+      !(command === "tool" && (parsed.toolCommand === "list" || parsed.toolCommand === "search"))
+    )
+      return writeUsageFailure(
+        parsed,
+        io,
+        "--limit and --offset are only valid with tool list or tool search",
+      );
+    if (command === "init") {
+      if (
+        parsed.toolIndex !== undefined &&
+        (parsed.initPath !== undefined || parsed.initCustom !== undefined)
+      )
+        return writeUsageFailure(
+          parsed,
+          io,
+          "--index applies to Tool selection or search, not --path or --custom",
+        );
+      if (
+        [parsed.initPath, parsed.initTool, parsed.initCustom, parsed.initSearch].filter(
+          (value) => value !== undefined,
+        ).length > 1
+      )
+        return writeUsageFailure(parsed, io, "Choose only one of --path, --tool, --custom, or --search");
+      if (
+        parsed.initSearch !== undefined &&
+        (parsed.initInstall ||
+          parsed.initStart ||
+          parsed.initAllowAgent ||
+          parsed.initAuthoring !== undefined)
+      )
+        return writeUsageFailure(
+          parsed,
+          io,
+          "--search is read-only and cannot be combined with installation, authoring, or start options",
+        );
+      if (parsed.initInstall && parsed.initTool === undefined)
+        return writeUsageFailure(parsed, io, "--install requires --tool");
+      if (
+        parsed.initAllowAgent &&
+        parsed.initPath !== "firedrill-agent" &&
+        parsed.initAuthoring !== "firedrill-agent"
+      )
+        return writeUsageFailure(
+          parsed,
+          io,
+          "--allow-agent requires --authoring firedrill-agent or --path firedrill-agent",
+        );
+      if (
+        (parsed.initAuthoring !== undefined || parsed.initStart) &&
+        parsed.initPath === undefined &&
+        parsed.initTool === undefined &&
+        parsed.initCustom === undefined
+      )
+        return writeUsageFailure(
+          parsed,
+          io,
+          "--authoring and --start require an explicit --tool, --custom, or --path",
+        );
+      if (parsed.initAuthoring !== undefined && parsed.initPath !== undefined)
+        return writeUsageFailure(parsed, io, "--authoring cannot be combined with legacy --path");
     }
-    if (parsed.inspectorPort !== undefined && command !== "inspect") {
-      return writeUsageFailure(parsed, io, "--port is only valid with inspect");
+    if (parsed.toolTemplate !== undefined && (command !== "tool" || parsed.toolCommand !== "create"))
+      return writeUsageFailure(parsed, io, "--template is only valid with tool create");
+    if (parsed.inspectorPort !== undefined && command !== "inspect" && command !== "serve") {
+      return writeUsageFailure(parsed, io, "--port is only valid with inspect or serve");
     }
-    if (parsed.noOpen === true && command !== "inspect") {
-      return writeUsageFailure(parsed, io, "--no-open is only valid with inspect");
+    if (
+      command !== "serve" &&
+      (parsed.scenarioId !== undefined ||
+        (parsed.actorId !== undefined && !(command === "init" && parsed.initStart)) ||
+        parsed.mcpPort !== undefined ||
+        parsed.cliPort !== undefined)
+    )
+      return writeUsageFailure(
+        parsed,
+        io,
+        "--scenario, --actor, --mcp-port, and --cli-port are only valid with serve",
+      );
+    if (parsed.noOpen === true && command !== "inspect" && command !== "serve" && command !== "init") {
+      return writeUsageFailure(parsed, io, "--no-open is only valid with inspect, serve, or init");
     }
     if (
       command !== "agent" &&
-      (parsed.agentPrompt !== undefined ||
+      (parsed.agentWorkflow !== undefined ||
+        parsed.agentPrompt !== undefined ||
         parsed.agentModel !== undefined ||
         parsed.agentEffort !== undefined ||
         parsed.agentMaxTurns !== undefined ||
@@ -2131,8 +2443,23 @@ export async function runCli(arguments_: readonly string[], io: CliIo): Promise<
         "--watch cannot be combined with --build-hash because immutable builds do not change",
       );
     }
-    if (command === "agent") return agentCommand(parsed, io);
+    if (command === "agent") return executeAgentCommand(parsed, io);
     if (command === "inspect") return inspectCommand(parsed, io);
+    if (command === "serve")
+      return executeServeCommand(
+        {
+          root: parsed.root,
+          ...(parsed.scenarioId === undefined ? {} : { scenario: parsed.scenarioId }),
+          ...(parsed.actorId === undefined ? {} : { actorId: parsed.actorId }),
+          ...(parsed.seed === undefined ? {} : { seed: parsed.seed }),
+          ...(parsed.inspectorPort === undefined ? {} : { httpPort: parsed.inspectorPort }),
+          ...(parsed.mcpPort === undefined ? {} : { mcpPort: parsed.mcpPort }),
+          ...(parsed.cliPort === undefined ? {} : { cliPort: parsed.cliPort }),
+          ...(parsed.noOpen === undefined ? {} : { noOpen: parsed.noOpen }),
+          json: parsed.json,
+        },
+        io,
+      );
     if (command === "format") return formatCommand(parsed, io);
     if (command === "run") return parsed.watch ? watchCommand(parsed, io) : runCommand(parsed, io);
     if (command === "report") return reportCommand(parsed, io);
@@ -2156,7 +2483,7 @@ export async function runCli(arguments_: readonly string[], io: CliIo): Promise<
       );
     }
     if (command === "compare") return compareCommand(parsed, io);
-    if (command === "init") return initCommand(parsed, io);
+    if (command === "init") return executeInitCommand(parsed, io);
     return compileCommand(command, parsed, io);
   } catch {
     const message = "Firedrill failed internally. No report was produced.";

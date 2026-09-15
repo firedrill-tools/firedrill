@@ -1,11 +1,11 @@
 import {
+  ActorDefinitionSchema,
   ActorIdSchema,
   AssertionDefinitionSchema,
-  ActorDefinitionSchema,
+  AuthoredInlineScenarioDefinitionSchema,
   DrillTaskSchema,
   DrillTimelineSchema,
   FaultActivationSchema,
-  InlineScenarioDefinitionSchema,
   InitialEventSchema,
   NodePackageNameSchema,
   SeedSchema,
@@ -13,9 +13,11 @@ import {
   StableIdSchema,
   StateSetupSchema,
   TargetDescriptorSchema,
+  ToolOverridesSchema,
   ToolPackageManifestSchema,
-  VirtualTimeSchema,
+  ToolUiSourceSchema,
   TrialPolicySchema,
+  VirtualTimeSchema,
 } from "@firedrill/contracts";
 import { z } from "zod";
 
@@ -50,6 +52,7 @@ export const WorldSourceSchema = z
     state: z.array(StateSetupSchema).default([]),
     faults: z.array(FaultActivationSchema).default([]),
     initialEvents: z.array(InitialEventSchema).default([]),
+    toolOverrides: ToolOverridesSchema.optional(),
   })
   .strict();
 
@@ -63,6 +66,7 @@ export const ScenarioSourceSchema = z
     state: z.array(StateSetupSchema).default([]),
     faults: z.array(FaultActivationSchema).default([]),
     initialEvents: z.array(InitialEventSchema).default([]),
+    toolOverrides: ToolOverridesSchema.optional(),
   })
   .strict();
 
@@ -70,6 +74,7 @@ export const ToolSourceSchema = z
   .object({
     schemaVersion: z.literal(1),
     module: SourcePathSchema,
+    ui: ToolUiSourceSchema.optional(),
     exportName: z
       .string()
       .regex(/^(?:default|[$A-Z_a-z][$\w]*)$/)
@@ -92,7 +97,8 @@ const DrillSourceShape = {
   tags: z.array(StableIdSchema).default([]),
   targetId: StableIdSchema,
   scenarioId: StableIdSchema.optional(),
-  inlineScenario: InlineScenarioDefinitionSchema.optional(),
+  inlineScenario: AuthoredInlineScenarioDefinitionSchema.optional(),
+  toolOverrides: ToolOverridesSchema.optional(),
 };
 
 /**

@@ -1,0 +1,20 @@
+{
+  "schemaVersion": 1,
+  "virtualTimeUs": 0,
+  "state": [
+    {
+      "action": "upsert",
+      "packageId": "work-queue",
+      "namespace": "items",
+      "rowId": "task-1",
+      "value": { "title": "Review the change", "status": "available" }
+    },
+    {
+      "action": "upsert",
+      "packageId": "work-queue",
+      "namespace": "items",
+      "rowId": "task-2",
+      "value": { "title": "Publish the result", "status": "available" }
+    }
+  ]
+}

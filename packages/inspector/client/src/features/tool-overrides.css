@@ -1,0 +1,38 @@
+.fd-tool-overrides-intro {
+  margin: 8px 0 16px;
+  max-width: 72ch;
+  color: var(--text-secondary);
+  line-height: 1.6;
+}
+
+.fd-tool-overrides-table {
+  min-width: 50rem;
+  table-layout: fixed;
+}
+
+.fd-world-table.fd-tool-overrides-table th:first-child {
+  width: 36%;
+}
+
+.fd-world-table.fd-tool-overrides-table th:nth-child(2) {
+  width: 24%;
+}
+
+.fd-world-table.fd-tool-overrides-table th:nth-child(3) {
+  width: 22%;
+}
+
+.fd-world-table.fd-tool-overrides-table th:nth-child(4) {
+  width: 18%;
+}
+
+.fd-tool-overrides-table td code {
+  display: block;
+  margin-top: 6px;
+  overflow-wrap: anywhere;
+  white-space: normal;
+}
+
+.fd-tool-overrides-table td .fd-button {
+  max-width: 100%;
+}

@@ -2,8 +2,8 @@ import {
   existsSync,
   mkdirSync,
   mkdtempSync,
-  readFileSync,
   readdirSync,
+  readFileSync,
   realpathSync,
   renameSync,
   rmSync,
@@ -11,16 +11,6 @@ import {
   writeFileSync,
 } from "node:fs";
 import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
-import {
-  FIREDRILL_ENGINE_VERSION,
-  InlineScenarioDefinitionSchema,
-  RunWorldSetupSchema,
-  SourcePathSchema,
-  StableIdSchema,
-  TargetDescriptorSchema,
-  canonicalJson,
-  compareStableStrings,
-} from "@firedrill/contracts";
 import type {
   Diagnostic,
   InlineScenarioDefinition,
@@ -30,6 +20,18 @@ import type {
   ToolPackageManifest,
 } from "@firedrill/contracts";
 import {
+  canonicalJson,
+  compareStableStrings,
+  FIREDRILL_ENGINE_VERSION,
+  InlineScenarioDefinitionSchema,
+  mergeToolOverrides,
+  RunWorldSetupSchema,
+  SourcePathSchema,
+  StableIdSchema,
+  TargetDescriptorSchema,
+} from "@firedrill/contracts";
+import type { BuildProvenanceEntry, CanonicalWorldIr, ResolvedRunSetup } from "@firedrill/world-ir";
+import {
   BuildIdentitySchema,
   BuildManifestSchema,
   CanonicalWorldIrSchema,
@@ -37,10 +39,10 @@ import {
   ResolvedRunSetupSchema,
   semanticHash,
 } from "@firedrill/world-ir";
-import type { BuildProvenanceEntry, CanonicalWorldIr, ResolvedRunSetup } from "@firedrill/world-ir";
 import { satisfies, validRange } from "semver";
 import type { z } from "zod";
 import { bundleTool } from "./bundle-tool.js";
+import { bundleToolUi } from "./bundle-tool-ui.js";
 import { diagnostic, schemaDiagnostics, sortDiagnostics } from "./diagnostics.js";
 import {
   baselineFromWorld,
@@ -51,33 +53,33 @@ import {
 } from "./normalize.js";
 import { parseSource } from "./parse.js";
 import {
+  type DiscoveredSource,
   discoverSources,
   openRepository,
-  resolveRepositoryPath,
-  resolveToolModule,
-  type DiscoveredSource,
   type RepositoryContext,
   type ResolvedRepositoryPath,
+  resolveRepositoryPath,
+  resolveToolModule,
 } from "./repository.js";
 import {
-  ProjectConfigSchema,
-  DrillSourceSchema,
-  ScenarioSourceSchema,
-  SuiteSourceSchema,
-  TargetSourceSchema,
-  ToolSourceSchema,
-  WorldSourceSchema,
-  type ScenarioSource,
   type DrillSource,
+  DrillSourceSchema,
+  ProjectConfigSchema,
+  type ScenarioSource,
+  ScenarioSourceSchema,
   type SuiteSource,
+  SuiteSourceSchema,
   type TargetSource,
+  TargetSourceSchema,
   type ToolSource,
+  ToolSourceSchema,
   type WorldSource,
+  WorldSourceSchema,
 } from "./source-schemas.js";
 import {
+  type InstalledToolPackage,
   resolveInstalledToolModule,
   resolveInstalledToolPackage,
-  type InstalledToolPackage,
 } from "./tool-package.js";
 import type {
   BundledTool,
@@ -183,6 +185,7 @@ function normalizeRunSetup(input: RunWorldSetup): RunWorldSetup {
               ),
             ),
             initialEvents: scenario.initialEvents,
+            ...(scenario.toolOverrides === undefined ? {} : { toolOverrides: scenario.toolOverrides }),
           },
         }),
     tools: {
@@ -241,6 +244,7 @@ function resolvedRunSetup(
 function applyRunScenarioOverlay(
   base: InlineScenarioDefinition,
   overlay: RunScenarioOverlay,
+  drillId: string,
 ): InlineScenarioDefinition {
   const activatedFaults = new Set(overlay.faults.map((fault) => `${fault.packageId}\u0000${fault.faultId}`));
   const resolved = resolveScenario(
@@ -256,7 +260,9 @@ function applyRunScenarioOverlay(
       state: overlay.state,
       faults: overlay.faults,
       initialEvents: overlay.initialEvents,
+      ...(overlay.toolOverrides === undefined ? {} : { toolOverrides: overlay.toolOverrides }),
     },
+    { kind: "run", drillId },
   );
   return InlineScenarioDefinitionSchema.parse({
     virtualTimeUs: resolved.virtualTimeUs,
@@ -264,6 +270,7 @@ function applyRunScenarioOverlay(
     state: resolved.state,
     faults: resolved.faults,
     initialEvents: resolved.initialEvents,
+    ...(resolved.toolOverrides === undefined ? {} : { toolOverrides: resolved.toolOverrides }),
   });
 }
 
@@ -298,7 +305,7 @@ function issueDocument(
   targets: readonly TypedResource<TargetSource>[],
 ): { readonly document: SourceDocument; readonly localPath: readonly (string | number)[] } {
   const [group, index, ...rest] = issuePath;
-  if (group === "baseline") return { document: world.document, localPath: rest as (string | number)[] };
+  if (group === "baseline") return { document: world.document, localPath: issuePath.slice(1) };
   if (group === "tools" && typeof index === "number") {
     return {
       document: tools[index]?.document ?? fallback,
@@ -371,6 +378,16 @@ function issueDocument(
           );
           if (baselineIndex >= 0) {
             return { document: world.document, localPath: ["faults", baselineIndex, ...tail] };
+          }
+        }
+      }
+      if (field === "toolOverrides" && typeof itemIndex === "number") {
+        const rule = resolved.toolOverrides?.[itemIndex];
+        if (rule !== undefined) {
+          const owner = rule.scope.kind === "baseline" ? world : source;
+          const ownerIndex = owner.value.toolOverrides?.findIndex((candidate) => candidate.id === rule.id);
+          if (ownerIndex !== undefined && ownerIndex >= 0) {
+            return { document: owner.document, localPath: ["toolOverrides", ownerIndex, ...tail] };
           }
         }
       }
@@ -520,7 +537,10 @@ function materializeBuild(input: {
   expected.set("world.ir.json", encode(input.worldIr));
   expected.set("packages.lock.json", encode(input.packageLock));
   if (input.setup !== undefined) expected.set("run-setup.json", encode(input.setup));
-  for (const tool of input.tools) expected.set(tool.lock.artifactPath, tool.bytes);
+  for (const tool of input.tools) {
+    expected.set(tool.lock.artifactPath, tool.bytes);
+    for (const asset of tool.ui?.assets ?? []) expected.set(asset.artifactPath, asset.bytes);
+  }
 
   const buildDirectory = join(outputRoot.path, input.buildHash.replace("sha256:", ""));
   if (existsSync(buildDirectory)) {
@@ -808,7 +828,34 @@ export async function compileWorld(options: CompileWorldOptions): Promise<Compil
       diagnostics.push(...bundled.diagnostics);
       continue;
     }
-    tools.push({ ...source, manifest, bundle: bundled.tool });
+    const ui =
+      source.value.ui === undefined
+        ? undefined
+        : bundleToolUi({
+            packageId: manifest.id,
+            declarationPath: source.document.absolutePath,
+            declarationLabel: source.document.repositoryPath,
+            sourceRoot: source.behaviorRoot,
+            provenanceRoot: source.installedPackage?.root ?? repository.root,
+            ...(source.origin.kind === "npm" ? { provenancePrefix: `npm/${source.origin.packageName}` } : {}),
+            ui: source.value.ui,
+          });
+    if (ui?.status === "failed") {
+      diagnostics.push(...ui.diagnostics);
+      continue;
+    }
+    tools.push({
+      ...source,
+      manifest,
+      bundle:
+        ui === undefined
+          ? bundled.tool
+          : {
+              ...bundled.tool,
+              lock: { ...bundled.tool.lock, ui: ui.ui.lock },
+              ui: { assets: ui.ui.assets, sourcePaths: ui.ui.sourcePaths },
+            },
+    });
   }
   for (const packageId of behaviorOverrides.keys()) {
     if (appliedBehaviorOverrides.has(packageId)) continue;
@@ -931,11 +978,23 @@ export async function compileWorld(options: CompileWorldOptions): Promise<Compil
       const {
         scenarioId: _scenarioId,
         inlineScenario: _inlineScenario,
+        toolOverrides: _toolOverrides,
         ...drillWithoutScenario
       } = selectedDrill;
       const derivedDrill = {
         ...drillWithoutScenario,
-        inlineScenario: applyRunScenarioOverlay(baseScenario, runSetup.setup.scenario),
+        inlineScenario: applyRunScenarioOverlay(
+          {
+            ...baseScenario,
+            ...(baseScenario.toolOverrides === undefined && selectedDrill.toolOverrides === undefined
+              ? {}
+              : {
+                  toolOverrides: mergeToolOverrides(baseScenario.toolOverrides, selectedDrill.toolOverrides),
+                }),
+          },
+          runSetup.setup.scenario,
+          selectedDrill.id,
+        ),
       };
       resolvedDrills = resolvedDrills.map((drill) => (drill.id === selectedDrill.id ? derivedDrill : drill));
     }
@@ -1046,6 +1105,7 @@ export async function compileWorld(options: CompileWorldOptions): Promise<Compil
           manifest: tool.manifest,
           artifactHash: tool.bundle.lock.artifactHash,
           exportName: tool.bundle.lock.exportName,
+          ...(tool.bundle.lock.ui === undefined ? {} : { ui: tool.bundle.lock.ui }),
         },
         tool.bundle.lock.source,
       ),
@@ -1148,7 +1208,9 @@ export async function compileWorld(options: CompileWorldOptions): Promise<Compil
       toolSources: sortedTools.map((tool) => ({
         packageId: tool.manifest.id,
         declarationPath: tool.document.repositoryPath,
+        entryPath: tool.bundle.entryPath,
         behaviorPaths: tool.bundle.sourcePaths,
+        ...(tool.bundle.ui === undefined ? {} : { uiPaths: tool.bundle.ui.sourcePaths }),
         origin: tool.bundle.lock.source,
       })),
       ...(buildDirectory === undefined ? {} : { buildDirectory }),

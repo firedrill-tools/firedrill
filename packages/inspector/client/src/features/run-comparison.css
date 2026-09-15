@@ -1,0 +1,240 @@
+.fd-run-comparison__header {
+  flex: none;
+  padding: 16px 20px;
+  border-bottom: 1px solid var(--border);
+}
+
+.fd-run-comparison__header h2 {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 600;
+  line-height: 1.5;
+}
+
+.fd-run-comparison p {
+  margin: 8px 0 12px;
+  font-size: 13px;
+  line-height: 1.65;
+  overflow-wrap: anywhere;
+}
+
+.fd-run-comparison__header > p,
+.fd-run-comparison__note {
+  color: var(--text-secondary);
+}
+
+.fd-run-comparison__selectors,
+.fd-run-comparison__identities,
+.fd-run-comparison__sides {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 20px;
+}
+
+.fd-run-comparison__selectors > div,
+.fd-run-comparison__identity,
+.fd-run-comparison__sides > div {
+  min-width: 0;
+}
+
+.fd-run-comparison__selectors > div > span {
+  display: block;
+  margin-bottom: 6px;
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.fd-run-comparison__selectors .fd-select,
+.fd-run-comparison__selectors select {
+  width: 100%;
+  min-width: 0;
+}
+
+.fd-run-comparison__body {
+  padding: 20px;
+}
+
+.fd-run-comparison h3,
+.fd-run-comparison h4,
+.fd-run-comparison h5 {
+  margin: 0 0 10px;
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+
+.fd-run-comparison__identity-heading,
+.fd-run-comparison__section-heading {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 8px 16px;
+}
+
+.fd-run-comparison__section-heading h3 > span {
+  margin-left: 8px;
+  color: var(--text-secondary);
+  font-size: 13px;
+  font-weight: 400;
+}
+
+.fd-run-comparison__run-id {
+  display: block;
+  color: var(--text-secondary);
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+
+.fd-run-comparison__identity dl {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px 16px;
+  margin: 16px 0 0;
+}
+
+.fd-run-comparison__identity dl > div {
+  min-width: 0;
+}
+
+.fd-run-comparison dt,
+.fd-run-comparison dd {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.6;
+  overflow-wrap: anywhere;
+}
+
+.fd-run-comparison dt {
+  color: var(--text-secondary);
+}
+
+.fd-run-comparison__section {
+  margin-top: 24px;
+  padding-top: 20px;
+  border-top: 1px solid var(--border-subtle);
+}
+
+.fd-run-comparison__toggle {
+  display: inline-flex;
+  align-items: center;
+  min-height: 36px;
+  gap: 8px;
+  color: var(--text-secondary);
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.fd-run-comparison__toggle input {
+  width: 16px;
+  height: 16px;
+  margin: 0;
+  accent-color: var(--text);
+}
+
+.fd-run-comparison__check {
+  padding: 18px 0;
+  border-top: 1px solid var(--border-subtle);
+}
+
+.fd-run-comparison__check h4 {
+  margin-bottom: 4px;
+}
+
+.fd-run-comparison__check > header p {
+  margin: 0;
+  color: var(--text-secondary);
+}
+
+.fd-run-comparison__sides {
+  margin: 14px 0;
+}
+
+.fd-run-comparison__sides dt {
+  margin-bottom: 6px;
+}
+
+.fd-run-comparison__table code {
+  font-size: 12px;
+}
+
+.fd-run-comparison__sides dd > code {
+  display: block;
+  margin-top: 6px;
+}
+
+.fd-run-comparison__check h5 {
+  margin-top: 18px;
+  font-size: 13px;
+}
+
+.fd-run-comparison__table {
+  width: 100%;
+  min-width: 470px;
+  border-collapse: collapse;
+  font-size: 13px;
+  line-height: 1.6;
+  font-variant-numeric: tabular-nums;
+}
+
+.fd-run-comparison__table--operations {
+  min-width: 690px;
+}
+
+.fd-run-comparison__table th,
+.fd-run-comparison__table td {
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--border-subtle);
+  text-align: right;
+  vertical-align: top;
+}
+
+.fd-run-comparison__table th {
+  font-weight: 500;
+}
+
+.fd-run-comparison__table thead {
+  color: var(--text-secondary);
+}
+
+.fd-run-comparison__table th:first-child {
+  width: 42%;
+  padding-left: 0;
+  text-align: left;
+  overflow-wrap: anywhere;
+}
+
+@media (max-width: 680px) {
+  .fd-run-comparison__selectors,
+  .fd-run-comparison__identities,
+  .fd-run-comparison__conditions {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 16px;
+  }
+
+  .fd-run-comparison__identity + .fd-run-comparison__identity {
+    padding-top: 16px;
+    border-top: 1px solid var(--border-subtle);
+  }
+
+  .fd-run-comparison__header,
+  .fd-run-comparison__body {
+    padding: 16px;
+  }
+}
+.fd-workspace-main.fd-run-comparison {
+  flex: 1;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface);
+}
+.fd-run-comparison__expected pre {
+  margin: 0;
+  font: 13px / 1.65 var(--font-mono);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.fd-run-comparison__expected .fd-scroll-area__viewport {
+  max-height: 240px;
+}

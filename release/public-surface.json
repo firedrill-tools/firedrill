@@ -9,6 +9,13 @@
     "entrypoint": "./dist/bin.js",
     "helpCommands": [
       [],
+      ["mcp"],
+      ["data"],
+      ["data", "preview"],
+      ["data", "save"],
+      ["browser"],
+      ["browser", "run"],
+      ["browser", "verify"],
       ["agent"],
       ["run"],
       ["validate"],
@@ -19,7 +26,12 @@
       ["report", "verify"],
       ["init"],
       ["inspect"],
+      ["serve"],
       ["tool"],
+      ["tool", "list"],
+      ["tool", "search"],
+      ["tool", "create"],
+      ["tool", "add"],
       ["tool", "inspect"],
       ["tool", "validate"],
       ["tool", "test"],
@@ -32,7 +44,13 @@
       "name": "@firedrill/agent",
       "directory": "packages/agent",
       "layer": "adapter",
-      "exports": ["."]
+      "exports": [".", "./browser"]
+    },
+    {
+      "name": "@firedrill/browser-tests",
+      "directory": "packages/browser-tests",
+      "layer": "adapter",
+      "exports": [".", "./contracts"]
     },
     {
       "name": "@firedrill/assertions",
@@ -44,7 +62,7 @@
       "name": "@firedrill/cli",
       "directory": "packages/cli",
       "layer": "app",
-      "exports": ["."]
+      "exports": [".", "./schema/tool-index.json", "./tool-discovery"]
     },
     {
       "name": "@firedrill/compiler",
@@ -98,7 +116,7 @@
       "name": "@firedrill/sdk",
       "directory": "packages/sdk",
       "layer": "adapter",
-      "exports": ["."]
+      "exports": [".", "./testing"]
     },
     {
       "name": "@firedrill/simulation",
@@ -141,18 +159,6 @@
       "directory": "packages/world-store-sqlite",
       "layer": "core",
       "exports": ["."]
-    },
-    {
-      "name": "@firedrill/tool-github-issues",
-      "directory": "tool-packs/github-issues",
-      "layer": "tool-pack",
-      "exports": ["./package.json"]
-    },
-    {
-      "name": "@firedrill/tool-work-queue",
-      "directory": "tool-packs/work-queue",
-      "layer": "tool-pack",
-      "exports": ["./package.json"]
     }
   ]
 }

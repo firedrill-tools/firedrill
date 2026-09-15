@@ -6,7 +6,6 @@
 }
 .fd-operation-name .fd-button {
   font: 13px / 1.5 var(--font-mono);
-  color: var(--text);
 }
 
 .fd-workspace-titlebar > .fd-catalog-world-actions {
@@ -29,4 +28,43 @@
   margin-top: 4px;
   color: var(--text-secondary);
   font-size: 13px;
+}
+
+.fd-world-records {
+  margin-top: 12px;
+  border: 1px solid var(--border-subtle);
+  border-radius: 8px;
+}
+
+.fd-setup-changes {
+  margin: 8px 0 0;
+  padding-left: 20px;
+  color: var(--text-secondary);
+  line-height: 1.6;
+}
+
+.fd-setup-changes li + li {
+  margin-top: 4px;
+}
+
+.fd-setup-changes code {
+  overflow-wrap: anywhere;
+}
+
+.fd-world-item-list strong {
+  color: var(--text);
+}
+
+.fd-world-item-list .fd-button {
+  align-self: flex-start;
+  margin-top: 8px;
+}
+
+.fd-world-workspace .fd-workspace-titlebar {
+  flex: none;
+  flex-wrap: wrap;
+}
+
+.fd-world-workspace .fd-workspace-titlebar > .fd-button {
+  margin-left: auto;
 }

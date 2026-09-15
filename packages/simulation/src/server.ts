@@ -259,12 +259,48 @@ export function createLocalSimulationRequestHandler(
       const sourceMatch = /^\/api\/v1\/sources\/(world|scenario|tool|drill|suite|target)\/([^/]+)$/.exec(
         url.pathname,
       );
+      const toolSourceMatch = /^\/api\/v1\/tools\/([^/]+)\/implementation\/([^/]+)$/.exec(url.pathname);
+      if (request.method === "GET" && toolSourceMatch !== null) {
+        writeJson(
+          response,
+          200,
+          supervisor.toolSource(decoded(toolSourceMatch[1] ?? ""), decoded(toolSourceMatch[2] ?? "")),
+        );
+        return;
+      }
       if (request.method === "GET" && sourceMatch !== null) {
         writeJson(response, 200, supervisor.source(sourceMatch[1] ?? "", decoded(sourceMatch[2] ?? "")));
         return;
       }
       if (request.method === "GET" && url.pathname === "/api/v1/runs") {
-        writeJson(response, 200, supervisor.listRuns());
+        if (
+          [...url.searchParams.keys()].some((key) => key !== "cursor" && key !== "limit") ||
+          url.searchParams.getAll("cursor").length > 1 ||
+          url.searchParams.getAll("limit").length > 1
+        ) {
+          throw new LocalSimulationError(
+            400,
+            "framework.INVALID_ARGUMENT",
+            "saved-run query accepts one cursor and one limit",
+          );
+        }
+        const cursor = url.searchParams.get("cursor");
+        const limit = url.searchParams.get("limit");
+        if (limit !== null && !/^[1-9]\d*$/.test(limit)) {
+          throw new LocalSimulationError(
+            400,
+            "framework.INVALID_ARGUMENT",
+            "saved-run limit must be an integer from 1 through 500",
+          );
+        }
+        writeJson(
+          response,
+          200,
+          supervisor.listRuns({
+            ...(cursor === null ? {} : { cursor }),
+            ...(limit === null ? {} : { limit: Number(limit) }),
+          }),
+        );
         return;
       }
       if (request.method === "POST" && url.pathname === "/api/v1/runs") {

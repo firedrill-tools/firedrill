@@ -1,13 +1,31 @@
 import { Clock3, Database, FileInput, Radio, TriangleAlert, Wrench } from "lucide-react";
-import { useMemo, useState } from "react";
+import { type ReactNode, useEffect, useMemo, useState } from "react";
+import { ActorIdentity } from "../components/actor-identity";
+import { CodeDocument } from "../components/code-document";
 import { DataViewer } from "../components/data-viewer";
 import { DetailsPanel, DetailsTrigger } from "../components/details-panel";
 import { PageIntro } from "../components/page-intro";
-import { EmptyState, KeyValue, SearchField } from "../components/primitives";
+import { PaginatedContent, Pagination, usePagination } from "../components/pagination";
+import { Button, EmptyState, KeyValue, RowButton, SearchField } from "../components/primitives";
+import { ScrollArea } from "../components/scroll-area";
 import { SourceViewer } from "../components/source-viewer";
 import { json, plural, titleFromId, virtualTime } from "../format";
-import type { SimulationProject, SimulationScenario, SimulationSetup, SimulationTool } from "../types";
+import type {
+  SimulationProject,
+  SimulationRunSummary,
+  SimulationScenario,
+  SimulationSetup,
+  SimulationTool,
+} from "../types";
+import { startingRecords } from "./catalog-data";
+import type { RunHistoryControls } from "./runs";
+import { ScenarioRuns } from "./scenario-runs";
+import { describeSetupChanges } from "./setup-changes";
+import { ToolImplementation } from "./tool-implementation";
+import { ToolInterfaces } from "./tool-interfaces";
+import { ToolOverrides } from "./tool-overrides";
 import "./catalog-world.css";
+import "./tool-implementation.css";
 
 type WorldSelection = "setup" | `scenario:${string}` | `tool:${string}`;
 
@@ -46,6 +64,17 @@ function WorldRail({
   const tools = (page === "scenarios" ? [] : project.tools).filter((tool) =>
     tool.id.toLowerCase().includes(normalized),
   );
+  const pagination = usePagination(
+    [
+      ...scenarios.map((scenario) => ({ kind: "scenario" as const, scenario })),
+      ...tools.map((tool) => ({ kind: "tool" as const, tool })),
+    ],
+    `${page}:${normalized}`,
+  );
+  const visibleScenarios = pagination.items.flatMap((item) =>
+    item.kind === "scenario" ? [item.scenario] : [],
+  );
+  const visibleTools = pagination.items.flatMap((item) => (item.kind === "tool" ? [item.tool] : []));
 
   return (
     <aside className="fd-workspace-rail">
@@ -65,7 +94,7 @@ function WorldRail({
         {normalized.length === 0 && page === "world" ? (
           <>
             <div className="fd-rail-section-label">Setup</div>
-            <button
+            <RowButton
               type="button"
               className="fd-rail-item"
               aria-current={selected === "setup" ? "true" : undefined}
@@ -75,17 +104,17 @@ function WorldRail({
               <span>
                 <strong>World setup</strong>
               </span>
-            </button>
+            </RowButton>
           </>
         ) : null}
 
-        {page === "world" && scenarios.length > 0 ? (
+        {page === "world" && visibleScenarios.length > 0 ? (
           <div className="fd-rail-section-label">Scenarios</div>
         ) : null}
-        {scenarios.map((scenario) => (
-          <button
+        {visibleScenarios.map((scenario) => (
+          <RowButton
             type="button"
-            key={scenario.id}
+            key={`scenario:${scenario.id}`}
             className="fd-rail-item"
             aria-current={selected === `scenario:${scenario.id}` ? "true" : undefined}
             onClick={() => onSelect(`scenario:${scenario.id}`)}
@@ -94,12 +123,14 @@ function WorldRail({
             <span>
               <strong>{scenario.title ?? titleFromId(scenario.id)}</strong>
             </span>
-          </button>
+          </RowButton>
         ))}
 
-        {page === "world" && tools.length > 0 ? <div className="fd-rail-section-label">Tools</div> : null}
-        {tools.map((tool) => (
-          <button
+        {page === "world" && visibleTools.length > 0 ? (
+          <div className="fd-rail-section-label">Tools</div>
+        ) : null}
+        {visibleTools.map((tool) => (
+          <RowButton
             type="button"
             key={tool.id}
             className="fd-rail-item"
@@ -110,9 +141,14 @@ function WorldRail({
             <span>
               <strong>{titleFromId(tool.id)}</strong>
             </span>
-          </button>
+          </RowButton>
         ))}
       </div>
+      <Pagination
+        label={page === "tools" ? "Tools" : page === "scenarios" ? "Scenarios" : "World contents"}
+        {...pagination}
+        variant="rail"
+      />
       {normalized.length > 0 && scenarios.length === 0 && tools.length === 0 ? (
         <div className="fd-rail-empty">No world content matches “{query}”.</div>
       ) : null}
@@ -120,52 +156,61 @@ function WorldRail({
   );
 }
 
-function OperationTable({ tool }: { readonly tool: SimulationTool }) {
+export function OperationTable({ tool }: { readonly tool: SimulationTool }) {
   const hasDescriptions = tool.operations.some((operation) => operation.description !== undefined);
+  const pagination = usePagination(tool.operations, tool.id, 10);
   return (
-    <div className="fd-table-scroll">
-      <table className="fd-table">
-        <thead>
-          <tr>
-            <th>Operation</th>
-            {hasDescriptions ? <th>Description</th> : null}
-            <th>Request & response</th>
-          </tr>
-        </thead>
-        <tbody>
-          {tool.operations.map((operation) => (
-            <tr key={operation.id}>
-              <td className="fd-operation-name">
-                <DataViewer title={`${tool.id}.${operation.id}`} value={operation} label={operation.id} />
-              </td>
-              {hasDescriptions ? <td className="fd-table__muted">{operation.description ?? "—"}</td> : null}
-              <td>
-                <div className="fd-catalog-world-actions">
-                  {operation.inputSchema === undefined ? (
-                    <span>Input schema unavailable</span>
-                  ) : (
-                    <DataViewer
-                      title={`${tool.id}.${operation.id} input schema`}
-                      value={operation.inputSchema}
-                      label="Inputs"
-                    />
-                  )}
-                  {operation.outputSchema === undefined ? (
-                    <span>Response schema unavailable</span>
-                  ) : (
-                    <DataViewer
-                      title={`${tool.id}.${operation.id} response schema`}
-                      value={operation.outputSchema}
-                      label="Responses"
-                    />
-                  )}
-                </div>
-              </td>
+    <>
+      <ScrollArea label="Tool operations" resetKey={`${tool.id}:${pagination.page}`}>
+        <table className="fd-table">
+          <thead>
+            <tr>
+              <th>Operation</th>
+              {hasDescriptions ? <th>Description</th> : null}
+              <th>Request & response</th>
             </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
+          </thead>
+          <tbody>
+            {pagination.items.map((operation) => (
+              <tr key={operation.id}>
+                <td className="fd-operation-name">
+                  <DataViewer
+                    title={`${tool.id}.${operation.id}`}
+                    value={operation}
+                    label={operation.id}
+                    variant="link"
+                  />
+                </td>
+                {hasDescriptions ? <td className="fd-table__muted">{operation.description ?? "—"}</td> : null}
+                <td>
+                  <div className="fd-catalog-world-actions">
+                    {operation.inputSchema === undefined ? (
+                      <span>Input schema unavailable</span>
+                    ) : (
+                      <DataViewer
+                        title={`${tool.id}.${operation.id} input schema`}
+                        value={operation.inputSchema}
+                        label="Inputs"
+                      />
+                    )}
+                    {operation.outputSchema === undefined ? (
+                      <span>Response schema unavailable</span>
+                    ) : (
+                      <DataViewer
+                        title={`${tool.id}.${operation.id} response schema`}
+                        value={operation.outputSchema}
+                        label="Responses"
+                      />
+                    )}
+                  </div>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </ScrollArea>
+      <Pagination label="Tool operations" {...pagination} variant="rail" />
+    </>
   );
 }
 
@@ -177,7 +222,7 @@ function ToolInspector({ tool }: { readonly tool: SimulationTool }) {
           <strong>{tool.id}</strong>
         </div>
       </div>
-      <div className="fd-inspector-scroll">
+      <ScrollArea label="Tool details" resetKey={tool.id}>
         <section className="fd-inspector-section">
           <h3>Package</h3>
           <dl>
@@ -189,34 +234,46 @@ function ToolInspector({ tool }: { readonly tool: SimulationTool }) {
           {tool.stateNamespaces.length === 0 ? (
             <p className="fd-muted-copy">This Tool declares no persistent state.</p>
           ) : (
-            <ul className="fd-plain-list">
-              {tool.stateNamespaces.map((namespace) => (
-                <li key={namespace}>
-                  <Database size={14} />
-                  <code>{namespace}</code>
-                </li>
-              ))}
-            </ul>
+            <PaginatedContent items={tool.stateNamespaces} label="State namespaces" resetKey={tool.id}>
+              {(namespaces) => (
+                <ul className="fd-plain-list">
+                  {namespaces.map((namespace) => (
+                    <li key={namespace}>
+                      <Database size={14} />
+                      <code>{namespace}</code>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </PaginatedContent>
           )}
         </section>
         <section className="fd-inspector-section">
           <h3>Events</h3>
-          {tool.events.map((event) => (
-            <div className="fd-definition-line" key={event}>
-              <Radio size={14} />
-              <code>{event}</code>
-            </div>
-          ))}
+          <PaginatedContent items={tool.events} label="Tool events" resetKey={tool.id}>
+            {(events) =>
+              events.map((event) => (
+                <div className="fd-definition-line" key={event}>
+                  <Radio size={14} />
+                  <code>{event}</code>
+                </div>
+              ))
+            }
+          </PaginatedContent>
           {tool.events.length === 0 ? <p className="fd-muted-copy">No events declared.</p> : null}
         </section>
         <section className="fd-inspector-section">
           <h3>Faults</h3>
-          {tool.faults.map((fault) => (
-            <div className="fd-definition-line" key={fault}>
-              <TriangleAlert size={14} />
-              <code>{fault}</code>
-            </div>
-          ))}
+          <PaginatedContent items={tool.faults} label="Tool faults" resetKey={tool.id}>
+            {(faults) =>
+              faults.map((fault) => (
+                <div className="fd-definition-line" key={fault}>
+                  <TriangleAlert size={14} />
+                  <code>{fault}</code>
+                </div>
+              ))
+            }
+          </PaginatedContent>
           {tool.faults.length === 0 ? <p className="fd-muted-copy">No faults declared.</p> : null}
         </section>
         <section className="fd-inspector-section">
@@ -224,18 +281,22 @@ function ToolInspector({ tool }: { readonly tool: SimulationTool }) {
           {tool.httpRoutes.length === 0 ? (
             <p className="fd-muted-copy">No HTTP routes are declared.</p>
           ) : (
-            <ul className="fd-route-list">
-              {tool.httpRoutes.map((route) => (
-                <li key={route.id}>
-                  <span data-method={route.method}>{route.method}</span>
-                  <code>{route.path}</code>
-                </li>
-              ))}
-            </ul>
+            <PaginatedContent items={tool.httpRoutes} label="HTTP bindings" resetKey={tool.id}>
+              {(routes) => (
+                <ul className="fd-route-list">
+                  {routes.map((route) => (
+                    <li key={route.id}>
+                      <span data-method={route.method}>{route.method}</span>
+                      <code>{route.path}</code>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </PaginatedContent>
           )}
         </section>
         {tool.source === undefined ? null : <SourceSection source={tool.source} kind="tool" id={tool.id} />}
-      </div>
+      </ScrollArea>
     </div>
   );
 }
@@ -269,122 +330,142 @@ function ActorsTable({ setup }: { readonly setup: SimulationSetup }) {
     return <p className="fd-muted-copy">No actors are declared in this setup.</p>;
   }
   return (
-    <div className="fd-world-table-wrap">
-      <table className="fd-world-table">
-        <thead>
-          <tr>
-            <th>Actor</th>
-            <th>Allowed operations</th>
-            <th>Attributes</th>
-          </tr>
-        </thead>
-        <tbody>
-          {setup.actors.map((actor) => (
-            <tr key={actor.id}>
-              <td>
-                <code>{actor.id}</code>
-              </td>
-              <td>
-                {actor.grants.length === 0
-                  ? "None"
-                  : actor.grants.map((grant) => (
-                      <code className="fd-inline-code" key={`${grant.packageId}.${grant.operationId}`}>
-                        {grant.packageId}.{grant.operationId}
-                      </code>
-                    ))}
-              </td>
-              <td>
-                {Object.keys(actor.attributes).length === 0 ? (
-                  <span className="fd-table-empty">None</span>
-                ) : (
-                  <DataViewer
-                    title={`${actor.id} attributes`}
-                    value={actor.attributes}
-                    label="View attributes"
-                  />
-                )}
-              </td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
+    <PaginatedContent items={setup.actors} label="Actors">
+      {(actors) => (
+        <div className="fd-world-table-wrap">
+          <table className="fd-world-table">
+            <thead>
+              <tr>
+                <th>Actor</th>
+                <th>Allowed operations</th>
+                <th>Attributes</th>
+              </tr>
+            </thead>
+            <tbody>
+              {actors.map((actor) => (
+                <tr key={actor.id}>
+                  <td>
+                    <ActorIdentity actor={actor} />
+                  </td>
+                  <td>
+                    {actor.grants.length === 0 ? (
+                      "None"
+                    ) : (
+                      <PaginatedContent
+                        items={actor.grants}
+                        label={`${actor.id} allowed operations`}
+                        resetKey={actor.id}
+                      >
+                        {(grants) =>
+                          grants.map((grant) => (
+                            <code className="fd-inline-code" key={`${grant.packageId}.${grant.operationId}`}>
+                              {grant.packageId}.{grant.operationId}
+                            </code>
+                          ))
+                        }
+                      </PaginatedContent>
+                    )}
+                  </td>
+                  <td>
+                    {Object.keys(actor.attributes).length === 0 ? (
+                      <span className="fd-table-empty">None</span>
+                    ) : (
+                      <DataViewer
+                        title={`${actor.id} attributes`}
+                        value={actor.attributes}
+                        label="View attributes"
+                      />
+                    )}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </PaginatedContent>
   );
 }
 
 function StateTable({ setup }: { readonly setup: SimulationSetup }) {
   if (setup.state.length === 0) {
-    return <p className="fd-muted-copy">No records are added or removed by this setup.</p>;
+    return <p className="fd-muted-copy">No starting records.</p>;
   }
   return (
-    <div className="fd-world-table-wrap">
-      <table className="fd-world-table fd-world-state-table">
-        <thead>
-          <tr>
-            <th>Tool</th>
-            <th>Namespace</th>
-            <th>Record</th>
-            <th>Action</th>
-            <th>Value</th>
-          </tr>
-        </thead>
-        <tbody>
-          {uniquelyKeyed(setup.state, (record) => json(record)).map(({ key, value: record }) => (
-            <tr key={key}>
-              <td>
-                <code>{record.packageId}</code>
-              </td>
-              <td>
-                <code>{record.namespace}</code>
-              </td>
-              <td>
-                <code>{record.rowId}</code>
-              </td>
-              <td>{titleFromId(record.action)}</td>
-              <td>
-                {record.action === "delete" ? (
-                  <span className="fd-table-empty">—</span>
-                ) : (
-                  <DataViewer
-                    title={`${record.namespace} / ${record.rowId}`}
-                    value={record.value}
-                    label="View record"
-                  />
-                )}
-              </td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
+    <PaginatedContent items={uniquelyKeyed(setup.state, (record) => json(record))} label="Starting records">
+      {(records) => (
+        <ScrollArea label="Starting records" natural className="fd-world-records">
+          <table className="fd-world-table fd-world-state-table">
+            <thead>
+              <tr>
+                <th>Tool</th>
+                <th>Table</th>
+                <th>Record</th>
+                <th>Starting record</th>
+              </tr>
+            </thead>
+            <tbody>
+              {records.map(({ key, value: record }) => (
+                <tr key={key}>
+                  <td>
+                    <code>{record.packageId}</code>
+                  </td>
+                  <td>
+                    <code>{record.namespace}</code>
+                  </td>
+                  <td>
+                    <code>{record.rowId}</code>
+                  </td>
+                  <td>
+                    {record.action === "delete" ? (
+                      <span className="fd-table-empty">—</span>
+                    ) : (
+                      <DataViewer
+                        title={`${record.namespace} / ${record.rowId}`}
+                        value={record.value}
+                        label="View record"
+                      />
+                    )}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </ScrollArea>
+      )}
+    </PaginatedContent>
   );
 }
 
 function WorldWork({ setup }: { readonly setup: SimulationSetup }) {
   return (
     <div className="fd-world-work-grid">
-      <section>
+      <section data-scroll-section="failures">
         <div className="fd-section-heading">
           <div>
-            <h3>Starting faults</h3>
+            <h3>Simulated failures</h3>
           </div>
         </div>
         {setup.faults.length === 0 ? (
-          <p className="fd-muted-copy">No faults are active.</p>
+          <p className="fd-muted-copy">No failures are enabled at the start.</p>
         ) : (
-          <ul className="fd-world-item-list">
-            {setup.faults.map((fault) => (
-              <li key={`${fault.packageId}.${fault.faultId}`}>
-                <TriangleAlert size={15} aria-hidden="true" />
-                <code>
-                  {fault.packageId}.{fault.faultId}
-                </code>
-              </li>
-            ))}
-          </ul>
+          <PaginatedContent items={setup.faults} label="Simulated failures">
+            {(faults) => (
+              <ul className="fd-world-item-list">
+                {faults.map((fault) => (
+                  <li key={`${fault.packageId}.${fault.faultId}`}>
+                    <TriangleAlert size={15} aria-hidden="true" />
+                    <code>
+                      {fault.packageId}.{fault.faultId}
+                    </code>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </PaginatedContent>
         )}
       </section>
-      <section>
+      <section data-scroll-section="events">
         <div className="fd-section-heading">
           <div>
             <h3>Scheduled events</h3>
@@ -393,64 +474,173 @@ function WorldWork({ setup }: { readonly setup: SimulationSetup }) {
         {setup.initialEvents.length === 0 ? (
           <p className="fd-muted-copy">No initial events are scheduled.</p>
         ) : (
-          <ul className="fd-world-item-list">
-            {uniquelyKeyed(setup.initialEvents, (event) => json(event)).map(({ key, value: event }) => (
-              <li key={key}>
-                <Radio size={15} aria-hidden="true" />
-                <span>
-                  <code>
-                    {event.event.packageId}.{event.event.eventId}
-                  </code>
-                  <span className="fd-catalog-world-event-meta">
-                    {virtualTime(event.atUs)} · actor {event.actorId}
-                  </span>
-                </span>
-              </li>
-            ))}
-          </ul>
+          <PaginatedContent
+            items={uniquelyKeyed(setup.initialEvents, (event) => json(event))}
+            label="Scheduled events"
+          >
+            {(events) => (
+              <ul className="fd-world-item-list">
+                {events.map(({ key, value: event }) => (
+                  <li key={key}>
+                    <Radio size={15} aria-hidden="true" />
+                    <span>
+                      <code>
+                        {event.event.packageId}.{event.event.eventId}
+                      </code>
+                      <span className="fd-catalog-world-event-meta">
+                        {virtualTime(event.atUs)} · actor {event.actorId}
+                      </span>
+                      <DataViewer title="Scheduled event" label="View event" value={event} />
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </PaginatedContent>
         )}
       </section>
     </div>
   );
 }
 
+function ScenarioChanges({
+  baseline,
+  setup,
+}: {
+  readonly baseline: SimulationSetup;
+  readonly setup: SimulationSetup;
+}) {
+  const changes = describeSetupChanges(baseline, setup);
+  const updatedRecords = changes.state.filter((record) => record.action === "upsert").length;
+  const removedRecords = changes.state.length - updatedRecords;
+  const rows = [
+    ...uniquelyKeyed(changes.addedFaults, json).map(({ key, value: fault }) => (
+      <li key={`enable:${key}`}>
+        Enables{" "}
+        <code>
+          {fault.packageId}.{fault.faultId}
+        </code>
+        .
+      </li>
+    )),
+    ...uniquelyKeyed(changes.removedFaults, json).map(({ key, value: fault }) => (
+      <li key={`disable:${key}`}>
+        Disables{" "}
+        <code>
+          {fault.packageId}.{fault.faultId}
+        </code>
+        .
+      </li>
+    )),
+    updatedRecords > 0 ? (
+      <li key="updated-records">{plural(updatedRecords, "starting record")} added or updated.</li>
+    ) : null,
+    removedRecords > 0 ? (
+      <li key="removed-records">{plural(removedRecords, "starting record")} removed.</li>
+    ) : null,
+    changes.actors.length > 0 ? (
+      <li key="updated-actors">{plural(changes.actors.length, "actor")} added or changed.</li>
+    ) : null,
+    changes.removedActors.length > 0 ? (
+      <li key="removed-actors">{plural(changes.removedActors.length, "actor")} removed.</li>
+    ) : null,
+    changes.addedInitialEvents.length > 0 ? (
+      <li key="added-events">{plural(changes.addedInitialEvents.length, "event")} scheduled.</li>
+    ) : null,
+    changes.removedInitialEvents.length > 0 ? (
+      <li key="removed-events">{plural(changes.removedInitialEvents.length, "scheduled event")} removed.</li>
+    ) : null,
+    changes.eventOrderChanged ? (
+      <li key="event-order">The setup order of inherited scheduled events changes.</li>
+    ) : null,
+    changes.changedToolOverrides.length > 0 ? (
+      <li key="changed-overrides">
+        {plural(changes.changedToolOverrides.length, "Tool override")} added or changed.
+      </li>
+    ) : null,
+    changes.removedToolOverrides.length > 0 ? (
+      <li key="removed-overrides">{plural(changes.removedToolOverrides.length, "Tool override")} removed.</li>
+    ) : null,
+    changes.toolOverrideOrderChanged ? (
+      <li key="override-order">The priority order of inherited Tool overrides changes.</li>
+    ) : null,
+    changes.clockChanged ? (
+      <li key="clock">
+        Starting clock: {virtualTime(baseline.virtualTimeUs)} → {virtualTime(setup.virtualTimeUs)}.
+      </li>
+    ) : null,
+  ].filter((row) => row !== null);
+  return (
+    <section className="fd-definition__section" data-scroll-section="changes">
+      <h3>Changes from world baseline</h3>
+      {!changes.hasChanges ? (
+        <p>Uses the world baseline unchanged.</p>
+      ) : (
+        <PaginatedContent items={rows} label="Setup changes">
+          {(pageRows) => <ul className="fd-setup-changes">{pageRows}</ul>}
+        </PaginatedContent>
+      )}
+    </section>
+  );
+}
+
 function SetupMain({
   title,
   setup,
-  resolved,
+  baseline,
+  scenarioRuns,
 }: {
   readonly title: string;
   readonly setup: SimulationSetup;
-  readonly resolved: boolean;
+  readonly baseline?: SimulationSetup;
+  readonly scenarioRuns?: ReactNode;
 }) {
+  const records = startingRecords(setup).map((record) => ({ ...record, action: "upsert" as const }));
+  const sections = [
+    ...(baseline === undefined ? [] : [{ id: "changes", label: "Changes" }]),
+    ...(scenarioRuns === undefined ? [] : [{ id: "runs", label: "Runs" }]),
+    { id: "data", label: "Starting data" },
+    { id: "failures", label: "Failures" },
+    { id: "events", label: "Events" },
+    ...((setup.toolOverrides?.length ?? 0) === 0 ? [] : [{ id: "tool-overrides", label: "Tool overrides" }]),
+    { id: "permissions", label: "Permissions" },
+  ];
   return (
     <div className="fd-workspace-main">
       <div className="fd-workspace-titlebar">
         <div>
           <h2>{title}</h2>
-          <p>{resolved ? "World baseline with scenario changes" : "World baseline"}</p>
+          <p>
+            {baseline === undefined
+              ? "World starting setup"
+              : "Starting setup, including inherited world data and permissions"}
+          </p>
         </div>
       </div>
-      <div className="fd-world-definition">
-        <section className="fd-definition__section">
+      <ScrollArea label="Starting setup" sections={sections}>
+        {baseline === undefined ? null : <ScenarioChanges baseline={baseline} setup={setup} />}
+        {scenarioRuns}
+        <section className="fd-definition__section" data-scroll-section="data">
+          <div className="fd-section-heading">
+            <div>
+              <h3>Starting data</h3>
+              <p>Records available before the agent runs. These are not execution results.</p>
+            </div>
+          </div>
+          <StateTable setup={{ ...setup, state: records }} />
+        </section>
+        <WorldWork setup={setup} />
+        <ToolOverrides rules={setup.toolOverrides} />
+        <section className="fd-definition__section" data-scroll-section="permissions">
           <div className="fd-section-heading">
             <div>
               <h3>Actors and permissions</h3>
+              <p>Identities used to call tools, and the operations each may perform.</p>
             </div>
           </div>
           <ActorsTable setup={setup} />
         </section>
-        <section className="fd-definition__section">
-          <div className="fd-section-heading">
-            <div>
-              <h3>Starting data changes</h3>
-              <p>Applied in order before a drill starts. Data shows the resulting records.</p>
-            </div>
-          </div>
-          <StateTable setup={setup} />
-        </section>
-        <WorldWork setup={setup} />
-      </div>
+      </ScrollArea>
     </div>
   );
 }
@@ -475,7 +665,7 @@ function SetupInspector({
           <strong>{title}</strong>
         </div>
       </div>
-      <div className="fd-inspector-scroll">
+      <ScrollArea label="Setup details" resetKey={sourceId}>
         <section className="fd-inspector-section">
           <h3>Starting conditions</h3>
           <dl>
@@ -490,20 +680,55 @@ function SetupInspector({
           </dl>
         </section>
         {source === undefined ? null : <SourceSection source={source} kind={sourceKind} id={sourceId} />}
-      </div>
+      </ScrollArea>
     </div>
   );
 }
 
-function ToolMain({ tool }: { readonly tool: SimulationTool }) {
+export function ToolMain({ tool }: { readonly tool: SimulationTool }) {
+  const [view, setView] = useState<"operations" | "implementation" | "declaration">("operations");
   return (
     <div className="fd-workspace-main">
-      <div className="fd-workspace-titlebar">
+      <div className="fd-workspace-titlebar fd-tool-titlebar">
         <div>
           <h2>{titleFromId(tool.id)}</h2>
         </div>
+        <nav aria-label="Tool views">
+          <Button size="compact" aria-pressed={view === "operations"} onClick={() => setView("operations")}>
+            Operations
+          </Button>
+          <Button
+            size="compact"
+            aria-pressed={view === "implementation"}
+            onClick={() => setView("implementation")}
+          >
+            Implementation
+          </Button>
+          <Button size="compact" aria-pressed={view === "declaration"} onClick={() => setView("declaration")}>
+            Declaration
+          </Button>
+        </nav>
       </div>
-      <OperationTable tool={tool} />
+      <ToolInterfaces tool={tool} />
+      {view === "operations" ? (
+        <OperationTable tool={tool} />
+      ) : view === "implementation" ? (
+        <ToolImplementation key={tool.id} tool={tool} />
+      ) : tool.definition === undefined ? (
+        <EmptyState title="Full declaration unavailable">
+          Refresh source to load the complete Tool declaration.
+        </EmptyState>
+      ) : (
+        <div className="fd-tool-source">
+          <div className="fd-tool-source__intro">
+            <p>
+              The complete compiled contract: operations, inputs, responses, errors, state, and events.
+              Executable code is under Implementation.
+            </p>
+          </div>
+          <CodeDocument content={json(tool.definition)} language="json" context="Compiled Tool declaration" />
+        </div>
+      )}
     </div>
   );
 }
@@ -526,22 +751,70 @@ function selectedTool(project: SimulationProject, selected: WorldSelection): Sim
 export function WorldView({
   project,
   page = "world",
+  runs = [],
+  runHistory,
+  unavailableRunCount = 0,
+  onOpenRun,
+  scenarioId,
+  onSelectScenario,
 }: {
   readonly project: SimulationProject;
   readonly page?: "world" | "scenarios" | "tools";
+  readonly runs?: readonly SimulationRunSummary[];
+  readonly runHistory?: RunHistoryControls | undefined;
+  readonly unavailableRunCount?: number;
+  readonly onOpenRun?: ((runId: string) => void) | undefined;
+  readonly scenarioId?: string | undefined;
+  readonly onSelectScenario?: ((id: string | undefined) => void) | undefined;
 }) {
   const [detailsOpen, setDetailsOpen] = useState(false);
   const detailsId = `${page}-details`;
   const [selected, setSelected] = useState<WorldSelection>(() =>
-    page === "tools" && project.tools[0] !== undefined
-      ? `tool:${project.tools[0].id}`
-      : page === "scenarios" && project.scenarios[0] !== undefined
-        ? `scenario:${project.scenarios[0].id}`
-        : "setup",
+    scenarioId !== undefined
+      ? `scenario:${scenarioId}`
+      : page === "tools" && project.tools[0] !== undefined
+        ? `tool:${project.tools[0].id}`
+        : page === "scenarios" && project.scenarios[0] !== undefined
+          ? `scenario:${project.scenarios[0].id}`
+          : "setup",
   );
+  const firstScenarioId = project.scenarios[0]?.id;
+  useEffect(() => {
+    setSelected((current) =>
+      scenarioId !== undefined
+        ? `scenario:${scenarioId}`
+        : current.startsWith("scenario:")
+          ? page === "scenarios" && firstScenarioId !== undefined
+            ? `scenario:${firstScenarioId}`
+            : "setup"
+          : current,
+    );
+  }, [scenarioId, page, firstScenarioId]);
   const scenario = useMemo(() => selectedScenario(project, selected), [project, selected]);
   const tool = useMemo(() => selectedTool(project, selected), [project, selected]);
   const selection = scenario === undefined && tool === undefined && selected !== "setup" ? "setup" : selected;
+
+  if (scenarioId !== undefined && !project.scenarios.some((item) => item.id === scenarioId)) {
+    return (
+      <section className="fd-page">
+        <header className="fd-page-header">
+          <PageIntro page={page} />
+        </header>
+        <EmptyState
+          title="Scenario unavailable"
+          action={
+            onSelectScenario === undefined ? undefined : (
+              <Button onClick={() => onSelectScenario(undefined)}>
+                {page === "world" ? "View world setup" : "View scenarios"}
+              </Button>
+            )
+          }
+        >
+          This link does not match a scenario in the current source. It may have been removed or renamed.
+        </EmptyState>
+      </section>
+    );
+  }
 
   if (
     (page === "scenarios" && project.scenarios.length === 0) ||
@@ -580,23 +853,39 @@ export function WorldView({
           onSelect={(next) => {
             setSelected(next);
             setDetailsOpen(false);
+            onSelectScenario?.(next.startsWith("scenario:") ? next.slice("scenario:".length) : undefined);
           }}
           page={page}
         />
         {scenario !== undefined ? (
-          <SetupMain title={scenario.title ?? titleFromId(scenario.id)} setup={scenario} resolved />
+          <SetupMain
+            key={`scenario:${scenario.id}`}
+            title={scenario.title ?? titleFromId(scenario.id)}
+            setup={scenario}
+            baseline={project.world.baseline}
+            scenarioRuns={
+              <ScenarioRuns
+                scenarioId={scenario.id}
+                runs={runs}
+                history={runHistory}
+                unavailableRunCount={unavailableRunCount}
+                onOpenRun={onOpenRun}
+              />
+            }
+          />
         ) : tool !== undefined ? (
-          <ToolMain tool={tool} />
+          <ToolMain key={tool.id} tool={tool} />
         ) : (
           <SetupMain
+            key={`world:${project.world.id}`}
             title={project.world.title ?? titleFromId(project.world.id)}
             setup={project.world.baseline}
-            resolved={false}
           />
         )}
         <DetailsPanel id={detailsId} title="Details" open={detailsOpen} onClose={() => setDetailsOpen(false)}>
           {scenario !== undefined ? (
             <SetupInspector
+              key={`scenario:${scenario.id}`}
               title={scenario.title ?? titleFromId(scenario.id)}
               setup={scenario}
               {...(scenario.source === undefined ? {} : { source: scenario.source })}
@@ -604,9 +893,10 @@ export function WorldView({
               sourceId={scenario.id}
             />
           ) : tool !== undefined ? (
-            <ToolInspector tool={tool} />
+            <ToolInspector key={tool.id} tool={tool} />
           ) : (
             <SetupInspector
+              key={`world:${project.world.id}`}
               title={project.world.title ?? titleFromId(project.world.id)}
               setup={project.world.baseline}
               {...(project.world.source === undefined ? {} : { source: project.world.source })}

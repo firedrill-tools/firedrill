@@ -22,6 +22,7 @@ import type {
 } from "@firedrill/world-store";
 import Database from "better-sqlite3";
 import { decodeObject, decodeStoredCount } from "./codec.js";
+import { latestEvidenceSequence } from "./evidence-head.js";
 import { assertSupportedSchema } from "./schema.js";
 import { CALLBACK_COLUMNS, callbackDelivery, scheduledEvent } from "./sqlite-transaction.js";
 import type { CallbackRow } from "./sqlite-transaction.js";
@@ -198,14 +199,9 @@ export class SqliteWorldReader implements WorldReader {
     return rows.map((row) => EvidenceEntrySchema.parse(JSON.parse(row.payload_json)));
   }
 
-  latestEvidenceSequence(): number {
+  latestEvidenceSequence(kinds?: readonly EvidenceEntry["kind"][]): number {
     this.assertOpen();
-    const row = this.database
-      .prepare("SELECT COALESCE(MAX(sequence), 0) AS sequence FROM evidence")
-      .get() as {
-      sequence: number;
-    };
-    return decodeStoredCount(String(row.sequence), "latest evidence sequence");
+    return latestEvidenceSequence(this.database, kinds);
   }
 
   listScheduledEvents(status?: ScheduledEvent["status"]): readonly ScheduledEvent[] {

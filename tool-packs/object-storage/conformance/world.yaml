@@ -1,0 +1,23 @@
+schemaVersion: 1
+id: object-storage-conformance-world
+actors:
+  - id: operator
+    grants:
+      - packageId: object-storage
+        operationId: objects.list
+      - packageId: object-storage
+        operationId: objects.get
+      - packageId: object-storage
+        operationId: objects.put
+      - packageId: object-storage
+        operationId: objects.delete
+  - id: other
+    grants:
+      - packageId: object-storage
+        operationId: objects.list
+      - packageId: object-storage
+        operationId: objects.get
+      - packageId: object-storage
+        operationId: objects.put
+      - packageId: object-storage
+        operationId: objects.delete

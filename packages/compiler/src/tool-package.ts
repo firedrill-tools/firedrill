@@ -1,13 +1,14 @@
-import { createRequire } from "node:module";
 import { lstatSync, readFileSync, realpathSync } from "node:fs";
+import { createRequire } from "node:module";
 import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import {
+  type Diagnostic,
+  type NodePackageName,
   NodePackageNameSchema,
   SemverSchema,
   SourcePathSchema,
-  type Diagnostic,
-  type NodePackageName,
   type SourceSpan,
+  StableIdSchema,
 } from "@firedrill/contracts";
 import { z } from "zod";
 import { diagnostic } from "./diagnostics.js";
@@ -15,7 +16,7 @@ import type { ResolvedRepositoryPath } from "./repository.js";
 
 const MAX_PACKAGE_MANIFEST_BYTES = 1_048_576;
 
-const InstalledToolPackageManifestSchema = z
+export const InstalledToolPackageManifestSchema = z
   .object({
     name: NodePackageNameSchema,
     version: SemverSchema,
@@ -23,7 +24,16 @@ const InstalledToolPackageManifestSchema = z
       .object({
         layer: z.literal("tool-pack"),
         tool: SourcePathSchema,
+        starter: SourcePathSchema.optional(),
         lifecycle: z.enum(["active", "deprecated", "revoked"]),
+        conformance: z
+          .union([
+            StableIdSchema,
+            z
+              .object({ schemaVersion: z.literal(1), project: SourcePathSchema, suite: StableIdSchema })
+              .strict(),
+          ])
+          .optional(),
       })
       .passthrough(),
   })
@@ -35,6 +45,8 @@ export interface InstalledToolPackage {
   readonly lifecycle: "active" | "deprecated" | "revoked";
   readonly root: string;
   readonly declaration: ResolvedRepositoryPath;
+  readonly starter?: ResolvedRepositoryPath;
+  readonly conformance?: { readonly project: ResolvedRepositoryPath; readonly suite: string };
 }
 
 type ToolPackageResolution =
@@ -92,6 +104,7 @@ function resolveInsidePackage(input: {
   readonly baseDirectory: string;
   readonly path: string;
   readonly purpose: string;
+  readonly rejectSymlinks?: boolean;
 }): ToolPackagePathResolution {
   const absolutePath = resolve(input.baseDirectory, input.path);
   const unresolvedLabel = packageLabel(input.packageName, input.packageRoot, absolutePath);
@@ -103,6 +116,16 @@ function resolveInsidePackage(input: {
     });
   }
   try {
+    if (input.rejectSymlinks) {
+      let component = input.packageRoot;
+      for (const segment of relative(input.packageRoot, absolutePath).split(sep)) {
+        component = join(component, segment);
+        if (lstatSync(component).isSymbolicLink())
+          throw new TypeError(`${input.purpose} paths must not contain symlinks`);
+      }
+      const info = lstatSync(absolutePath);
+      if (info.size > MAX_PACKAGE_MANIFEST_BYTES) throw new TypeError(`${input.purpose} exceeds 1 MiB`);
+    }
     const realPath = realpathSync(absolutePath);
     if (!contained(input.packageRoot, realPath)) {
       return failure({
@@ -198,6 +221,36 @@ export function resolveInstalledToolPackage(
     purpose: "Tool declaration",
   });
   if (declaration.status === "failed") return declaration;
+  const starter =
+    parsed.data.firedrill.starter === undefined
+      ? undefined
+      : resolveInsidePackage({
+          packageName: requestedName,
+          packageRoot,
+          baseDirectory: packageRoot,
+          path: parsed.data.firedrill.starter,
+          purpose: "Tool starter",
+          rejectSymlinks: true,
+        });
+  if (starter?.status === "failed") return starter;
+  const conformanceMetadata = parsed.data.firedrill.conformance;
+  const conformance =
+    typeof conformanceMetadata !== "object"
+      ? undefined
+      : resolveInsidePackage({
+          packageName: requestedName,
+          packageRoot,
+          baseDirectory: packageRoot,
+          path: conformanceMetadata.project,
+          purpose: "Tool conformance project",
+          rejectSymlinks: true,
+        });
+  if (conformance?.status === "failed") return conformance;
+  if (conformance !== undefined && !conformance.path.absolutePath.endsWith(`${sep}firedrill.json`))
+    return failure({
+      message: "Tool conformance project must name a firedrill.json file",
+      path: conformance.path.repositoryPath,
+    });
   return {
     status: "success",
     package: {
@@ -206,6 +259,10 @@ export function resolveInstalledToolPackage(
       lifecycle: parsed.data.firedrill.lifecycle,
       root: packageRoot,
       declaration: declaration.path,
+      ...(starter === undefined ? {} : { starter: starter.path }),
+      ...(conformance === undefined || typeof conformanceMetadata !== "object"
+        ? {}
+        : { conformance: { project: conformance.path, suite: conformanceMetadata.suite } }),
     },
   };
 }

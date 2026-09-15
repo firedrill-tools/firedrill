@@ -1,7 +1,8 @@
-import { ChevronLeft, ChevronRight, Play, X } from "lucide-react";
+import { Play, X } from "lucide-react";
 import { useEffect, useId, useMemo, useRef, useState } from "react";
 import { DataViewer } from "../components/data-viewer";
 import { PageIntro } from "../components/page-intro";
+import { PaginatedContent, Pagination, usePagination } from "../components/pagination";
 import {
   Button,
   CodeBlock,
@@ -10,13 +11,16 @@ import {
   InlineMessage,
   Input,
   KeyValue,
+  RowButton,
   SearchField,
   Spinner,
 } from "../components/primitives";
+import { ScrollArea } from "../components/scroll-area";
 import { SourceViewer } from "../components/source-viewer";
 import { plural, titleFromId, virtualTime } from "../format";
 import type { SimulationDrill, SimulationProject, SimulationSuite, StartSimulationRun } from "../types";
 import { describeExpectation } from "./drill-expectations";
+import { ToolOverrides } from "./tool-overrides";
 
 type Selection =
   | { readonly kind: "drill"; readonly value: SimulationDrill }
@@ -124,8 +128,8 @@ function RunDialog({
         </IconButton>
       </div>
       <p className="fd-dialog__lead">
-        Start the agent with the task and synthetic data defined in your files. Results appear under Runs.
-        Your agent’s model usage may incur costs.
+        Start the agent with the task and synthetic data defined in your files. Open Results to see the
+        outcome. Your agent’s model usage may incur costs.
       </p>
       <details
         className="fd-run-advanced"
@@ -137,7 +141,7 @@ function RunDialog({
           Leave fields empty to keep your source-defined defaults. Each repeat starts with a fresh synthetic
           world.
         </p>
-        <div className="fd-run-fields">
+        <div className="fd-run-fields fd-run-fields--advanced">
           <label className="fd-field" htmlFor={`${id}-seed`}>
             <span>Seed</span>
             <small>Controls the world’s starting randomness, not the model.</small>
@@ -223,7 +227,7 @@ function DrillDetails({
           </KeyValue>
         </dl>
       </section>
-      <section className="fd-definition__section">
+      <section className="fd-definition__section" data-scroll-section="task">
         <h3>Task</h3>
         {execution === undefined ? (
           <p>
@@ -232,37 +236,51 @@ function DrillDetails({
           </p>
         ) : (
           <div className="fd-drill-tasks">
-            {execution.interactions.map((interaction) => (
-              <article className="fd-drill-task" key={interaction.id}>
-                <p className="fd-drill-task__instruction">{interaction.task.instruction}</p>
-                <p className="fd-drill-task__timing">
-                  As {interaction.actorId} ·{" "}
-                  {interaction.afterStartUs === 0
-                    ? "At the start"
-                    : `After ${virtualTime(interaction.afterStartUs)} of world time`}
-                </p>
-                {interaction.task.input === undefined ? null : (
-                  <DataViewer title="Task input" label="View input" value={interaction.task.input} />
-                )}
-              </article>
-            ))}
-            {execution.workloads.map((workload) => (
-              <article className="fd-drill-task" key={workload.id}>
-                <p className="fd-drill-task__instruction">{workload.task.instruction}</p>
-                <p className="fd-drill-task__timing">
-                  {workload.occurrences} occurrences per actor · every {virtualTime(workload.everyUs)} ·
-                  starting after {virtualTime(workload.startAfterUs)} of world time
-                </p>
-                <p className="fd-drill-task__timing">Actors: {workload.actorIds.join(", ")}</p>
-                {workload.task.input === undefined ? null : (
-                  <DataViewer title="Task input" label="View input" value={workload.task.input} />
-                )}
-              </article>
-            ))}
+            <PaginatedContent items={execution.interactions} label="Task interactions" resetKey={drill.id}>
+              {(interactions) =>
+                interactions.map((interaction) => (
+                  <article className="fd-drill-task" key={interaction.id}>
+                    <p className="fd-drill-task__instruction">{interaction.task.instruction}</p>
+                    <p className="fd-drill-task__timing">
+                      As {interaction.actorId} ·{" "}
+                      {interaction.afterStartUs === 0
+                        ? "At the start"
+                        : `After ${virtualTime(interaction.afterStartUs)} of world time`}
+                    </p>
+                    {interaction.task.input === undefined ? null : (
+                      <DataViewer title="Task input" label="View input" value={interaction.task.input} />
+                    )}
+                  </article>
+                ))
+              }
+            </PaginatedContent>
+            <PaginatedContent items={execution.workloads} label="Task workloads" resetKey={drill.id}>
+              {(workloads) =>
+                workloads.map((workload) => (
+                  <article className="fd-drill-task" key={workload.id}>
+                    <p className="fd-drill-task__instruction">{workload.task.instruction}</p>
+                    <p className="fd-drill-task__timing">
+                      {workload.occurrences} occurrences per actor · every {virtualTime(workload.everyUs)} ·
+                      starting after {virtualTime(workload.startAfterUs)} of world time
+                    </p>
+                    <PaginatedContent
+                      items={workload.actorIds}
+                      label={`Actors for ${workload.id}`}
+                      resetKey={`${drill.id}:${workload.id}`}
+                    >
+                      {(actorIds) => <p className="fd-drill-task__timing">Actors: {actorIds.join(", ")}</p>}
+                    </PaginatedContent>
+                    {workload.task.input === undefined ? null : (
+                      <DataViewer title="Task input" label="View input" value={workload.task.input} />
+                    )}
+                  </article>
+                ))
+              }
+            </PaginatedContent>
           </div>
         )}
       </section>
-      <section className="fd-definition__section">
+      <section className="fd-definition__section" data-scroll-section="checks">
         <div className="fd-section-heading">
           <div>
             <h3>Checks</h3>
@@ -272,57 +290,70 @@ function DrillDetails({
         {drill.expectations.length === 0 ? (
           <p>No checks are defined. A completed run alone does not prove the agent behaved correctly.</p>
         ) : (
-          <ol className="fd-drill-checks">
-            {drill.expectations.map((check) => {
-              const description =
-                check.definition === undefined ? undefined : describeExpectation(check.definition);
-              return (
-                <li key={`${check.checkpoint}:${check.id}`}>
-                  <div className="fd-drill-check__heading">
-                    <strong>{titleFromId(check.id)}</strong>
-                    {check.definition === undefined ? null : (
-                      <DataViewer
-                        title={titleFromId(check.id)}
-                        label="View definition"
-                        value={{
-                          checkpoint: check.checkpoint,
-                          gate: check.gate,
-                          definition: check.definition,
-                          ...(description?.filters.length ? { matchingRules: description.filters } : {}),
-                        }}
-                      />
-                    )}
-                  </div>
-                  {description === undefined ? (
-                    <p>View the source to read this check.</p>
-                  ) : (
-                    <>
-                      <p className="fd-drill-check__subject">{description.subject}</p>
-                      <p>{description.expectation}</p>
-                      {description.scope.map((scope) => (
-                        <p className="fd-drill-check__subject" key={scope}>
-                          {scope}
+          <PaginatedContent items={drill.expectations} label="Drill checks" resetKey={drill.id}>
+            {(checks, start) => (
+              <ol className="fd-drill-checks" start={start + 1}>
+                {checks.map((check) => {
+                  const description =
+                    check.definition === undefined ? undefined : describeExpectation(check.definition);
+                  return (
+                    <li key={`${check.checkpoint}:${check.id}`}>
+                      <div className="fd-drill-check__heading">
+                        <strong>{titleFromId(check.id)}</strong>
+                        {check.definition === undefined ? null : (
+                          <DataViewer
+                            title={titleFromId(check.id)}
+                            label="View definition"
+                            value={{
+                              checkpoint: check.checkpoint,
+                              gate: check.gate,
+                              definition: check.definition,
+                              ...(description?.filters.length ? { matchingRules: description.filters } : {}),
+                            }}
+                          />
+                        )}
+                      </div>
+                      {description === undefined ? (
+                        <p>View the source to read this check.</p>
+                      ) : (
+                        <>
+                          <p className="fd-drill-check__subject">{description.subject}</p>
+                          <p>{description.expectation}</p>
+                          <PaginatedContent
+                            items={description.scope}
+                            label={`Scope for ${check.id}`}
+                            resetKey={`${drill.id}:${check.checkpoint}:${check.id}`}
+                          >
+                            {(scopes) =>
+                              scopes.map((scope) => (
+                                <p className="fd-drill-check__subject" key={scope}>
+                                  {scope}
+                                </p>
+                              ))
+                            }
+                          </PaginatedContent>
+                        </>
+                      )}
+                      {check.checkpoint === "invariant" || !check.gate ? (
+                        <p className="fd-drill-check__subject">
+                          {[
+                            check.checkpoint === "invariant" ? "Checked throughout the run" : null,
+                            !check.gate ? "Informational; does not affect the result" : null,
+                          ]
+                            .filter(Boolean)
+                            .join(" · ")}
                         </p>
-                      ))}
-                    </>
-                  )}
-                  {check.checkpoint === "invariant" || !check.gate ? (
-                    <p className="fd-drill-check__subject">
-                      {[
-                        check.checkpoint === "invariant" ? "Checked throughout the run" : null,
-                        !check.gate ? "Informational; does not affect the result" : null,
-                      ]
-                        .filter(Boolean)
-                        .join(" · ")}
-                    </p>
-                  ) : null}
-                </li>
-              );
-            })}
-          </ol>
+                      ) : null}
+                    </li>
+                  );
+                })}
+              </ol>
+            )}
+          </PaginatedContent>
         )}
       </section>
-      <section className="fd-definition__section">
+      <ToolOverrides rules={drill.toolOverrides} />
+      <section className="fd-definition__section" data-scroll-section="settings">
         <details className="fd-drill-disclosure">
           <summary>Execution settings</summary>
           <dl className="fd-definition-grid">
@@ -367,22 +398,26 @@ function SuiteDetails({
       <section className="fd-definition__intro">
         <p>A suite runs a group of drills together. Select a drill below to read its task and checks.</p>
       </section>
-      <section className="fd-definition__section">
+      <section className="fd-definition__section" data-scroll-section="drills">
         <h3>{plural(drills.length, "drill")}</h3>
         {drills.length === 0 ? (
           <p>This suite does not match any drills. Update its IDs or tags in your source files.</p>
         ) : (
-          <div className="fd-drill-suite-list">
-            {drills.map((drill) => (
-              <button type="button" key={drill.id} onClick={() => onSelect(drill)}>
-                <strong>{drill.title ?? titleFromId(drill.id)}</strong>
-                <span>{plural(drill.assertions, "check")}</span>
-              </button>
-            ))}
-          </div>
+          <PaginatedContent items={drills} label="Suite drills" resetKey={suite.id}>
+            {(visibleDrills) => (
+              <div className="fd-drill-suite-list">
+                {visibleDrills.map((drill) => (
+                  <RowButton key={drill.id} onClick={() => onSelect(drill)}>
+                    <strong>{drill.title ?? titleFromId(drill.id)}</strong>
+                    <span>{plural(drill.assertions, "check")}</span>
+                  </RowButton>
+                ))}
+              </div>
+            )}
+          </PaginatedContent>
         )}
       </section>
-      <section className="fd-definition__section">
+      <section className="fd-definition__section" data-scroll-section="settings">
         <details className="fd-drill-disclosure">
           <summary>Execution settings</summary>
           <dl>
@@ -416,7 +451,6 @@ export function DrillsView({
   );
   const [selectedKey, setSelectedKey] = useState<string>();
   const [query, setQuery] = useState("");
-  const [page, setPage] = useState(0);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [helpOpen, setHelpOpen] = useState(false);
   const helpId = useId();
@@ -441,7 +475,7 @@ export function DrillsView({
       .toLowerCase()
       .includes(query.trim().toLowerCase()),
   );
-  const pageIndex = Math.min(page, Math.max(0, Math.ceil(filtered.length / 25) - 1));
+  const pagination = usePagination(filtered, `${project.world.id}:${query}`);
   const choose = (key: string) => {
     setSelectedKey(key);
     setHelpOpen(false);
@@ -474,16 +508,15 @@ export function DrillsView({
               value={query}
               onChange={(event) => {
                 setQuery(event.target.value);
-                setPage(0);
               }}
               placeholder="Find a drill or agent"
             />
           </div>
           <div className="fd-rail-list">
-            {filtered.slice(pageIndex * 25, (pageIndex + 1) * 25).map((item) => {
+            {pagination.items.map((item) => {
               const key = `${item.kind}:${item.value.id}`;
               return (
-                <button
+                <RowButton
                   type="button"
                   className="fd-rail-item"
                   key={key}
@@ -496,34 +529,12 @@ export function DrillsView({
                     <strong>{item.value.title ?? titleFromId(item.value.id)}</strong>
                     {item.kind === "suite" ? <small>Suite</small> : null}
                   </span>
-                </button>
+                </RowButton>
               );
             })}
             {filtered.length === 0 ? <p className="fd-rail-empty">No drills match “{query}”.</p> : null}
           </div>
-          {filtered.length > 25 ? (
-            <div className="fd-catalog-pagination">
-              <span>
-                {pageIndex * 25 + 1}–{Math.min((pageIndex + 1) * 25, filtered.length)} of {filtered.length}
-              </span>
-              <div>
-                <IconButton
-                  label="Previous drills"
-                  disabled={pageIndex === 0}
-                  onClick={() => setPage(pageIndex - 1)}
-                >
-                  <ChevronLeft size={16} />
-                </IconButton>
-                <IconButton
-                  label="Next drills"
-                  disabled={(pageIndex + 1) * 25 >= filtered.length}
-                  onClick={() => setPage(pageIndex + 1)}
-                >
-                  <ChevronRight size={16} />
-                </IconButton>
-              </div>
-            </div>
-          ) : null}
+          <Pagination label="Drills" {...pagination} variant="rail" />
         </aside>
         <div className="fd-workspace-main">
           <div className="fd-workspace-titlebar fd-drill-titlebar">
@@ -548,7 +559,26 @@ export function DrillsView({
               )}
             </div>
           </div>
-          <div className="fd-definition-scroll fd-drill-body">
+          <ScrollArea
+            label="Drill definition"
+            resetKey={`${selected?.kind}:${selected?.value.id}`}
+            sections={
+              selected?.kind === "suite"
+                ? [
+                    { id: "drills", label: "Drills" },
+                    { id: "settings", label: "Execution settings" },
+                  ]
+                : [
+                    { id: "task", label: "Task" },
+                    { id: "checks", label: "Checks" },
+                    ...(selected?.kind === "drill" && (selected.value.toolOverrides?.length ?? 0) > 0
+                      ? [{ id: "tool-overrides", label: "Tool overrides" }]
+                      : []),
+                    { id: "settings", label: "Execution settings" },
+                  ]
+            }
+            contentClassName="fd-drill-body"
+          >
             {!canRun ? (
               <div className="fd-drill-connection">
                 <p>
@@ -574,16 +604,22 @@ export function DrillsView({
                           agent. A plain <code>firedrill inspect</code> command cannot load that in-memory
                           function.
                         </p>
-                        {unavailableTargets.map((target) =>
-                          target.source?.readable ? (
-                            <SourceViewer
-                              key={target.id}
-                              kind="target"
-                              id={target.id}
-                              label={`View connection: ${target.id}`}
-                            />
-                          ) : null,
-                        )}
+                        <PaginatedContent
+                          items={unavailableTargets.filter((target) => target.source?.readable)}
+                          label="Agent connections"
+                          resetKey={`${selected?.kind}:${selected?.value.id}`}
+                        >
+                          {(targets) =>
+                            targets.map((target) => (
+                              <SourceViewer
+                                key={target.id}
+                                kind="target"
+                                id={target.id}
+                                label={`View connection: ${target.id}`}
+                              />
+                            ))
+                          }
+                        </PaginatedContent>
                       </>
                     ) : (
                       <p>
@@ -603,7 +639,7 @@ export function DrillsView({
                 onSelect={(drill) => choose(`drill:${drill.id}`)}
               />
             ) : null}
-          </div>
+          </ScrollArea>
         </div>
       </div>
       <RunDialog

@@ -35,6 +35,74 @@ afterEach(() => {
 });
 
 describe("agent target invocation", () => {
+  it("redacts app credentials from output keys, standalone token echoes, and target failures", async () => {
+    const token = "a".repeat(43);
+    const url = `http://127.0.0.1:9001/index.html#token=${token}`;
+    const apps = [{ packageId: "dispatch", title: "dispatch", url }];
+    const serialized = JSON.stringify(apps);
+    const options = {
+      descriptor: {
+        id: "app-agent",
+        kind: "external" as const,
+        bindings: ["http" as const],
+        timeoutMs: 1_000,
+      },
+      invocation: invocation({ FIREDRILL_TOOL_APPS: serialized }),
+      repositoryRoot: repository(),
+      binding: { apps },
+    };
+    const completed = await invokeTarget({
+      ...options,
+      externalHandler: () => ({ [url]: token, serialized }),
+    });
+    expect(completed).toMatchObject({
+      status: "completed",
+      output: { "[REDACTED]": "[REDACTED]", serialized: "[REDACTED]" },
+    });
+    const failed = await invokeTarget({
+      ...options,
+      externalHandler: () => {
+        throw new Error(`Failed ${url}; token ${token}; environment ${serialized}`);
+      },
+    });
+    expect(failed).toMatchObject({
+      status: "failed",
+      error: { message: expect.stringContaining("[REDACTED]") },
+    });
+    expect(JSON.stringify(failed)).not.toContain(url);
+    expect(JSON.stringify(failed)).not.toContain(token);
+    const command = await invokeTarget({
+      ...options,
+      descriptor: {
+        id: "app-command",
+        kind: "command",
+        bindings: ["http"],
+        executable: process.execPath,
+        arguments: ["-e", "process.stderr.write(process.env.FIREDRILL_TOOL_APPS); process.exit(7);"],
+        environmentFromHost: { FIREDRILL_TOOL_APPS: "UNRELATED_APPS" },
+        timeoutMs: 2_000,
+      },
+      hostEnvironment: { UNRELATED_APPS: "must-not-replace-runtime-apps" },
+    });
+    expect(command).toMatchObject({
+      status: "failed",
+      error: { code: "target.COMMAND_FAILED", message: expect.stringContaining("[REDACTED]") },
+      attachments: [{ kind: "process.stderr", text: "[REDACTED]" }],
+    });
+    expect(JSON.stringify(command)).not.toContain(url);
+    expect(JSON.stringify(command)).not.toContain(token);
+    await expect(
+      invokeTarget({
+        ...options,
+        descriptor: {
+          ...options.descriptor,
+          bindingEnvironment: { FIREDRILL_TOOL_APPS: "FIREDRILL_HTTP_URL" },
+        },
+        externalHandler: () => ({ unexpected: true }),
+      }),
+    ).rejects.toThrow("binding aliases cannot replace reserved FIREDRILL_* variables");
+  });
+
   it("loads a TypeScript module inside the repository and exposes only declared bindings", async () => {
     const root = repository();
     writeFileSync(
@@ -460,7 +528,8 @@ describe("agent target invocation", () => {
         executable: process.execPath,
         arguments: ["malformed.mjs"],
         environmentFromHost: {},
-        timeoutMs: 100,
+        // This case checks invalid output, not subprocess startup latency.
+        timeoutMs: 5000,
       },
       invocation: invocation(),
       repositoryRoot: root,

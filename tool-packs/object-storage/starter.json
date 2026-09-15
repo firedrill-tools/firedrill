@@ -1,0 +1,24 @@
+{
+  "schemaVersion": 1,
+  "virtualTimeUs": 0,
+  "state": [
+    {
+      "action": "upsert",
+      "packageId": "object-storage",
+      "namespace": "objects",
+      "rowId": "local-dev:documents:welcome.txt",
+      "value": {
+        "ownerId": "local-dev",
+        "bucket": "documents",
+        "key": "welcome.txt",
+        "content": "This object exists only in the isolated world.",
+        "contentType": "text/plain",
+        "metadata": {
+          "purpose": "starter"
+        },
+        "version": 1,
+        "byteLength": 46
+      }
+    }
+  ]
+}

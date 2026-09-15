@@ -448,7 +448,7 @@ describe("repository-level TypeScript API", () => {
     expect(verified.attachments[0]?.attachment).toMatchObject({ name: "agent-screen.png" });
     const html = readFileSync(trial?.report.files.html ?? "", "utf8");
     expect(html).toContain(`href="attachments/${attachment?.id}/agent-screen.png"`);
-    expect(html).toContain('download="agent-screen.png">agent-screen.png</a>');
+    expect(html).toContain('download="agent-screen.png">Download agent-screen.png</a>');
   });
 
   it("fails closed when an agent tries to attach an outside or symlinked file", async () => {
@@ -1337,6 +1337,48 @@ describe("repository-level TypeScript API", () => {
         acceptApache2: true,
       }),
     ).rejects.toMatchObject({ code: "framework.TOOL_CONTRIBUTION_EXISTS" });
+  });
+
+  it("includes exactly compiled UI assets in community contributions, including binary fonts", async () => {
+    const root = repository();
+    addConformanceSuite(root);
+    const path = join(root, "world", "records.tool.json");
+    const source = JSON.parse(readFileSync(path, "utf8"));
+    source.ui = { root: "app", entry: "index.html" };
+    writeFileSync(path, JSON.stringify(source));
+    mkdirSync(join(root, "world", "app"));
+    writeFileSync(join(root, "world", "app", "index.html"), "<!doctype html><title>Record tool</title>");
+    const font = Buffer.from([119, 79, 70, 50, 0, 1, 2, 3]);
+    writeFileSync(join(root, "world", "app", "local.woff2"), font);
+    const inspection = await inspectTool({ root, toolId: "record-store" });
+    expect(inspection.uiSourceFiles).toEqual(["world/app/index.html", "world/app/local.woff2"]);
+    expect(inspection.artifact.ui?.assets.map((asset) => asset.path)).toEqual(["index.html", "local.woff2"]);
+    const result = await prepareToolContribution({
+      root,
+      toolId: "record-store",
+      agent: setValueAgent,
+      acceptApache2: true,
+    });
+    expect(readFileSync(join(result.directory, "source/world/app/local.woff2"))).toEqual(font);
+    expect(result.sourceFiles.map((file) => file.path)).toContain("world/app/index.html");
+  });
+
+  it("still scans compiled binary UI assets for credential-like content", async () => {
+    const root = repository();
+    addConformanceSuite(root);
+    const path = join(root, "world", "records.tool.json");
+    const source = JSON.parse(readFileSync(path, "utf8"));
+    source.ui = { root: "app" };
+    writeFileSync(path, JSON.stringify(source));
+    mkdirSync(join(root, "world", "app"));
+    writeFileSync(join(root, "world", "app", "index.html"), "<!doctype html><title>Record tool</title>");
+    writeFileSync(
+      join(root, "world", "app", "local.woff2"),
+      Buffer.concat([Buffer.from([0]), Buffer.from(`${"sk"}-this_is_a_credential_like_value_123456789`)]),
+    );
+    await expect(
+      prepareToolContribution({ root, toolId: "record-store", agent: setValueAgent, acceptApache2: true }),
+    ).rejects.toMatchObject({ code: "framework.TOOL_CONTRIBUTION_UNSAFE" });
   });
 
   it("requires explicit rights attestation and blocks credential-like source", async () => {

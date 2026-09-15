@@ -5,6 +5,7 @@ import type {
   OperationInvocation,
   OperationOutcome,
   PackageId,
+  ResolvedToolOverride,
   ScheduledEventId,
   Sha256,
   StableId,
@@ -30,6 +31,7 @@ export interface WorldKernelOptions {
   readonly store: WorldStore;
   readonly packageLockHash: Sha256;
   readonly tools: readonly ToolDefinition[];
+  readonly toolOverrides?: readonly ResolvedToolOverride[];
   readonly budgets?: Partial<WorldKernelBudgets>;
   /** Called once, after the first rejected over-budget call is durably recorded. */
   readonly onToolCallBudgetExceeded?: (usage: WorldKernelUsage) => void;

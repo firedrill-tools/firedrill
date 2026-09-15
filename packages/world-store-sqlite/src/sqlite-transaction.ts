@@ -48,6 +48,7 @@ import type {
 } from "@firedrill/world-store";
 import type Database from "better-sqlite3";
 import { decodeObject, decodeStoredCount, encodeJson, hashJson } from "./codec.js";
+import { toolOverrideUsageKey } from "./tool-override-usage.js";
 
 interface StateRow {
   package_id: string;
@@ -198,6 +199,7 @@ export class SqliteWorldTransaction implements WorldTransaction {
   private active = true;
   private currentVirtualTimeUs: VirtualTime;
   private readonly secondaryEvidence: InternalEvidenceDraft[] = [];
+  private savepointCount = 0;
 
   constructor(
     private readonly database: Database.Database,
@@ -217,6 +219,53 @@ export class SqliteWorldTransaction implements WorldTransaction {
 
   revoke(): void {
     this.active = false;
+  }
+
+  withSavepoint<T>(execute: () => T): T {
+    this.assertActive();
+    const name = `firedrill_effects_${++this.savepointCount}`;
+    const evidenceLength = this.secondaryEvidence.length;
+    const virtualTimeUs = this.currentVirtualTimeUs;
+    this.database.exec(`SAVEPOINT ${name}`);
+    try {
+      const result = execute();
+      if (
+        typeof result === "object" &&
+        result !== null &&
+        "then" in result &&
+        typeof result.then === "function"
+      ) {
+        throw new TypeError("world savepoints must be synchronous and deterministic");
+      }
+      this.database.exec(`RELEASE SAVEPOINT ${name}`);
+      return result;
+    } catch (error) {
+      this.database.exec(`ROLLBACK TO SAVEPOINT ${name}`);
+      this.database.exec(`RELEASE SAVEPOINT ${name}`);
+      this.secondaryEvidence.length = evidenceLength;
+      this.currentVirtualTimeUs = virtualTimeUs;
+      throw error;
+    }
+  }
+
+  toolOverrideMatchCount(packageId: PackageId, overrideId: StableId): number {
+    this.assertActive();
+    const row = this.database
+      .prepare("SELECT value FROM world_meta WHERE key = ?")
+      .get(toolOverrideUsageKey(packageId, overrideId)) as { value: string } | undefined;
+    return row === undefined ? 0 : decodeStoredCount(row.value, "Tool override match count");
+  }
+
+  consumeToolOverride(packageId: PackageId, overrideId: StableId): number {
+    this.assertActive();
+    const next = this.toolOverrideMatchCount(packageId, overrideId) + 1;
+    if (!Number.isSafeInteger(next)) throw new RangeError("Tool override match count overflow");
+    this.database
+      .prepare(
+        "INSERT INTO world_meta (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+      )
+      .run(toolOverrideUsageKey(packageId, overrideId), String(next));
+    return next;
   }
 
   getActor(bindingId: ActorBindingId): StoredActor | null {

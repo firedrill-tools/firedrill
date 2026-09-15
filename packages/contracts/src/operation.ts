@@ -15,8 +15,50 @@ import {
 } from "./identifiers.js";
 import { ErrorEnvelopeSchema } from "./errors.js";
 import { JsonObjectSchema, JsonValueSchema } from "./json.js";
+import { BindingEnvironmentProjectionSchema } from "./target.js";
 
 export const FidelitySchema = z.enum(["contract", "stateful", "behavioral", "validated"]);
+
+/** MCP's portable naming recommendations; names are case-sensitive. */
+export const McpToolNameSchema = z
+  .string()
+  .min(1)
+  .max(128)
+  .regex(/^[A-Za-z0-9_.-]+$/);
+export const McpToolAliasSchema = z
+  .object({
+    name: McpToolNameSchema,
+    description: z.string().min(1).max(1000).optional(),
+  })
+  .strict();
+
+/** Declarative connection hints, never executable commands or secret passthrough. */
+export const ToolConnectionRecipeSchema = z
+  .object({
+    id: StableIdSchema,
+    title: z.string().min(1).max(200),
+    protocol: z.enum(["http", "mcp", "cli"]),
+    environment: BindingEnvironmentProjectionSchema,
+    instructions: z.string().min(1).max(2000).optional(),
+  })
+  .strict()
+  .superRefine((recipe, context) => {
+    const values = Object.values(recipe.environment);
+    if (values.length === 0 || values.length > 32)
+      context.addIssue({
+        code: "custom",
+        path: ["environment"],
+        message: "connection recipes require 1 through 32 environment mappings",
+      });
+    for (const [name, source] of Object.entries(recipe.environment)) {
+      if (!source.startsWith(`FIREDRILL_${recipe.protocol.toUpperCase()}_`))
+        context.addIssue({
+          code: "custom",
+          path: ["environment", name],
+          message: "connection recipe mappings must use the selected protocol",
+        });
+    }
+  });
 
 export const ToolCapabilitySchema = z.enum([
   "state.read",
@@ -36,6 +78,7 @@ export const OperationContractSchema = z
     declaredErrors: z.array(z.string().regex(/^[A-Z][A-Z0-9_]*$/)).default([]),
     idempotency: z.enum(["none", "optional", "required"]),
     fidelity: FidelitySchema,
+    mcp: McpToolAliasSchema.optional(),
   })
   .strict();
 
@@ -413,6 +456,7 @@ export const ToolPackageManifestSchema = z
     http: z.array(HttpRouteContractSchema).default([]),
     callbacks: z.array(CallbackContractSchema).default([]),
     compatibility: z.array(ToolCompatibilityProfileSchema).default([]),
+    connections: z.array(ToolConnectionRecipeSchema).max(32).optional(),
   })
   .strict()
   .superRefine((manifest, context) => {
@@ -429,6 +473,27 @@ export const ToolPackageManifestSchema = z
     }
     const operationIds = new Set(manifest.operations.map((operation) => operation.id));
     const operationsById = new Map(manifest.operations.map((operation) => [operation.id, operation]));
+    const mcpNames = new Map(
+      manifest.operations.map((operation) => [`${manifest.id}.${operation.id}`, operation.id]),
+    );
+    for (const [index, operation] of manifest.operations.entries()) {
+      const alias = operation.mcp?.name;
+      if (alias === undefined || alias === `${manifest.id}.${operation.id}`) continue;
+      if (mcpNames.has(alias))
+        context.addIssue({
+          code: "custom",
+          path: ["operations", index, "mcp", "name"],
+          message: `MCP alias conflicts with another operation: ${alias}`,
+        });
+      mcpNames.set(alias, operation.id);
+    }
+    const connectionIds = (manifest.connections ?? []).map((recipe) => recipe.id);
+    if (new Set(connectionIds).size !== connectionIds.length)
+      context.addIssue({
+        code: "custom",
+        path: ["connections"],
+        message: "connection recipe ids must be unique",
+      });
     for (const [index, fault] of manifest.faults.entries()) {
       for (const operationId of fault.appliesTo) {
         if (!operationIds.has(operationId)) {
@@ -590,6 +655,8 @@ export const OperationOutcomeSchema = z
   });
 
 export type OperationContract = z.infer<typeof OperationContractSchema>;
+export type McpToolAlias = z.infer<typeof McpToolAliasSchema>;
+export type ToolConnectionRecipe = z.infer<typeof ToolConnectionRecipeSchema>;
 export type ToolEventContract = z.infer<typeof ToolEventContractSchema>;
 export type ToolStateContract = z.infer<typeof ToolStateContractSchema>;
 export type ToolFaultContract = z.infer<typeof ToolFaultContractSchema>;

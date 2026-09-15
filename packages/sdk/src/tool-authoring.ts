@@ -1,7 +1,6 @@
 import { join, resolve } from "node:path";
-import { compileWorld } from "@firedrill/compiler";
 import type { ToolSourceSet } from "@firedrill/compiler";
-import { PackageIdSchema, compareStableStrings } from "@firedrill/contracts";
+import { compileWorld } from "@firedrill/compiler";
 import type {
   Diagnostic,
   EvidenceEntry,
@@ -11,12 +10,14 @@ import type {
   StableId,
   ToolPackageManifest,
 } from "@firedrill/contracts";
-import { loadWorldBuild } from "@firedrill/world-build";
-import type { LoadedWorldBuild } from "@firedrill/world-build";
+import { compareStableStrings, PackageIdSchema } from "@firedrill/contracts";
 import type { CallbackReceiver } from "@firedrill/drills";
+import type { LoadedWorldBuild } from "@firedrill/world-build";
+import { loadWorldBuild } from "@firedrill/world-build";
 import { FiredrillProjectError } from "./project-error.js";
-import { runDrills } from "./run-drills.js";
 import type { AgentCallback, RunDrillsResult } from "./run-drills.js";
+import { runDrills } from "./run-drills.js";
+import { stagePackagedToolConformance } from "./tool-package-conformance.js";
 
 export interface ToolInspection {
   readonly schemaVersion: 1;
@@ -25,8 +26,10 @@ export interface ToolInspection {
   readonly diagnostics: readonly Diagnostic[];
   readonly toolId: PackageId;
   readonly sourcePath: string;
-  /** Declaration followed by the exact selected behavior dependency closure. */
+  /** Declaration, exact behavior dependency closure and optional browser assets. */
   readonly sourceFiles: readonly string[];
+  /** Exact UI source closure in artifact.ui.assets order; empty for backend-only Tools. */
+  readonly uiSourceFiles: readonly string[];
   readonly origin: ToolSourceSet["origin"];
   readonly buildHash: Sha256;
   readonly packageLockHash: Sha256;
@@ -36,6 +39,7 @@ export interface ToolInspection {
     readonly artifactPath: string;
     readonly exportName: string;
     readonly moduleFormat: "esm";
+    readonly ui?: NonNullable<LoadedWorldBuild["packageLock"]["packages"][number]["ui"]>;
   };
   readonly manifest: ToolPackageManifest;
 }
@@ -135,6 +139,8 @@ export interface ToolConformanceResult {
   readonly status: "passed" | "failed";
   readonly tool: ToolValidation;
   readonly suiteId: StableId;
+  /** Whether the consumer supplied the suite or the installed package shipped it. */
+  readonly suiteSource: "repository" | "package";
   readonly coverage: {
     readonly operations: readonly ToolOperationCoverage[];
     readonly events: readonly ToolEventCoverage[];
@@ -194,7 +200,9 @@ function inspectionFromBuild(
     sourceFiles: [
       sourceSet.declarationPath,
       ...sourceSet.behaviorPaths.filter((path) => path !== sourceSet.declarationPath),
+      ...(sourceSet.uiPaths ?? []),
     ],
+    uiSourceFiles: sourceSet.uiPaths ?? [],
     origin: sourceSet.origin,
     buildHash: build.build.manifest.buildHash,
     packageLockHash: build.build.manifest.packageLockHash,
@@ -204,6 +212,7 @@ function inspectionFromBuild(
       artifactPath: lock.artifactPath,
       exportName: lock.exportName,
       moduleFormat: lock.moduleFormat,
+      ...(lock.ui === undefined ? {} : { ui: lock.ui }),
     },
     manifest,
   };
@@ -542,12 +551,34 @@ function drillFailure(run: RunDrillsResult, pass: "first" | "repeat"): ToolConfo
  * Conformance requires passing drills, reproducible hashes, and observed declared behavior.
  */
 export async function testTool(options: TestToolOptions): Promise<ToolConformanceResult> {
-  const prepared = await preparedTool(options);
-  const suiteId = resolveSuite(prepared.loaded, prepared.inspection.toolId, options.suite);
+  let prepared = await preparedTool(options);
+  const originalInspection = prepared.inspection;
   const output = resolve(
     prepared.root,
     options.testDirectory ?? join(".firedrill", "tool-tests", prepared.inspection.toolId),
   );
+  let suiteSource: ToolConformanceResult["suiteSource"] = "repository";
+  let selectedSuite = options.suite;
+  if (
+    selectedSuite === undefined &&
+    !prepared.loaded.worldIr.suites.some(
+      (suite) =>
+        suite.id === `${prepared.inspection.toolId}-conformance` ||
+        (prepared.loaded.worldIr.tools.length === 1 && suite.id === "conformance"),
+    )
+  ) {
+    const packaged = await stagePackagedToolConformance({
+      root: prepared.root,
+      output,
+      tool: prepared.inspection,
+    });
+    if (packaged !== undefined) {
+      prepared = await preparedTool({ root: packaged.root, toolId: options.toolId });
+      selectedSuite = packaged.suite;
+      suiteSource = "package";
+    }
+  }
+  const suiteId = resolveSuite(prepared.loaded, prepared.inspection.toolId, selectedSuite);
   const run = () =>
     runDrills({
       root: prepared.root,
@@ -576,10 +607,12 @@ export async function testTool(options: TestToolOptions): Promise<ToolConformanc
     status: violations.length === 0 ? "passed" : "failed",
     tool: {
       ...prepared.inspection,
+      ...(suiteSource === "package" ? { origin: originalInspection.origin } : {}),
       executable: true,
       buildDirectory: prepared.loaded.directory,
     },
     suiteId,
+    suiteSource,
     coverage,
     deterministic: !violations.some((violation) => violation.code === "NONDETERMINISTIC_RESULT"),
     violations,

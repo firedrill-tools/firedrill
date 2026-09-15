@@ -1,0 +1,17 @@
+schemaVersion: 1
+id: baseline
+state:
+  - action: upsert
+    packageId: object-storage
+    namespace: objects
+    rowId: operator:documents:welcome.txt
+    value:
+      ownerId: operator
+      bucket: documents
+      key: welcome.txt
+      content: This object exists only in the isolated world.
+      contentType: text/plain
+      metadata:
+        purpose: starter
+      version: 1
+      byteLength: 46

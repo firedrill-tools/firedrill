@@ -1,4 +1,4 @@
-import { X } from "lucide-react";
+import { ChevronRight, X } from "lucide-react";
 import { useEffect, useId, useRef, useState } from "react";
 import { CodeDocument } from "./code-document";
 import { Button, IconButton } from "./primitives";
@@ -8,10 +8,12 @@ export function DataViewer({
   title,
   value,
   label = "View JSON",
+  variant = "secondary",
 }: {
   readonly title: string;
   readonly value: unknown;
   readonly label?: string;
+  readonly variant?: "secondary" | "link";
 }) {
   const dialog = useRef<HTMLDialogElement>(null);
   const [open, setOpen] = useState(false);
@@ -24,13 +26,14 @@ export function DataViewer({
   return (
     <>
       <Button
-        variant="quiet"
+        variant={variant}
         size="compact"
         aria-haspopup="dialog"
         aria-label={`${label}: ${title}`}
         onClick={() => setOpen(true)}
       >
         {label}
+        {variant === "link" ? <ChevronRight size={14} aria-hidden="true" /> : null}
       </Button>
       <dialog
         ref={dialog}

@@ -5,8 +5,8 @@ import { fileURLToPath } from "node:url";
 import type { Sha256 } from "@firedrill/contracts";
 import { compareStableStrings } from "@firedrill/contracts";
 import { FiredrillProjectError } from "./project-error.js";
-import { inspectTool, testTool } from "./tool-authoring.js";
 import type { TestToolOptions, ToolConformanceResult } from "./tool-authoring.js";
+import { inspectTool, testTool } from "./tool-authoring.js";
 
 const MAX_SOURCE_FILE_BYTES = 10 * 1024 * 1024;
 const MAX_SOURCE_TOTAL_BYTES = 25 * 1024 * 1024;
@@ -45,10 +45,10 @@ function contained(parent: string, child: string): boolean {
   );
 }
 
-function unsafeSource(path: string, bytes: Buffer): readonly string[] {
+function unsafeSource(path: string, bytes: Buffer, verifiedBinaryUi = false): readonly string[] {
   const issues: string[] = [];
   if (bytes.length > MAX_SOURCE_FILE_BYTES) issues.push("source file exceeds 10 MiB");
-  if (bytes.includes(0)) issues.push("binary source is not accepted");
+  if (bytes.includes(0) && !verifiedBinaryUi) issues.push("binary source is not accepted");
   if (/(^|\/)\.env(?:\.|$)/i.test(path) || /\.(?:key|p12|pfx|pem)$/i.test(path)) {
     issues.push("secret-bearing filename is not accepted");
   }
@@ -222,6 +222,9 @@ export async function prepareToolContribution(
   const sourceFiles: Array<{ path: string; bytes: Buffer; hash: Sha256 }> = [];
   let totalBytes = 0;
   const unsafe: Array<{ path: string; issues: readonly string[] }> = [];
+  const uiAssets = new Map(
+    conformance.tool.uiSourceFiles.map((path, index) => [path, conformance.tool.artifact.ui?.assets[index]]),
+  );
   for (const path of conformance.tool.sourceFiles) {
     const absolute = resolve(root, ...path.split("/"));
     if (!contained(root, absolute)) {
@@ -230,7 +233,15 @@ export async function prepareToolContribution(
     }
     const bytes = readFileSync(absolute);
     totalBytes += bytes.length;
-    const issues = unsafeSource(path, bytes);
+    const asset = uiAssets.get(path);
+    const byteHash = hash(bytes);
+    const matchesAsset =
+      asset !== undefined && asset.bytes === bytes.length && asset.artifactHash === byteHash;
+    const binaryUi =
+      matchesAsset && /^(?:font\/|image\/)/.test(asset.mediaType) && asset.mediaType !== "image/svg+xml";
+    const issues = [...unsafeSource(path, bytes, binaryUi)];
+    if (uiAssets.has(path) && !matchesAsset)
+      issues.push("UI source changed after conformance; validate and retry");
     if (issues.length > 0) unsafe.push({ path, issues });
     sourceFiles.push({ path, bytes, hash: hash(bytes) });
   }

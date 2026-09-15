@@ -1,39 +1,14 @@
-import { ChevronLeft, ChevronRight } from "lucide-react";
 import { useMemo, useState } from "react";
+import { ActorIdentity } from "../components/actor-identity";
 import { DataViewer } from "../components/data-viewer";
 import { PageIntro } from "../components/page-intro";
-import { EmptyState, IconButton, SearchField, Select } from "../components/primitives";
+import { PaginatedContent, Pagination, usePagination } from "../components/pagination";
+import { EmptyState, RowButton, SearchField, Select } from "../components/primitives";
+import { ScrollArea } from "../components/scroll-area";
 import { SourceViewer } from "../components/source-viewer";
 import type { SimulationProject } from "../types";
 import { recordCell, schemaFields, startingRecords } from "./catalog-data";
 import "./catalog-world.css";
-
-function PageControls({
-  page,
-  total,
-  onPage,
-}: {
-  readonly page: number;
-  readonly total: number;
-  readonly onPage: (page: number) => void;
-}) {
-  const pages = Math.max(1, Math.ceil(total / 25));
-  return (
-    <div className="fd-catalog-pagination">
-      <span>
-        {total === 0 ? "0 results" : `${page * 25 + 1}–${Math.min((page + 1) * 25, total)} of ${total}`}
-      </span>
-      <div>
-        <IconButton label="Previous page" disabled={page === 0} onClick={() => onPage(page - 1)}>
-          <ChevronLeft size={16} />
-        </IconButton>
-        <IconButton label="Next page" disabled={page + 1 >= pages} onClick={() => onPage(page + 1)}>
-          <ChevronRight size={16} />
-        </IconButton>
-      </div>
-    </div>
-  );
-}
 
 export function CatalogView({
   project,
@@ -46,8 +21,6 @@ export function CatalogView({
   const [tableId, setTableId] = useState("");
   const [query, setQuery] = useState("");
   const [tableQuery, setTableQuery] = useState("");
-  const [pageIndex, setPageIndex] = useState(0);
-  const [tablePage, setTablePage] = useState(0);
   const scenario = project.scenarios.find((item) => item.id === scenarioId);
   const setup = scenario ?? project.world.baseline;
   const rows = useMemo(() => startingRecords(setup), [setup]);
@@ -74,15 +47,19 @@ export function CatalogView({
     `${field.name} ${field.type}`.toLowerCase().includes(normalized),
   );
   const actors = setup.actors.filter((actor) =>
-    `${actor.id} ${JSON.stringify(actor.attributes)}`.toLowerCase().includes(normalized),
+    `${actor.id} ${actor.description ?? ""} ${JSON.stringify(actor.attributes)}`
+      .toLowerCase()
+      .includes(normalized),
   );
-  const count = page === "schema" ? fields.length : page === "data" ? currentRows.length : actors.length;
-  const index = Math.min(pageIndex, Math.max(0, Math.ceil(count / 25) - 1));
+  const resetKey = `${project.world.id}:${page}:${scenario?.id ?? ""}:${selected?.id ?? ""}:${query}`;
+  const fieldPagination = usePagination(fields, resetKey);
+  const rowPagination = usePagination(currentRows, resetKey);
+  const actorPagination = usePagination(actors, resetKey);
+  const pagination = page === "schema" ? fieldPagination : page === "data" ? rowPagination : actorPagination;
   const columns = [...new Set(currentRows.flatMap((row) => Object.keys(row.value)))];
-  const currentTablePage = Math.min(tablePage, Math.max(0, Math.ceil(tableMatches.length / 25) - 1));
+  const tablePagination = usePagination(tableMatches, `${project.world.id}:${tableQuery}`);
   const chooseTable = (id: string) => {
     setTableId(id);
-    setPageIndex(0);
     setQuery("");
   };
   const source = scenario?.source ?? project.world.source;
@@ -106,13 +83,12 @@ export function CatalogView({
                 value={tableQuery}
                 onChange={(event) => {
                   setTableQuery(event.target.value);
-                  setTablePage(0);
                 }}
               />
             </div>
             <div className="fd-rail-list">
-              {tableMatches.slice(currentTablePage * 25, (currentTablePage + 1) * 25).map((table) => (
-                <button
+              {tablePagination.items.map((table) => (
+                <RowButton
                   type="button"
                   key={table.id}
                   className="fd-rail-item"
@@ -123,13 +99,13 @@ export function CatalogView({
                     <strong>{table.namespace}</strong>
                     <small>{table.tool.id}</small>
                   </span>
-                </button>
+                </RowButton>
               ))}
               {tableMatches.length === 0 ? (
                 <p className="fd-rail-empty">No declared tables match this search.</p>
               ) : null}
             </div>
-            <PageControls page={currentTablePage} total={tableMatches.length} onPage={setTablePage} />
+            <Pagination label="Tables" {...tablePagination} variant="rail" />
           </aside>
         )}
         <div className="fd-workspace-main">
@@ -169,7 +145,6 @@ export function CatalogView({
               value={query}
               onChange={(event) => {
                 setQuery(event.target.value);
-                setPageIndex(0);
               }}
             />
             {page === "schema" ? null : (
@@ -178,7 +153,6 @@ export function CatalogView({
                 value={scenario?.id ?? ""}
                 onChange={(event) => {
                   setScenarioId(event.target.value);
-                  setPageIndex(0);
                 }}
               >
                 <option value="">World baseline</option>
@@ -190,7 +164,16 @@ export function CatalogView({
               </Select>
             )}
           </div>
-          <div className="fd-catalog-content">
+          <ScrollArea
+            label={
+              page === "schema"
+                ? "Schema fields"
+                : page === "data"
+                  ? "Starting data"
+                  : "Actors and permissions"
+            }
+            resetKey={`${resetKey}:${pagination.page}`}
+          >
             {page === "schema" ? (
               selected?.definition === undefined ? (
                 <EmptyState title="No schema available">
@@ -199,7 +182,7 @@ export function CatalogView({
                 </EmptyState>
               ) : (
                 <>
-                  <div className="fd-table-scroll">
+                  <div>
                     <table className="fd-table fd-table--catalog">
                       <thead>
                         <tr>
@@ -210,7 +193,7 @@ export function CatalogView({
                         </tr>
                       </thead>
                       <tbody>
-                        {fields.slice(index * 25, (index + 1) * 25).map((field) => (
+                        {fieldPagination.items.map((field) => (
                           <tr key={field.name}>
                             <td>
                               <code>{field.name}</code>
@@ -247,7 +230,7 @@ export function CatalogView({
                     : "No records match your search."}
                 </EmptyState>
               ) : (
-                <div className="fd-table-scroll">
+                <div>
                   <table className="fd-table fd-table--catalog">
                     <thead>
                       <tr>
@@ -255,17 +238,18 @@ export function CatalogView({
                         {columns.map((column) => (
                           <th key={column}>{column}</th>
                         ))}
+                        <th scope="col" className="fd-table__actions">
+                          Actions
+                        </th>
                       </tr>
                     </thead>
                     <tbody>
-                      {currentRows.slice(index * 25, (index + 1) * 25).map((row) => (
-                        <tr key={row.rowId}>
+                      {rowPagination.items.map((row) => (
+                        <tr key={JSON.stringify([row.packageId, row.namespace, row.rowId])}>
                           <td>
-                            <DataViewer
-                              title={`${row.namespace} / ${row.rowId}`}
-                              value={row.value}
-                              label={row.rowId}
-                            />
+                            <code className="fd-record-cell" title={row.rowId}>
+                              {row.rowId}
+                            </code>
                           </td>
                           {columns.map((column) => (
                             <td key={column}>
@@ -274,6 +258,13 @@ export function CatalogView({
                               </span>
                             </td>
                           ))}
+                          <td className="fd-table__actions">
+                            <DataViewer
+                              title={`${row.namespace} / ${row.rowId}`}
+                              value={row.value}
+                              label="View record"
+                            />
+                          </td>
                         </tr>
                       ))}
                     </tbody>
@@ -288,7 +279,7 @@ export function CatalogView({
                   belong under Data.
                 </EmptyState>
               ) : (
-                <div className="fd-table-scroll">
+                <div>
                   <table className="fd-table fd-table--catalog">
                     <thead>
                       <tr>
@@ -298,10 +289,10 @@ export function CatalogView({
                       </tr>
                     </thead>
                     <tbody>
-                      {actors.slice(index * 25, (index + 1) * 25).map((actor) => (
+                      {actorPagination.items.map((actor) => (
                         <tr key={actor.id}>
                           <td>
-                            <code>{actor.id}</code>
+                            <ActorIdentity actor={actor} />
                           </td>
                           <td>
                             {Object.keys(actor.attributes).length === 0 ? (
@@ -318,15 +309,23 @@ export function CatalogView({
                             {actor.grants.length === 0 ? (
                               "No operations permitted"
                             ) : (
-                              <ul className="fd-plain-list">
-                                {actor.grants.map((grant) => (
-                                  <li key={`${grant.packageId}.${grant.operationId}`}>
-                                    <code>
-                                      {grant.packageId}.{grant.operationId}
-                                    </code>
-                                  </li>
-                                ))}
-                              </ul>
+                              <PaginatedContent
+                                items={actor.grants}
+                                label={`Allowed operations for ${actor.id}`}
+                                resetKey={`${project.world.id}:${scenario?.id ?? ""}:${actor.id}`}
+                              >
+                                {(grants) => (
+                                  <ul className="fd-plain-list">
+                                    {grants.map((grant) => (
+                                      <li key={`${grant.packageId}.${grant.operationId}`}>
+                                        <code>
+                                          {grant.packageId}.{grant.operationId}
+                                        </code>
+                                      </li>
+                                    ))}
+                                  </ul>
+                                )}
+                              </PaginatedContent>
                             )}
                           </td>
                         </tr>
@@ -336,8 +335,11 @@ export function CatalogView({
                 </div>
               )
             ) : null}
-          </div>
-          <PageControls page={index} total={count} onPage={setPageIndex} />
+          </ScrollArea>
+          <Pagination
+            label={page === "schema" ? "Fields" : page === "data" ? "Records" : "Identities"}
+            {...pagination}
+          />
         </div>
       </div>
     </section>

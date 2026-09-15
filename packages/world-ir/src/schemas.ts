@@ -1,7 +1,20 @@
+import type {
+  AssertionDefinition,
+  EventRef,
+  InlineScenarioDefinition,
+  OperationRef,
+  ResolvedToolOverride,
+  ToolPackageManifest,
+} from "@firedrill/contracts";
 import {
+  compareStableStrings,
   DrillDefinitionSchema,
   DrillSuiteDefinitionSchema,
+  httpRoutesOverlap,
   InlineScenarioDefinitionSchema,
+  MAX_TOOL_UI_ASSET_BYTES,
+  MAX_TOOL_UI_ASSETS,
+  MAX_TOOL_UI_BYTES,
   NodePackageNameSchema,
   PackageIdSchema,
   RunSetupRecordSchema,
@@ -14,15 +27,9 @@ import {
   StableIdSchema,
   TargetDescriptorSchema,
   ToolPackageManifestSchema,
-  compareStableStrings,
-  httpRoutesOverlap,
-} from "@firedrill/contracts";
-import type {
-  AssertionDefinition,
-  EventRef,
-  InlineScenarioDefinition,
-  OperationRef,
-  ToolPackageManifest,
+  ToolUiMediaTypeSchema,
+  ToolUiPathSchema,
+  toolUiMediaType,
 } from "@firedrill/contracts";
 import { z } from "zod";
 import { semanticHash } from "./hash.js";
@@ -148,6 +155,13 @@ function validateScenario(
   path: Array<string | number>,
   context: z.RefinementCtx,
 ): void {
+  validateToolOverrides(
+    scenario.toolOverrides,
+    scenario.actors.map((actor) => actor.id),
+    indexes,
+    path,
+    context,
+  );
   for (const [actorIndex, actor] of scenario.actors.entries()) {
     for (const [grantIndex, grant] of actor.grants.entries()) {
       if (!indexes.operations.has(operationKey(grant))) {
@@ -183,6 +197,41 @@ function validateScenario(
         code: "custom",
         path: [...path, "initialEvents", eventIndex],
         message: `scenario references unknown event ${event.event.packageId}.${event.event.eventId}`,
+      });
+    }
+  }
+}
+
+function validateToolOverrides(
+  rules: readonly ResolvedToolOverride[] | undefined,
+  actors: readonly string[],
+  indexes: ToolIndexes,
+  path: Array<string | number>,
+  context: z.RefinementCtx,
+): void {
+  for (const [index, rule] of (rules ?? []).entries()) {
+    const rulePath = [...path, "toolOverrides", index];
+    const operation = indexes.packages
+      .get(rule.operation.packageId)
+      ?.operations.find((candidate) => candidate.id === rule.operation.operationId);
+    if (operation === undefined) {
+      context.addIssue({
+        code: "custom",
+        path: [...rulePath, "operation"],
+        message: `Tool override references unknown operation ${rule.operation.packageId}.${rule.operation.operationId}`,
+      });
+    } else if (rule.outcome.kind === "error" && !operation.declaredErrors.includes(rule.outcome.code)) {
+      context.addIssue({
+        code: "custom",
+        path: [...rulePath, "outcome", "code"],
+        message: `Tool override error ${rule.outcome.code} is not declared by operation ${operation.id}`,
+      });
+    }
+    if (rule.when?.actorId !== undefined && !actors.includes(rule.when.actorId)) {
+      context.addIssue({
+        code: "custom",
+        path: [...rulePath, "when", "actorId"],
+        message: `Tool override references unknown actor ${rule.when.actorId}`,
       });
     }
   }
@@ -235,6 +284,22 @@ export const CanonicalWorldIrSchema = z
     );
 
     const indexes = indexTools(world.tools);
+    const mcpNames = new Set(
+      world.tools.flatMap((tool) => tool.operations.map((operation) => `${tool.id}.${operation.id}`)),
+    );
+    for (const [toolIndex, tool] of world.tools.entries()) {
+      for (const [operationIndex, operation] of tool.operations.entries()) {
+        const alias = operation.mcp?.name;
+        if (alias === undefined || alias === `${tool.id}.${operation.id}`) continue;
+        if (mcpNames.has(alias))
+          context.addIssue({
+            code: "custom",
+            path: ["tools", toolIndex, "operations", operationIndex, "mcp", "name"],
+            message: `MCP alias conflicts with another operation: ${alias}`,
+          });
+        mcpNames.add(alias);
+      }
+    }
     const httpRoutes: Array<{
       readonly packageId: string;
       readonly routeId: string;
@@ -297,6 +362,13 @@ export const CanonicalWorldIrSchema = z
           message: `drill references unknown scenario ${drill.scenarioId}`,
         });
       } else if (scenario !== undefined) {
+        validateToolOverrides(
+          drill.toolOverrides,
+          scenario.actors.map((actor) => actor.id),
+          indexes,
+          ["drills", drillIndex],
+          context,
+        );
         const actors = new Set(scenario.actors.map((actor) => actor.id));
         for (const [interactionIndex, interaction] of drill.timeline.interactions.entries()) {
           if (actors.has(interaction.actorId)) continue;
@@ -368,6 +440,56 @@ const BaseToolArtifactSourceSchema = z.discriminatedUnion("kind", [
     .strict(),
 ]);
 
+export const ToolUiAssetLockSchema = z
+  .object({
+    path: ToolUiPathSchema,
+    artifactPath: SourcePathSchema,
+    artifactHash: Sha256Schema,
+    bytes: z.number().int().min(0).max(MAX_TOOL_UI_ASSET_BYTES),
+    mediaType: ToolUiMediaTypeSchema,
+  })
+  .strict()
+  .superRefine((asset, context) => {
+    if (toolUiMediaType(asset.path) !== asset.mediaType)
+      context.addIssue({
+        code: "custom",
+        path: ["mediaType"],
+        message: "UI media type must match its allowlisted extension",
+      });
+  });
+
+export const ToolUiLockSchema = z
+  .object({
+    entry: ToolUiPathSchema,
+    assets: z.array(ToolUiAssetLockSchema).min(1).max(MAX_TOOL_UI_ASSETS),
+  })
+  .strict()
+  .superRefine((ui, context) => {
+    duplicateOrOrderIssues(
+      context,
+      "assets",
+      ui.assets.map((asset) => asset.path),
+    );
+    if (new Set(ui.assets.map((asset) => asset.path.toLowerCase())).size !== ui.assets.length)
+      context.addIssue({
+        code: "custom",
+        path: ["assets"],
+        message: "UI asset paths must be case-insensitively distinct for portable builds",
+      });
+    if (!ui.assets.some((asset) => asset.path === ui.entry && asset.mediaType === "text/html; charset=utf-8"))
+      context.addIssue({
+        code: "custom",
+        path: ["entry"],
+        message: "UI entry must name a locked HTML asset",
+      });
+    if (ui.assets.reduce((total, asset) => total + asset.bytes, 0) > MAX_TOOL_UI_BYTES)
+      context.addIssue({
+        code: "custom",
+        path: ["assets"],
+        message: "UI assets exceed the per-Tool byte limit",
+      });
+  });
+
 export const ToolArtifactLockSchema = z
   .object({
     packageId: PackageIdSchema,
@@ -375,6 +497,7 @@ export const ToolArtifactLockSchema = z
     manifestHash: Sha256Schema,
     artifactHash: Sha256Schema,
     artifactPath: SourcePathSchema,
+    ui: ToolUiLockSchema.optional(),
     exportName: z
       .string()
       .regex(/^(?:default|[$A-Z_a-z][$\w]*)$/)
@@ -391,7 +514,17 @@ export const ToolArtifactLockSchema = z
         .strict(),
     ]),
   })
-  .strict();
+  .strict()
+  .superRefine((lock, context) => {
+    for (const [index, asset] of (lock.ui?.assets ?? []).entries()) {
+      if (asset.artifactPath !== `tools/${lock.packageId}-ui/${asset.artifactHash.slice(7)}/${asset.path}`)
+        context.addIssue({
+          code: "custom",
+          path: ["ui", "assets", index, "artifactPath"],
+          message: "UI artifact path must be content-addressed under its own Tool directory",
+        });
+    }
+  });
 
 export const PackageLockSchema = z
   .object({
@@ -531,6 +664,8 @@ export const WorldIrSchemas = {
 
 export type CanonicalWorldIr = z.infer<typeof CanonicalWorldIrSchema>;
 export type ToolArtifactLock = z.infer<typeof ToolArtifactLockSchema>;
+export type ToolUiAssetLock = z.infer<typeof ToolUiAssetLockSchema>;
+export type ToolUiLock = z.infer<typeof ToolUiLockSchema>;
 export type PackageLock = z.infer<typeof PackageLockSchema>;
 export type BuildIdentity = z.infer<typeof BuildIdentitySchema>;
 export type BuildProvenanceEntry = z.infer<typeof BuildProvenanceEntrySchema>;

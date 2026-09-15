@@ -2,15 +2,22 @@ import { createHash } from "node:crypto";
 import { mkdtempSync, readdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import type { EvidenceEntry, RunResult, ToolPackageManifest } from "@firedrill/contracts";
+import type {
+  EvidenceEntry,
+  RunResult,
+  TargetFileAttachment,
+  ToolPackageManifest,
+} from "@firedrill/contracts";
 import { AssertionResultSchema, canonicalJson, JsonValueSchema, RunResultSchema } from "@firedrill/contracts";
 import { trajectoryHash } from "@firedrill/world-ir";
 import { afterEach, describe, expect, it } from "vitest";
 import {
   compareLocalReports,
+  compareLocalReportDetails,
   renderHtmlReport,
   renderJsonReport,
   renderJunitReport,
+  renderSavedReport,
   renderTerminalReport,
   verifyLocalReport,
   writeLocalReport,
@@ -326,6 +333,12 @@ describe("local evidence reporters", () => {
         actorId: "operator",
         outcome: { status: "ok", value: { acceptedValue: unsafe } },
         idempotency: "not_requested",
+        toolOverride: {
+          id: "use-stateful-handler",
+          scope: { kind: "drill", drillId: "update-record" },
+          outcome: "original",
+          matchIndex: 2,
+        },
       },
       {
         schemaVersion: 1,
@@ -386,6 +399,9 @@ describe("local evidence reporters", () => {
     expect(actions).toContain("Response received");
     expect(actions).toContain("acceptedValue");
     expect(actions).toContain("Success");
+    expect(actions).toContain("Override: use-stateful-handler");
+    expect(actions).toContain("drill update-record · match 2");
+    expect(actions).toContain("Used the tool&#39;s normal behavior");
     expect(changes).toContain(escaped);
     expect(changes).toContain("before agent action");
     expect(changes).toContain("after agent action");
@@ -630,10 +646,136 @@ describe("local evidence reporters", () => {
       },
     ]);
     expect(readFileSync(written.files.html, "utf8")).toMatch(/copied verbatim without redaction/i);
+    expect(written.manifest.presentationVersion).toBe(3);
+    expect(readFileSync(written.files.html, "utf8")).toContain('data-attachment-preview="image"');
+    expect(renderSavedReport(destination)).toBe(readFileSync(written.files.html, "utf8"));
+    expect(renderHtmlReport({ result, evidence: entries })).not.toContain('data-attachment-preview="image"');
 
     writeFileSync(written.attachments[0]?.path ?? "", "tampered");
     expect(() => verifyLocalReport(destination)).toThrowError(
       expect.objectContaining({ code: "reporter.ARTIFACT_MISMATCH" }),
+    );
+  });
+
+  it("preserves capture artifacts and renders safe, bounded supporting previews without changing evidence", () => {
+    const root = temporaryDirectory();
+    const entries = evidence();
+    const original = run(entries);
+    if (original.status !== "sealed") throw new Error("fixture must be sealed");
+    function source(id: string, name: string, mediaType: string, body: Buffer) {
+      const path = join(root, name);
+      writeFileSync(path, body);
+      const attachment: TargetFileAttachment = {
+        schemaVersion: 1,
+        kind: "file",
+        id,
+        name,
+        mediaType,
+        bytes: body.byteLength,
+        hash: `sha256:${createHash("sha256").update(body).digest("hex")}`,
+        redaction: { status: "not_applied", note: null },
+      };
+      return { attachment, path };
+    }
+    const legacy = source("attachment-legacy001", "legacy.txt", "text/plain", Buffer.from("Legacy file"));
+    const log = source(
+      "attachment-capturelog001",
+      "logs.txt",
+      "text/plain",
+      Buffer.from(
+        `${JSON.stringify({ interactionId: "inspect-record", message: '<script>"literal log"</script>\nnot-redacted-log-secret' })}\n`,
+      ),
+    );
+    const video = source(
+      "attachment-capturevideo001",
+      "screen.webm",
+      "video/webm",
+      Buffer.from([0x1a, 0x45, 0xdf, 0xa3, 0]),
+    );
+    const active = source(
+      "attachment-capturehtml001",
+      "unsafe.html",
+      "text/html",
+      Buffer.from("<script>unsafeFile()</script>"),
+    );
+    const long = source(
+      "attachment-capturelong001",
+      "long.txt",
+      "text/plain",
+      Buffer.from(`${"x".repeat(65_536)}TAIL_NOT_IN_PREVIEW`),
+    );
+    const interactions = original.interactions.map((interaction) => ({
+      ...interaction,
+      targetResult: {
+        ...interaction.targetResult,
+        attachments: [legacy.attachment, { kind: "process.stderr", text: "Readable stderr <message>" }],
+      },
+    }));
+    const withLegacy = RunResultSchema.parse({
+      ...original,
+      interactions,
+      trajectoryHash: trajectoryHash({ interactions, checkpoints: original.checkpoints, evidence: entries }),
+    });
+    const result = RunResultSchema.parse({
+      ...withLegacy,
+      capture: {
+        schemaVersion: 1,
+        policies: { logs: "always", screenshots: "retain-on-failure", video: "always", files: "always" },
+        attachments: [
+          { kind: "log", policy: "always", attachment: log.attachment },
+          { kind: "video", policy: "always", interactionId: "inspect-record", attachment: video.attachment },
+          { kind: "file", policy: "always", attachment: active.attachment },
+          { kind: "file", policy: "always", attachment: long.attachment },
+        ],
+        errors: [{ code: "capture.DRIVER_ERROR", message: "Could not capture <frame>", kind: "screenshot" }],
+        discarded: { logs: 0, screenshots: 1, video: 0, files: 0 },
+      },
+    });
+    const files = [legacy, log, video, active, long];
+    const written = writeLocalReport(
+      {
+        result,
+        evidence: entries,
+        attachmentSources: files.map((file) => ({ attachmentId: file.attachment.id, path: file.path })),
+      },
+      join(root, "capture-report"),
+    );
+    const verified = verifyLocalReport(written.directory);
+    expect(verified.attachments).toHaveLength(5);
+    expect(verified.result.capture).toEqual(result.capture);
+    expect(written.manifest.trajectoryHash).toBe(
+      withLegacy.status === "sealed" ? withLegacy.trajectoryHash : undefined,
+    );
+    expect(written.manifest.evidenceHash).toBe(original.evidenceHash);
+    expect(verified.result.status === "sealed" && verified.result.verdict).toBe("passed");
+    for (const file of files) {
+      const copied = verified.attachments.find((entry) => entry.attachment.id === file.attachment.id);
+      expect(readFileSync(copied?.path ?? "")).toEqual(readFileSync(file.path));
+    }
+    const html = readFileSync(written.files.html, "utf8");
+    expect(renderSavedReport(written.directory)).toBe(html);
+    expect(html).toContain("Logs and attachments");
+    expect(html).toContain('http-equiv="Content-Security-Policy"');
+    expect(html).toContain(
+      "default-src &#39;none&#39;; img-src &#39;self&#39; data:; media-src &#39;self&#39; data:",
+    );
+    expect(html).toContain("script-src &#39;none&#39;");
+    expect(html).toContain("[inspect-record] &lt;script&gt;&quot;literal log&quot;&lt;/script&gt;");
+    expect(html).toContain("not-redacted-log-secret");
+    expect(html).toContain("Readable stderr &lt;message&gt;");
+    expect(html).toContain('data-attachment-preview="video"');
+    expect(html).toContain('controls preload="metadata" playsinline');
+    expect(html).not.toMatch(/autoplay|<iframe|<object|<embed|<script/);
+    expect(html).not.toContain("unsafeFile()");
+    expect(html).toContain('download="unsafe.html"');
+    expect(html).not.toContain("TAIL_NOT_IN_PREVIEW");
+    expect(html).toContain("Preview limited to the first 64 KiB");
+    expect(html).toContain("Capture errors");
+    expect(html).toContain("Could not capture &lt;frame&gt;");
+    expect(html).toContain("Discarded by retention policy: 1 screenshots");
+    expect(html).toContain("supporting files, not the world verdict");
+    expect(() => writeLocalReport({ result, evidence: entries }, join(root, "missing-capture"))).toThrow(
+      /descriptors and staged sources must match exactly/,
     );
   });
 
@@ -811,8 +953,19 @@ describe("local evidence reporters", () => {
 
   it("compares exact-input runs without inventing a regression label", () => {
     const root = temporaryDirectory();
-    const entries = evidence();
-    const baselineResult = run(entries);
+    const entries = evidence().map((entry) =>
+      entry.kind === "lifecycle" ? { ...entry, details: { source: "fixture" } } : entry,
+    );
+    const original = run(entries);
+    const interactions = original.interactions.map((interaction) => ({
+      ...interaction,
+      targetResult: { ...interaction.targetResult, output: { note: "fixture" } },
+    }));
+    const baselineResult = RunResultSchema.parse({
+      ...original,
+      interactions,
+      trajectoryHash: trajectoryHash({ interactions, checkpoints: original.checkpoints, evidence: entries }),
+    });
     const baseline = writeLocalReport({ result: baselineResult, evidence: entries }, join(root, "baseline"));
     if (baselineResult.status !== "sealed") throw new Error("fixture must be sealed");
     const baselineAssertion = baselineResult.assertionResults[0];
@@ -877,6 +1030,171 @@ describe("local evidence reporters", () => {
       },
     });
     expect(comparison).not.toHaveProperty("regression");
+  });
+
+  it("makes mixed redaction descriptive even when recorded input identities match", () => {
+    const root = temporaryDirectory();
+    const entries = evidence().map((entry) =>
+      entry.kind === "lifecycle" ? { ...entry, details: { source: "fixture" } } : entry,
+    );
+    const original = run(entries);
+    const interactions = original.interactions.map((interaction) => ({
+      ...interaction,
+      targetResult: { ...interaction.targetResult, output: { note: "fixture" } },
+    }));
+    const clean = RunResultSchema.parse({
+      ...original,
+      interactions,
+      trajectoryHash: trajectoryHash({ interactions, checkpoints: original.checkpoints, evidence: entries }),
+    });
+    const baseline = writeLocalReport({ result: clean, evidence: entries }, join(root, "before"));
+    const candidate = writeLocalReport(
+      { result: run(evidence()), evidence: evidence() },
+      join(root, "after"),
+    );
+    expect(baseline.manifest.redaction.applied).toBe(false);
+    expect(candidate.manifest.redaction.applied).toBe(true);
+    for (const comparison of [
+      compareLocalReports(baseline.directory, candidate.directory),
+      compareLocalReportDetails(baseline.directory, candidate.directory, { kind: "state_changes" }),
+    ]) {
+      expect(comparison.compatibility).toMatchObject({
+        status: "descriptive_only",
+        canAttributeBehaviorChange: false,
+        differences: [],
+      });
+      expect(comparison.compatibility.explanation).toContain("redacted values");
+      expect(comparison.compatibility.explanation).not.toContain("can be attributed");
+    }
+  });
+
+  it("retains expectation-only changes without re-evaluating recorded checks", () => {
+    const root = temporaryDirectory();
+    const entries = evidence();
+    const original = run(entries);
+    const assertion = AssertionResultSchema.parse({
+      ...original.assertionResults[0],
+      expected: { operator: "not_equals", value: 1 },
+      diff: { operator: "not_equals", matched: true, details: {} },
+    });
+    const checkpoints = original.checkpoints.map((checkpoint) => ({
+      ...checkpoint,
+      assertionResults: [assertion],
+    }));
+    const candidateResult = RunResultSchema.parse({
+      ...original,
+      checkpoints,
+      assertionResults: [assertion],
+      trajectoryHash: trajectoryHash({ interactions: original.interactions, checkpoints, evidence: entries }),
+    });
+    const baseline = writeLocalReport({ result: original, evidence: entries }, join(root, "before"));
+    const candidate = writeLocalReport({ result: candidateResult, evidence: entries }, join(root, "after"));
+    expect(compareLocalReports(baseline.directory, candidate.directory).changes.assertions).toEqual([
+      {
+        checkpointId: "final",
+        assertionId: "no-extra-actions",
+        baseline: "passed",
+        candidate: "passed",
+        actualChanged: false,
+        expectedChanged: true,
+      },
+    ]);
+    const page = compareLocalReportDetails(baseline.directory, candidate.directory, { kind: "assertions" });
+    expect(page.total).toBe(1);
+    expect(page.items[0]).toMatchObject({
+      identity: { checkpointId: "final", assertionId: "no-extra-actions" },
+      changedFields: ["diff", "expected"],
+      baseline: { state: "available", value: { status: "passed", actual: 0 } },
+      candidate: {
+        state: "available",
+        value: { status: "passed", actual: 0, expected: { operator: "not_equals", value: 1 } },
+      },
+    });
+  });
+
+  it("compares exact recorded mutation values even when counts agree", () => {
+    const root = temporaryDirectory();
+    const before = evidence();
+    const after = before.map((entry) =>
+      entry.kind === "state_change" ? { ...entry, after: { status: "different" } } : entry,
+    );
+    const baseline = writeLocalReport({ result: run(before), evidence: before }, join(root, "before"));
+    const candidate = writeLocalReport({ result: run(after), evidence: after }, join(root, "after"));
+    expect(compareLocalReports(baseline.directory, candidate.directory).changes.stateChangeCounts).toEqual(
+      [],
+    );
+    const page = compareLocalReportDetails(baseline.directory, candidate.directory, {
+      kind: "state_changes",
+    });
+    expect(page.alignment).toContain("Includes seed loading");
+    expect(page.items).toHaveLength(1);
+    expect(page.items[0]).toMatchObject({
+      identity: { packageId: "generic-tool", namespace: "records", rowId: "item-1", mutation: 1 },
+      changedFields: ["after"],
+      baseline: { state: "available", value: { before: { status: "queued" } } },
+      candidate: { state: "available", value: { after: { status: "different" } } },
+    });
+  });
+
+  it("bounds positional call detail pages and omits oversized values without truncating JSON", () => {
+    const root = temporaryDirectory();
+    const calls = (changed: boolean): EvidenceEntry[] =>
+      Array.from({ length: 30 }, (_, index) => ({
+        schemaVersion: 1,
+        sequence: index + 3,
+        transactionId: `txn_detail${index.toString().padStart(4, "0")}`,
+        transactionIndex: 0,
+        transactionSize: 1,
+        virtualTimeUs: 500,
+        correlationId: "corr_details001",
+        kind: "operation",
+        invocation: {
+          schemaVersion: 1,
+          callId: `call_detail${index.toString().padStart(4, "0")}`,
+          correlationId: "corr_details001",
+          operation: {
+            packageId: "generic-tool",
+            operationId: (index + Number(changed)) % 2 === 0 ? "items.read" : "items.update",
+          },
+          actorBindingId: "actor_details001",
+          arguments: { position: index, changed, ...(index === 0 ? { content: "x".repeat(20_000) } : {}) },
+        },
+        outcome: { status: "ok", value: { observed: changed } },
+        idempotency: "not_requested",
+      }));
+    const before = [...evidence(), ...calls(false)],
+      after = [...evidence(), ...calls(true)];
+    const baseline = writeLocalReport({ result: run(before), evidence: before }, join(root, "before"));
+    const candidate = writeLocalReport({ result: run(after), evidence: after }, join(root, "after"));
+    expect(compareLocalReports(baseline.directory, candidate.directory).changes.operationCounts).toEqual([]);
+    const first = compareLocalReportDetails(baseline.directory, candidate.directory, {
+      kind: "operations",
+      limit: 25,
+    });
+    expect(first).toMatchObject({ total: 30, offset: 0, nextOffset: 25 });
+    expect(first.items).toHaveLength(25);
+    expect(first.items[0]).toMatchObject({
+      identity: { position: 1 },
+      changedFields: ["arguments", "operation", "outcome"],
+      baseline: { state: "omitted", reason: "size_limit" },
+    });
+    expect(first.items[0]?.baseline).not.toHaveProperty("value");
+    expect(Buffer.byteLength(JSON.stringify(first))).toBeLessThan(1024 * 1024);
+    if (first.nextOffset === undefined) throw new Error("fixture must have a next page");
+    const last = compareLocalReportDetails(baseline.directory, candidate.directory, {
+      kind: "operations",
+      offset: first.nextOffset,
+    });
+    expect(last).toMatchObject({ total: 30, offset: 25 });
+    expect(last.items).toHaveLength(5);
+    expect(last.items[0]).toMatchObject({ identity: { position: 26 } });
+    expect(last).not.toHaveProperty("nextOffset");
+    expect(() =>
+      compareLocalReportDetails(baseline.directory, candidate.directory, { kind: "operations", limit: 26 }),
+    ).toThrow();
+    expect(() =>
+      compareLocalReportDetails(baseline.directory, candidate.directory, { kind: "operations", offset: 31 }),
+    ).toThrow();
   });
 
   it("downgrades changed worlds and rejects mismatched run inputs", () => {

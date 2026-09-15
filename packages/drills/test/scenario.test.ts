@@ -1,7 +1,9 @@
+import { createHash } from "node:crypto";
 import { existsSync, mkdtempSync, rmSync } from "node:fs";
 import { createServer } from "node:http";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import type { ResolvedToolOverride, TargetDescriptor } from "@firedrill/contracts";
 import { FIREDRILL_ENGINE_VERSION } from "@firedrill/contracts";
 import { invokeCliWorldOperation } from "@firedrill/protocol-cli";
 import { defineTool } from "@firedrill/tool-sdk";
@@ -20,9 +22,11 @@ import { Client, StreamableHTTPClientTransport } from "@modelcontextprotocol/cli
 import { afterEach, describe, expect, it } from "vitest";
 import {
   createDrillWorld,
+  createScenarioWorld,
   DrillSetupError,
   DrillTrialCoordinator,
   materializeDrillScenario,
+  materializeWorldScenario,
   runDrill,
   runDrillTrial,
 } from "../src/index.js";
@@ -309,7 +313,7 @@ function loadedBuild(withCallbacks = false): LoadedWorldBuild {
     provenance: [],
     diagnostics: { errors: 0, warnings: 0, info: 0 },
   });
-  return { manifest, worldIr, packageLock, tools: [tool], directory: "/verified/build" };
+  return { manifest, worldIr, packageLock, tools: [tool], toolUis: [], directory: "/verified/build" };
 }
 
 function withWorldIr(
@@ -338,7 +342,299 @@ function withWorldIr(
   return { ...build, manifest, worldIr };
 }
 
+function appBuild(target?: TargetDescriptor): LoadedWorldBuild {
+  const build = withWorldIr(loadedBuild(), (world) => ({
+    ...world,
+    scenarios: world.scenarios.map((scenario) => ({ ...scenario, faults: [] })),
+    targets: target === undefined ? world.targets : [target],
+    drills: world.drills.map((drill) => ({
+      ...drill,
+      assertions: [
+        ...drill.assertions,
+        {
+          id: "parcel-released",
+          kind: "state.value",
+          packageId: "parcel-service",
+          namespace: "parcels",
+          rowId: "parcel-a",
+          path: ["status"],
+          comparison: { operator: "equals", value: "released" },
+        },
+      ],
+    })),
+  }));
+  const bytes = Buffer.from("<!doctype html><title>Dispatch desk</title>");
+  return {
+    ...build,
+    toolUis: [
+      {
+        packageId: "parcel-service",
+        entry: "index.html",
+        assets: [
+          {
+            path: "index.html",
+            mediaType: "text/html; charset=utf-8",
+            artifactHash: `sha256:${createHash("sha256").update(bytes).digest("hex")}`,
+            bytes,
+          },
+        ],
+      },
+    ],
+  };
+}
+
+async function releaseThroughApp(link: string, tokenOverride?: string): Promise<Response> {
+  const url = new URL(link);
+  const token = tokenOverride ?? new URLSearchParams(url.hash.slice(1)).get("token");
+  return fetch(`${url.origin}/_firedrill/invoke`, {
+    method: "POST",
+    headers: { authorization: `Bearer ${token}`, origin: url.origin, "content-type": "application/json" },
+    body: JSON.stringify({
+      operationId: "parcels.release",
+      arguments: { parcelId: "parcel-a" },
+      idempotencyKey: "release-one-parcel",
+    }),
+  });
+}
+
+describe("drill-owned Tool apps", () => {
+  it("starts apps for direct-only targets and seals app actions through ordinary world assertions", async () => {
+    let appLink = "";
+    let token = "";
+    const execution = await runDrillTrial({
+      build: appBuild(),
+      drillId: "release-ready-parcel",
+      repositoryRoot: temporaryDirectory(),
+      runDirectory: temporaryDirectory(),
+      externalHandler: async (invocation, context) => {
+        expect(context.world).toBeDefined();
+        expect(Object.isFrozen(context.binding?.apps)).toBe(true);
+        expect(context.binding?.apps).toHaveLength(1);
+        const app = context.binding?.apps[0];
+        if (app === undefined) throw new Error("Tool app was not supplied");
+        appLink = app.url;
+        token = new URLSearchParams(new URL(appLink).hash.slice(1)).get("token") ?? "";
+        expect(JSON.parse(invocation.bindingEnvironment.FIREDRILL_TOOL_APPS ?? "null")).toEqual([app]);
+        expect(invocation.bindingEnvironment.FIREDRILL_HTTP_URL).toBeUndefined();
+        expect(await (await fetch(appLink)).text()).toContain("Dispatch desk");
+        const contextEndpoint = `${new URL(appLink).origin}/_firedrill/context`;
+        const contextHeaders = { authorization: `Bearer ${token}` };
+        const before = (await (await fetch(contextEndpoint, { headers: contextHeaders })).json()) as {
+          revision: { generation: number; evidenceSequence: number };
+        };
+        expect(before).toMatchObject({ actorId: "dispatcher", revision: { generation: 0 } });
+        const response = await releaseThroughApp(appLink);
+        expect(response.status).toBe(200);
+        expect(await response.json()).toMatchObject({ outcome: { status: "ok", value: { released: true } } });
+        const after = (await (await fetch(contextEndpoint, { headers: contextHeaders })).json()) as {
+          revision: { generation: number; evidenceSequence: number };
+        };
+        expect(after.revision.evidenceSequence).toBeGreaterThan(before.revision.evidenceSequence);
+        expect(await (await fetch(contextEndpoint, { headers: contextHeaders })).json()).toEqual(after);
+        return { app, token, environment: invocation.bindingEnvironment.FIREDRILL_TOOL_APPS };
+      },
+    });
+    expect(execution.result).toMatchObject({ status: "sealed", verdict: "passed" });
+    expect(execution.result.interactions[0]).toMatchObject({
+      bindingEvidence: "observed",
+      targetResult: {
+        status: "completed",
+        output: {
+          app: { packageId: "parcel-service", url: "[REDACTED]" },
+          token: "[REDACTED]",
+          environment: "[REDACTED]",
+        },
+      },
+    });
+    expect(execution.evidence.filter((entry) => entry.kind === "operation")).toHaveLength(1);
+    expect(JSON.stringify(execution)).not.toContain(appLink);
+    expect(JSON.stringify(execution)).not.toContain(token);
+    const retained = SqliteWorldStore.open(execution.worldFilePath);
+    try {
+      expect(retained.readState("parcel-service", "parcels", "parcel-a")?.value).toEqual({
+        status: "released",
+      });
+    } finally {
+      retained.close();
+    }
+    await expect(fetch(appLink)).rejects.toThrow();
+  });
+
+  it("issues fresh app credentials for retry attempts and closes every prior attempt", async () => {
+    const links: string[] = [];
+    const execution = await runDrill({
+      build: appBuild(),
+      drillId: "release-ready-parcel",
+      repositoryRoot: temporaryDirectory(),
+      runDirectory: temporaryDirectory(),
+      retries: 1,
+      attemptFinished: async () => {
+        const link = links.at(-1);
+        if (link === undefined) throw new Error("attempt app was not supplied");
+        await expect(fetch(link)).rejects.toThrow();
+      },
+      externalHandler: async (_invocation, context) => {
+        const app = context.binding?.apps[0];
+        if (app === undefined) throw new Error("Tool app was not supplied");
+        const prior = links.at(-1);
+        links.push(app.url);
+        if (prior === undefined) return { attempted: false };
+        const priorToken = new URLSearchParams(new URL(prior).hash.slice(1)).get("token");
+        const rejected = await releaseThroughApp(app.url, priorToken ?? "");
+        expect(rejected.status).toBe(401);
+        await rejected.arrayBuffer();
+        const response = await releaseThroughApp(app.url);
+        expect(response.status).toBe(200);
+        await response.arrayBuffer();
+        return { attempted: true };
+      },
+    });
+    expect(execution.trials[0]?.attempts).toHaveLength(2);
+    expect(
+      execution.trials[0]?.attempts.map((attempt) =>
+        attempt.result.status === "sealed" ? attempt.result.verdict : attempt.result.status,
+      ),
+    ).toEqual(["failed", "passed"]);
+    expect(new Set(links).size).toBe(2);
+    for (const link of links) await expect(fetch(link)).rejects.toThrow();
+  });
+
+  it("provides apps to an actual command target and redacts credentials echoed in stdout and stderr", async () => {
+    const script = `
+      let input = "";
+      for await (const chunk of process.stdin) input += chunk;
+      const invocation = JSON.parse(input);
+      const serialized = process.env.FIREDRILL_TOOL_APPS;
+      const apps = JSON.parse(serialized);
+      if (JSON.stringify(apps) !== invocation.bindingEnvironment.FIREDRILL_TOOL_APPS) throw new Error("app environment mismatch");
+      const app = apps[0];
+      const url = new URL(app.url);
+      const token = new URLSearchParams(url.hash.slice(1)).get("token");
+      const page = await fetch(app.url);
+      const html = await page.text();
+      const response = await fetch(url.origin + "/_firedrill/invoke", {
+        method: "POST", headers: { authorization: "Bearer " + token, origin: url.origin, "content-type": "application/json" },
+        body: JSON.stringify({operationId:"parcels.release",arguments:{parcelId:"parcel-a"},idempotencyKey:"command-release"})
+      });
+      const outcome = await response.json();
+      process.stderr.write(JSON.stringify({serialized, link:app.url, token}) + "\\n");
+      process.stdout.write(JSON.stringify({packageId:app.packageId,origin:url.origin,link:app.url,token,serialized,html:html.includes("Dispatch desk"),outcome}));
+    `;
+    const execution = await runDrillTrial({
+      build: appBuild({
+        id: "parcel-agent",
+        kind: "command",
+        bindings: ["mcp"],
+        executable: process.execPath,
+        arguments: ["--input-type=module", "-e", script],
+        environmentFromHost: {},
+        timeoutMs: 5_000,
+      }),
+      drillId: "release-ready-parcel",
+      repositoryRoot: temporaryDirectory(),
+      runDirectory: temporaryDirectory(),
+    });
+    expect(execution.result).toMatchObject({ status: "sealed", verdict: "passed" });
+    const target = execution.result.interactions[0]?.targetResult;
+    expect(target).toMatchObject({
+      status: "completed",
+      output: {
+        packageId: "parcel-service",
+        link: "[REDACTED]",
+        token: "[REDACTED]",
+        serialized: "[REDACTED]",
+        html: true,
+        outcome: { outcome: { status: "ok" } },
+      },
+      attachments: [{ kind: "process.stderr", text: expect.stringContaining("[REDACTED]") }],
+    });
+    expect(JSON.stringify(execution)).not.toContain("#token=");
+    const output = target?.output;
+    if (
+      typeof output !== "object" ||
+      output === null ||
+      Array.isArray(output) ||
+      typeof output.origin !== "string"
+    )
+      throw new Error("command target origin is missing");
+    await expect(fetch(output.origin)).rejects.toThrow();
+  });
+
+  it("closes app listeners when a target times out and does not claim startup tested the agent", async () => {
+    let link = "";
+    const execution = await runDrillTrial({
+      build: appBuild({ id: "parcel-agent", kind: "external", bindings: ["direct"], timeoutMs: 30 }),
+      drillId: "release-ready-parcel",
+      repositoryRoot: temporaryDirectory(),
+      runDirectory: temporaryDirectory(),
+      externalHandler: async (_invocation, context) => {
+        link = context.binding?.apps[0]?.url ?? "";
+        return new Promise(() => undefined);
+      },
+    });
+    expect(link).not.toBe("");
+    expect(execution.result.interactions[0]).toMatchObject({
+      bindingEvidence: "issued",
+      targetResult: { status: "timed_out" },
+    });
+    expect(execution.evidence.filter((entry) => entry.kind === "operation")).toHaveLength(0);
+    await expect(fetch(link)).rejects.toThrow();
+  });
+});
+
 describe("drill scenario materialization", () => {
+  it("passes resolved scenario and drill rules to the shared kernel in scope order", () => {
+    const operation = { packageId: "parcel-service", operationId: "parcels.release" };
+    const scenarioRule: ResolvedToolOverride = {
+      id: "scenario-result",
+      operation,
+      outcome: { kind: "return", value: { released: false } },
+      scope: { kind: "scenario", scenarioId: "ready-for-release" },
+    };
+    const drillRule: ResolvedToolOverride = {
+      id: "drill-result",
+      operation,
+      outcome: { kind: "return", value: { released: true } },
+      times: 1,
+      scope: { kind: "drill", drillId: "release-ready-parcel" },
+    };
+    const build = withWorldIr(loadedBuild(), (world) => ({
+      ...world,
+      scenarios: world.scenarios.map((scenario) => ({ ...scenario, toolOverrides: [scenarioRule] })),
+      drills: world.drills.map((drill) => ({ ...drill, toolOverrides: [drillRule] })),
+    }));
+    expect(materializeDrillScenario(build, "release-ready-parcel").toolOverrides).toEqual([
+      scenarioRule,
+      drillRule,
+    ]);
+    const created = createDrillWorld({
+      build,
+      drillId: "release-ready-parcel",
+      filePath: join(temporaryDirectory(), "world.sqlite"),
+      worldInstanceId: "world_override001",
+      correlationId: "corr_overridecreate001",
+    });
+    try {
+      const client = created.clients.get("dispatcher");
+      if (client === undefined) throw new Error("fixture has no dispatcher");
+      const first = client.invoke(operation, { parcelId: "parcel-a" }, { idempotencyKey: "first" });
+      expect(first.outcome).toEqual({ status: "ok", value: { released: true } });
+      expect(first.evidence.find((entry) => entry.kind === "operation")?.toolOverride?.scope).toEqual(
+        drillRule.scope,
+      );
+      const next = client.invoke(operation, { parcelId: "parcel-a" }, { idempotencyKey: "next" });
+      expect(next.outcome).toEqual({ status: "ok", value: { released: false } });
+      expect(next.evidence.find((entry) => entry.kind === "operation")?.toolOverride?.scope).toEqual(
+        scenarioRule.scope,
+      );
+      expect(created.store.readState("parcel-service", "parcels", "parcel-a")?.value).toEqual({
+        status: "ready",
+      });
+    } finally {
+      created.store.close();
+    }
+  });
+
   it("resolves state actions and actor bindings deterministically", () => {
     const build = loadedBuild();
     const first = materializeDrillScenario(build, "release-ready-parcel");
@@ -359,6 +655,47 @@ describe("drill scenario materialization", () => {
       },
     ]);
     expect(first.initialEvents[0]?.actorBindingId).toBe(actorBindingId);
+  });
+
+  it("materializes standalone baseline and named scenarios without changing drill evidence", () => {
+    const build = loadedBuild();
+    const baseline = materializeWorldScenario(build);
+    expect(baseline.virtualTimeUs).toBe(50);
+    expect(baseline).not.toHaveProperty("drill");
+    expect(baseline).not.toHaveProperty("scenarioId");
+    const { drill: _drill, ...drillScenario } = materializeDrillScenario(build, "release-ready-parcel");
+    expect(materializeWorldScenario(build, "ready-for-release")).toEqual(drillScenario);
+    expect(() => materializeWorldScenario(build, "missing")).toThrow("build has no scenario missing");
+    const directory = temporaryDirectory();
+    const shared = { build, worldInstanceId: "world_same001", correlationId: "corr_same001", seed: "81" };
+    const drill = createDrillWorld({
+      ...shared,
+      drillId: "release-ready-parcel",
+      filePath: join(directory, "drill.sqlite"),
+    });
+    const standalone = createScenarioWorld({
+      ...shared,
+      scenarioId: "ready-for-release",
+      filePath: join(directory, "standalone.sqlite"),
+    });
+    try {
+      for (const created of [drill, standalone]) {
+        created.clients
+          .get("dispatcher")
+          ?.invoke(
+            { packageId: "parcel-service", operationId: "parcels.release" },
+            { parcelId: "parcel-a" },
+            { idempotencyKey: "same-call" },
+          );
+        created.kernel.advanceTime(120, { correlationId: "corr_clock001" });
+      }
+      expect(standalone.store.readEvidence()).toEqual(drill.store.readEvidence());
+      expect(standalone.store.metadata()).toEqual(drill.store.metadata());
+      expect(standalone.store.listScheduledEvents()).toEqual(drill.store.listScheduledEvents());
+    } finally {
+      standalone.store.close();
+      drill.store.close();
+    }
   });
 
   it("creates state, faults, actors, clock, and initial timers atomically in one world", () => {

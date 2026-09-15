@@ -1,0 +1,36 @@
+.fd-tool-interfaces {
+  flex: none;
+  padding: 10px 16px;
+  border-bottom: 1px solid var(--border-subtle);
+  font-size: 13px;
+  line-height: 1.6;
+}
+.fd-tool-interfaces__row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 16px;
+}
+.fd-tool-interfaces__label,
+.fd-tool-interfaces__routes {
+  color: var(--text-secondary);
+}
+.fd-tool-interfaces ul {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 16px;
+  padding: 0;
+  margin: 0;
+  list-style: none;
+}
+.fd-tool-interfaces li {
+  color: var(--text);
+  font-weight: 500;
+}
+.fd-tool-interfaces p {
+  margin: 4px 0 0;
+  color: var(--text-secondary);
+}
+.fd-tool-interfaces > p:only-child {
+  margin: 0;
+}

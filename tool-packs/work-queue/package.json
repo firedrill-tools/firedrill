@@ -1,6 +1,7 @@
 {
   "name": "@firedrill/tool-work-queue",
   "version": "0.1.0-rc.1",
+  "private": true,
   "description": "Reference stateful work-queue Tool pack for Firedrill",
   "keywords": [
     "ai-agent",
@@ -26,16 +27,21 @@
   "files": [
     "dist",
     "work-queue.tool.yaml",
+    "starter.json",
+    "firedrill.json",
+    "conformance",
     "README.md"
   ],
-  "publishConfig": {
-    "access": "public"
-  },
   "firedrill": {
     "layer": "tool-pack",
     "tool": "work-queue.tool.yaml",
+    "starter": "starter.json",
     "lifecycle": "active",
-    "conformance": "work-queue-conformance"
+    "conformance": {
+      "schemaVersion": 1,
+      "project": "firedrill.json",
+      "suite": "work-queue-conformance"
+    }
   },
   "scripts": {
     "build": "tsx ../../tooling/package-files.mts clean && tsc -p tsconfig.build.json && tsx ../../tooling/package-files.mts finalize",

@@ -14,6 +14,7 @@ import {
   StateSetupSchema,
 } from "./scenario.js";
 import { BindingEnvironmentProjectionSchema } from "./target.js";
+import { ToolOverridesSchema } from "./tool-overrides.js";
 
 const ToolExportNameSchema = z
   .string()
@@ -40,6 +41,7 @@ export const RunScenarioOverlaySchema = z
     state: z.array(StateSetupSchema).default([]),
     faults: z.array(FaultActivationSchema).default([]),
     initialEvents: z.array(InitialEventSchema).default([]),
+    toolOverrides: ToolOverridesSchema.optional(),
   })
   .strict()
   .superRefine((overlay, context) => {
@@ -111,7 +113,8 @@ export const RunWorldSetupSchema = z
         scenario.actors.length > 0 ||
         scenario.state.length > 0 ||
         scenario.faults.length > 0 ||
-        scenario.initialEvents.length > 0);
+        scenario.initialEvents.length > 0 ||
+        (scenario.toolOverrides?.length ?? 0) > 0);
     if (
       !scenarioChanges &&
       setup.tools.packages.length === 0 &&

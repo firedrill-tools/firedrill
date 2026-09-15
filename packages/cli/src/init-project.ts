@@ -495,7 +495,7 @@ function repositoryBrief(detection: RepositoryDetection, guidance: InitGuidance)
     "",
     "## Authoring task",
     "",
-    "Read `.agents/skills/firedrill/SKILL.md` next. Scout the actual product-agent entry point and tool composition seam, author the smallest generic world vertical slice, iterate `firedrill validate --json` to green, and finish with both passing and deliberately failing local evidence. Do not read secrets, invent a framework integration, or change production behavior merely to make a drill pass.",
+    "Read `.agents/skills/firedrill/SKILL.md` next. Inspect the actual tool/client composition seam and create a useful local Tool environment with explicit synthetic starting state, actors, and exact grants. Iterate `firedrill validate --json` to green and verify the local Tool bindings. An agent target, scenario, drill, or real agent run is optional and needs a specific testing objective; do not invent one to complete setup. State clearly that the agent has not been tested when only the environment was verified. Never read secrets or change production agent behavior merely to make setup pass.",
     "",
   ].join("\n");
   return { path: ".agents/firedrill/BRIEF.md", body: Buffer.from(body) };

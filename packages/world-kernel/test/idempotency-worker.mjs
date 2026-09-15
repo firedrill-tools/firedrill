@@ -2,7 +2,7 @@ import { defineTool } from "@firedrill/tool-sdk";
 import { SqliteWorldStore } from "@firedrill/world-store-sqlite";
 import { WorldKernel } from "../dist/index.js";
 
-const [filePath, workerId] = process.argv.slice(2);
+const [filePath, workerId, mode] = process.argv.slice(2);
 if (filePath === undefined || workerId === undefined) {
   throw new Error("usage: node idempotency-worker.mjs <database-path> <worker-id>");
 }
@@ -43,6 +43,7 @@ const tool = defineTool({
       Atomics.wait(pause, 0, 0, 200);
       const value = current + Number(input.amount);
       context.state.put("counters", "main", { value });
+      if (mode === "original-once") throw new Error("failed original after write");
       return { value };
     },
   },
@@ -50,7 +51,30 @@ const tool = defineTool({
 
 const store = SqliteWorldStore.open(filePath);
 try {
-  const kernel = new WorldKernel({ store, packageLockHash, tools: [tool] });
+  const kernel = new WorldKernel({
+    store,
+    packageLockHash,
+    tools: [tool],
+    ...(mode === "original-once"
+      ? {
+          toolOverrides: [
+            {
+              id: "fallback",
+              operation: { packageId: "atomic-counter", operationId: "counters.increment" },
+              scope: { kind: "baseline" },
+              outcome: { kind: "return", value: { value: 77 } },
+            },
+            {
+              id: "original-once",
+              operation: { packageId: "atomic-counter", operationId: "counters.increment" },
+              scope: { kind: "baseline" },
+              outcome: { kind: "original" },
+              times: 1,
+            },
+          ],
+        }
+      : {}),
+  });
   const result = kernel.invoke({
     schemaVersion: 1,
     callId: `call_worker${workerId.padStart(2, "0")}`,

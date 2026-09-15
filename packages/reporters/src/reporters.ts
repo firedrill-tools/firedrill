@@ -34,10 +34,13 @@ import {
   ToolPackageManifestSchema,
 } from "@firedrill/contracts";
 import { trajectoryHash } from "@firedrill/world-ir";
+import { readAttachmentBytes } from "./attachment-bytes.js";
+import { attachmentPreview, type AttachmentPreview } from "./attachment-preview.js";
 import { legacyProjections as initialProjections } from "./compatibility/initial.js";
 import { trajectoryHash as initialTrajectoryHash } from "./compatibility/trajectory-initial.js";
 import { trajectoryHash as versionOneTrajectoryHash } from "./compatibility/trajectory-v1.js";
 import { legacyProjections as versionOneProjections } from "./compatibility/v1.js";
+import { renderReportPage as renderVersionTwoReportPage } from "./compatibility/report-html-v2.js";
 import { renderReportPage } from "./report-html.js";
 
 export interface LocalReportInput {
@@ -128,11 +131,14 @@ function semanticHash(value: unknown): `sha256:${string}` {
 }
 
 function fileAttachments(result: RunResult): readonly TargetFileAttachment[] {
-  const attachments = result.interactions.flatMap((interaction) =>
-    interaction.targetResult.attachments.flatMap((attachment) =>
-      attachment.kind === "file" ? [TargetFileAttachmentSchema.parse(attachment)] : [],
+  const attachments = [
+    ...result.interactions.flatMap((interaction) =>
+      interaction.targetResult.attachments.flatMap((attachment) =>
+        attachment.kind === "file" ? [TargetFileAttachmentSchema.parse(attachment)] : [],
+      ),
     ),
-  );
+    ...(result.capture?.attachments.map((entry) => entry.attachment) ?? []),
+  ];
   if (attachments.length > MAX_FILE_ATTACHMENTS) {
     throw new TypeError(`a report supports at most ${MAX_FILE_ATTACHMENTS} file attachments`);
   }
@@ -182,7 +188,7 @@ function prepareFileAttachments(
     if (sourceEntry.size > MAX_ARTIFACT_BYTES) {
       throw new TypeError(`file attachment ${attachment.id} exceeds 64 MiB`);
     }
-    const body = readFileSync(source);
+    const body = readAttachmentBytes(attachment, source);
     totalBytes += body.byteLength;
     if (totalBytes > MAX_BUNDLE_BYTES) throw new TypeError("file attachments exceed 256 MiB");
     if (
@@ -212,6 +218,35 @@ function prepareFileAttachments(
     }
   }
   return prepared;
+}
+
+function preparedPreviews(files: readonly PreparedFileAttachment[]): ReadonlyMap<string, AttachmentPreview> {
+  const previews = new Map<string, AttachmentPreview>();
+  for (const file of files) {
+    const preview = attachmentPreview(file.attachment, file.body);
+    if (preview !== undefined) previews.set(file.attachment.id, preview);
+  }
+  return previews;
+}
+
+function verifiedPreviews(
+  files: readonly VerifiedReportAttachment[],
+): ReadonlyMap<string, AttachmentPreview> {
+  const previews = new Map<string, AttachmentPreview>();
+  for (const file of files) {
+    let body: Buffer;
+    try {
+      body = readAttachmentBytes(file.attachment, file.path);
+    } catch {
+      throw new LocalReportVerificationError(
+        "reporter.ARTIFACT_MISMATCH",
+        "report attachment changed before preview",
+      );
+    }
+    const preview = attachmentPreview(file.attachment, body);
+    if (preview !== undefined) previews.set(file.attachment.id, preview);
+  }
+  return previews;
 }
 
 function objectValue(value: unknown): value is Record<string, unknown> {
@@ -703,22 +738,36 @@ export function renderJunitReport(rawInput: LocalReportInput): string {
   return junitReport(checkedInput(rawInput));
 }
 
-function htmlReport(input: Pick<CheckedLocalReport, "result" | "evidence" | "tools">): string {
-  return renderReportPage({
+function htmlReport(
+  input: Pick<CheckedLocalReport, "result" | "evidence" | "tools">,
+  attachmentPreviews: ReadonlyMap<string, AttachmentPreview> = new Map(),
+  presentationVersion: 2 | 3 = 3,
+): string {
+  const options = {
     ...input,
     reproduce: reproductionCommand(input.result),
     reproductionNote: hasRuntimeFaultControls(input.evidence)
       ? RUNTIME_CONTROL_REPRODUCTION_NOTE
       : "Restores the same world inputs and seed. Your agent may make different choices on another run; use the original harness for external targets.",
-  });
+  };
+  return presentationVersion === 2
+    ? renderVersionTwoReportPage(options)
+    : renderReportPage({ ...options, attachmentPreviews });
 }
 export function renderHtmlReport(rawInput: LocalReportInput): string {
-  return htmlReport(checkedInput(rawInput));
+  const input = checkedInput(rawInput);
+  return htmlReport(
+    input,
+    rawInput.attachmentSources === undefined
+      ? undefined
+      : preparedPreviews(prepareFileAttachments(rawInput, input.result)),
+  );
 }
 
 /** Render today's readable view of a verified saved bundle without rewriting its artifacts. */
 export function renderSavedReport(outputDirectory: string): string {
-  return htmlReport(verifyLocalReport(outputDirectory));
+  const verified = verifyLocalReport(outputDirectory);
+  return htmlReport(verified, verifiedPreviews(verified.attachments));
 }
 
 function artifact(
@@ -751,7 +800,7 @@ export function writeLocalReport(rawInput: LocalReportInput, outputDirectory: st
     json: jsonReport(input),
     terminal: terminalReport(input),
     junit: junitReport(input),
-    html: htmlReport(input),
+    html: htmlReport(input, preparedPreviews(fileAttachments)),
   };
   const artifacts = [
     artifact("run.json", "application/json", "run", bodies.run),
@@ -764,7 +813,7 @@ export function writeLocalReport(rawInput: LocalReportInput, outputDirectory: st
   ];
   const manifest = EvidenceBundleManifestSchema.parse({
     schemaVersion: 1,
-    presentationVersion: 2,
+    presentationVersion: 3,
     trajectoryVersion: 2,
     runId: input.result.identity.runId,
     complete: true,
@@ -955,7 +1004,8 @@ export function verifyLocalReport(outputDirectory: string): VerifiedLocalReport 
   const trajectoryVersion = manifest.trajectoryVersion ?? (legacyHasTools ? 2 : 1);
   if (
     (manifest.presentationVersion !== undefined &&
-      (typeof manifest.presentationVersion !== "number" || ![1, 2].includes(manifest.presentationVersion))) ||
+      (typeof manifest.presentationVersion !== "number" ||
+        ![1, 2, 3].includes(manifest.presentationVersion))) ||
     typeof trajectoryVersion !== "number" ||
     ![1, 2].includes(trajectoryVersion)
   ) {
@@ -1131,7 +1181,11 @@ export function verifyLocalReport(outputDirectory: string): VerifiedLocalReport 
             json: jsonReport(checked),
             terminal: terminalReport(checked),
             junit: junitReport(checked),
-            html: htmlReport(checked),
+            html: htmlReport(
+              checked,
+              presentationVersion === 2 ? undefined : verifiedPreviews(verifiedAttachments),
+              presentationVersion === 2 ? 2 : 3,
+            ),
           };
   const expectedBodies = new Map<string, string>([
     [runArtifact.path, `${JSON.stringify(result, null, 2)}\n`],

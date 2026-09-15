@@ -10,6 +10,7 @@ import type {
   SimulationSourceDocument,
   SimulationSourceKind,
   SimulationStatePage,
+  SimulationToolSourceDocument,
   StartSimulationRun,
 } from "@firedrill/simulation";
 
@@ -25,6 +26,7 @@ export type {
   SimulationSourceDocument,
   SimulationSourceKind,
   SimulationStatePage,
+  SimulationToolSourceDocument,
   StartSimulationRun,
 };
 
@@ -37,12 +39,15 @@ export type SimulationTarget = SimulationProject["targets"][number];
 export type EvidenceEntry = SimulationEvidencePage["entries"][number];
 export type StateNamespace = SimulationRunDetail["stateNamespaces"][number];
 export type Route =
+  | "/browser-tests"
   | "/world"
   | "/schema"
   | "/data"
   | "/personas"
   | "/scenarios"
   | "/tools"
+  | "/environment"
+  | "/connect"
   | "/drills"
   | "/runs";
 

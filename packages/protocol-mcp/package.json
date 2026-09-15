@@ -35,14 +35,15 @@
     "@firedrill/contracts": "workspace:*",
     "@firedrill/world-kernel": "workspace:*",
     "@modelcontextprotocol/node": "2.0.0",
-    "@modelcontextprotocol/server": "2.0.0"
+    "@modelcontextprotocol/server": "2.0.0",
+    "hono": "4.13.7"
   },
   "devDependencies": {
     "@firedrill/tool-sdk": "workspace:*",
     "@firedrill/world-store-sqlite": "workspace:*",
     "@modelcontextprotocol/client": "2.0.0",
     "typescript": "5.9.3",
-    "vitest": "3.2.7"
+    "vitest": "4.1.11"
   },
   "repository": {
     "type": "git",

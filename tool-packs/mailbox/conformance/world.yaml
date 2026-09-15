@@ -1,0 +1,27 @@
+schemaVersion: 1
+id: mailbox-conformance-world
+actors:
+  - id: operator
+    grants:
+      - packageId: mailbox
+        operationId: messages.list
+      - packageId: mailbox
+        operationId: messages.get
+      - packageId: mailbox
+        operationId: messages.write
+      - packageId: mailbox
+        operationId: messages.send
+      - packageId: mailbox
+        operationId: messages.delete
+  - id: other
+    grants:
+      - packageId: mailbox
+        operationId: messages.list
+      - packageId: mailbox
+        operationId: messages.get
+      - packageId: mailbox
+        operationId: messages.write
+      - packageId: mailbox
+        operationId: messages.send
+      - packageId: mailbox
+        operationId: messages.delete
