@@ -11,7 +11,8 @@ changes, and events.
 - Repository-defined tools, including independently distributed packages.
 
 [Quickstart](#quickstart) · [SDK](#using-the-sdk) ·
-[Documentation](docs/README.md) · [Examples](examples/quickstart/README.md)
+[Documentation](docs/README.md) · [Neutral example](examples/quickstart/README.md) ·
+[Gmail Agent example](https://github.com/firedrill-tools/firedrill-example-gmail-agent)
 
 ## Installation
 
@@ -63,6 +64,11 @@ from the [Tool catalog](registry/README.md). Catalog packages currently require
 a local installation until they are published.
 
 Tools can run independently of tests. To check an agent's behavior, add a drill.
+
+For a model-backed project, see the
+[Gmail Agent example](https://github.com/firedrill-tools/firedrill-example-gmail-agent):
+an existing Claude Agent SDK assistant runs three drills against a pinned
+stateful Gmail Tool, with its synthetic mailbox and reports kept in the project.
 
 ## Writing drills
 
