@@ -21,7 +21,7 @@
       "source": {
         "kind": "git",
         "url": "https://github.com/firedrill-tools/firedrill-community-tools.git",
-        "commit": "81fb316da55231c691283d22309cfe2adbec121e",
+        "commit": "971b16a030adaaa267a4e8b2a730d3ade395ed34",
         "subdirectory": "packages/attio"
       },
       "tool": {
@@ -1468,7 +1468,7 @@
       "source": {
         "kind": "git",
         "url": "https://github.com/firedrill-tools/firedrill-community-tools.git",
-        "commit": "81fb316da55231c691283d22309cfe2adbec121e",
+        "commit": "971b16a030adaaa267a4e8b2a730d3ade395ed34",
         "subdirectory": "packages/discord"
       },
       "tool": {
@@ -2511,7 +2511,7 @@
       "source": {
         "kind": "git",
         "url": "https://github.com/firedrill-tools/firedrill-community-tools.git",
-        "commit": "81fb316da55231c691283d22309cfe2adbec121e",
+        "commit": "971b16a030adaaa267a4e8b2a730d3ade395ed34",
         "subdirectory": "packages/github"
       },
       "tool": {
@@ -3952,7 +3952,7 @@
       "source": {
         "kind": "git",
         "url": "https://github.com/firedrill-tools/firedrill-community-tools.git",
-        "commit": "81fb316da55231c691283d22309cfe2adbec121e",
+        "commit": "971b16a030adaaa267a4e8b2a730d3ade395ed34",
         "subdirectory": "packages/gitlab"
       },
       "tool": {
@@ -5234,7 +5234,7 @@
       "source": {
         "kind": "git",
         "url": "https://github.com/firedrill-tools/firedrill-community-tools.git",
-        "commit": "81fb316da55231c691283d22309cfe2adbec121e",
+        "commit": "971b16a030adaaa267a4e8b2a730d3ade395ed34",
         "subdirectory": "packages/gmail"
       },
       "tool": {
@@ -6117,7 +6117,7 @@
       "source": {
         "kind": "git",
         "url": "https://github.com/firedrill-tools/firedrill-community-tools.git",
-        "commit": "81fb316da55231c691283d22309cfe2adbec121e",
+        "commit": "971b16a030adaaa267a4e8b2a730d3ade395ed34",
         "subdirectory": "packages/google-calendar"
       },
       "tool": {
@@ -6908,7 +6908,7 @@
       "source": {
         "kind": "git",
         "url": "https://github.com/firedrill-tools/firedrill-community-tools.git",
-        "commit": "81fb316da55231c691283d22309cfe2adbec121e",
+        "commit": "971b16a030adaaa267a4e8b2a730d3ade395ed34",
         "subdirectory": "packages/google-docs"
       },
       "tool": {
@@ -7697,7 +7697,7 @@
       "source": {
         "kind": "git",
         "url": "https://github.com/firedrill-tools/firedrill-community-tools.git",
-        "commit": "81fb316da55231c691283d22309cfe2adbec121e",
+        "commit": "971b16a030adaaa267a4e8b2a730d3ade395ed34",
         "subdirectory": "packages/google-drive"
       },
       "tool": {
@@ -8403,7 +8403,7 @@
       "source": {
         "kind": "git",
         "url": "https://github.com/firedrill-tools/firedrill-community-tools.git",
-        "commit": "81fb316da55231c691283d22309cfe2adbec121e",
+        "commit": "971b16a030adaaa267a4e8b2a730d3ade395ed34",
         "subdirectory": "packages/google-sheets"
       },
       "tool": {
@@ -9105,7 +9105,7 @@
       "source": {
         "kind": "git",
         "url": "https://github.com/firedrill-tools/firedrill-community-tools.git",
-        "commit": "81fb316da55231c691283d22309cfe2adbec121e",
+        "commit": "971b16a030adaaa267a4e8b2a730d3ade395ed34",
         "subdirectory": "packages/hubspot"
       },
       "tool": {
@@ -10159,7 +10159,7 @@
       "source": {
         "kind": "git",
         "url": "https://github.com/firedrill-tools/firedrill-community-tools.git",
-        "commit": "81fb316da55231c691283d22309cfe2adbec121e",
+        "commit": "971b16a030adaaa267a4e8b2a730d3ade395ed34",
         "subdirectory": "packages/jira"
       },
       "tool": {
@@ -11346,7 +11346,7 @@
       "source": {
         "kind": "git",
         "url": "https://github.com/firedrill-tools/firedrill-community-tools.git",
-        "commit": "81fb316da55231c691283d22309cfe2adbec121e",
+        "commit": "971b16a030adaaa267a4e8b2a730d3ade395ed34",
         "subdirectory": "packages/linear"
       },
       "tool": {
@@ -11567,7 +11567,7 @@
       "source": {
         "kind": "git",
         "url": "https://github.com/firedrill-tools/firedrill-community-tools.git",
-        "commit": "81fb316da55231c691283d22309cfe2adbec121e",
+        "commit": "971b16a030adaaa267a4e8b2a730d3ade395ed34",
         "subdirectory": "packages/notion"
       },
       "tool": {
@@ -12535,7 +12535,7 @@
       "source": {
         "kind": "git",
         "url": "https://github.com/firedrill-tools/firedrill-community-tools.git",
-        "commit": "81fb316da55231c691283d22309cfe2adbec121e",
+        "commit": "971b16a030adaaa267a4e8b2a730d3ade395ed34",
         "subdirectory": "packages/quickbooks"
       },
       "tool": {
@@ -13281,6 +13281,1127 @@
       "conformanceSuite": "conformance"
     },
     {
+      "packageName": "@firedrill-community/tool-resend",
+      "packageVersion": "0.1.0",
+      "title": "Resend",
+      "description": "Synthetic Resend team (emails with synthetic delivery, domains, API keys, segments, contacts; Resend-shaped REST routes and MCP tool names) Tool package for Firedrill",
+      "lifecycle": "active",
+      "keywords": [
+        "ai-agent",
+        "email",
+        "firedrill",
+        "resend",
+        "synthetic",
+        "testing",
+        "tool-pack",
+        "transactional-email"
+      ],
+      "source": {
+        "kind": "git",
+        "url": "https://github.com/firedrill-tools/firedrill-community-tools.git",
+        "commit": "971b16a030adaaa267a4e8b2a730d3ade395ed34",
+        "subdirectory": "packages/resend"
+      },
+      "tool": {
+        "id": "resend",
+        "operations": [
+          {
+            "id": "api_keys.create",
+            "fidelity": "behavioral"
+          },
+          {
+            "id": "api_keys.list",
+            "fidelity": "stateful"
+          },
+          {
+            "id": "api_keys.remove",
+            "fidelity": "stateful"
+          },
+          {
+            "id": "contacts.add_segment",
+            "fidelity": "stateful"
+          },
+          {
+            "id": "contacts.create",
+            "fidelity": "behavioral"
+          },
+          {
+            "id": "contacts.get",
+            "fidelity": "stateful"
+          },
+          {
+            "id": "contacts.list",
+            "fidelity": "behavioral"
+          },
+          {
+            "id": "contacts.list_segments",
+            "fidelity": "stateful"
+          },
+          {
+            "id": "contacts.remove",
+            "fidelity": "stateful"
+          },
+          {
+            "id": "contacts.remove_segment",
+            "fidelity": "stateful"
+          },
+          {
+            "id": "contacts.update",
+            "fidelity": "behavioral"
+          },
+          {
+            "id": "domains.create",
+            "fidelity": "behavioral"
+          },
+          {
+            "id": "domains.get",
+            "fidelity": "stateful"
+          },
+          {
+            "id": "domains.list",
+            "fidelity": "stateful"
+          },
+          {
+            "id": "domains.remove",
+            "fidelity": "stateful"
+          },
+          {
+            "id": "domains.verify",
+            "fidelity": "behavioral"
+          },
+          {
+            "id": "emails.cancel",
+            "fidelity": "behavioral"
+          },
+          {
+            "id": "emails.get",
+            "fidelity": "stateful"
+          },
+          {
+            "id": "emails.list",
+            "fidelity": "behavioral"
+          },
+          {
+            "id": "emails.send",
+            "fidelity": "behavioral"
+          },
+          {
+            "id": "emails.send_batch",
+            "fidelity": "behavioral"
+          },
+          {
+            "id": "emails.update",
+            "fidelity": "behavioral"
+          },
+          {
+            "id": "segments.create",
+            "fidelity": "stateful"
+          },
+          {
+            "id": "segments.list",
+            "fidelity": "stateful"
+          },
+          {
+            "id": "segments.remove",
+            "fidelity": "behavioral"
+          },
+          {
+            "id": "workspace.context",
+            "fidelity": "stateful"
+          }
+        ],
+        "compatibility": [],
+        "version": "0.1.0",
+        "engine": ">=0.1.0 <0.2.0",
+        "capabilities": ["clock.read", "event.emit", "random.draw", "state.read", "state.write"],
+        "state": [
+          "api-keys",
+          "contact-emails",
+          "contact-segments",
+          "contacts",
+          "domain-names",
+          "domains",
+          "emails",
+          "meta",
+          "segment-members",
+          "segments"
+        ],
+        "http": [
+          {
+            "id": "add-contact-segment",
+            "operationId": "contacts.add_segment",
+            "method": "POST",
+            "path": "/contacts/{contact_id}/segments/{segment_id}",
+            "auth": {
+              "kind": "bearer",
+              "schemes": ["Bearer"]
+            },
+            "requestBody": "none",
+            "response": {
+              "successStatus": 200,
+              "errors": [
+                {
+                  "code": "INVALID_API_KEY",
+                  "status": 403
+                },
+                {
+                  "code": "INVALID_IDEMPOTENCY_KEY",
+                  "status": 400
+                },
+                {
+                  "code": "INVALID_PARAMETER",
+                  "status": 422
+                },
+                {
+                  "code": "MISSING_REQUIRED_FIELD",
+                  "status": 422
+                },
+                {
+                  "code": "NOT_FOUND",
+                  "status": 404
+                },
+                {
+                  "code": "RESTRICTED_API_KEY",
+                  "status": 401
+                }
+              ]
+            }
+          },
+          {
+            "id": "cancel-email",
+            "operationId": "emails.cancel",
+            "method": "POST",
+            "path": "/emails/{email_id}/cancel",
+            "auth": {
+              "kind": "bearer",
+              "schemes": ["Bearer"]
+            },
+            "requestBody": "none",
+            "response": {
+              "successStatus": 200,
+              "errors": [
+                {
+                  "code": "INVALID_API_KEY",
+                  "status": 403
+                },
+                {
+                  "code": "INVALID_IDEMPOTENCY_KEY",
+                  "status": 400
+                },
+                {
+                  "code": "INVALID_PARAMETER",
+                  "status": 422
+                },
+                {
+                  "code": "NOT_FOUND",
+                  "status": 404
+                },
+                {
+                  "code": "RESTRICTED_API_KEY",
+                  "status": 401
+                },
+                {
+                  "code": "VALIDATION_ERROR",
+                  "status": 422
+                }
+              ]
+            }
+          },
+          {
+            "id": "create-api-key",
+            "operationId": "api_keys.create",
+            "method": "POST",
+            "path": "/api-keys",
+            "auth": {
+              "kind": "bearer",
+              "schemes": ["Bearer"]
+            },
+            "requestBody": "json",
+            "response": {
+              "successStatus": 201,
+              "errors": [
+                {
+                  "code": "INVALID_API_KEY",
+                  "status": 403
+                },
+                {
+                  "code": "INVALID_IDEMPOTENCY_KEY",
+                  "status": 400
+                },
+                {
+                  "code": "MISSING_REQUIRED_FIELD",
+                  "status": 422
+                },
+                {
+                  "code": "RESTRICTED_API_KEY",
+                  "status": 401
+                },
+                {
+                  "code": "VALIDATION_ERROR",
+                  "status": 422
+                }
+              ]
+            }
+          },
+          {
+            "id": "create-contact",
+            "operationId": "contacts.create",
+            "method": "POST",
+            "path": "/contacts",
+            "auth": {
+              "kind": "bearer",
+              "schemes": ["Bearer"]
+            },
+            "requestBody": "json",
+            "response": {
+              "successStatus": 201,
+              "errors": [
+                {
+                  "code": "APPLICATION_ERROR",
+                  "status": 500
+                },
+                {
+                  "code": "INVALID_API_KEY",
+                  "status": 403
+                },
+                {
+                  "code": "INVALID_IDEMPOTENCY_KEY",
+                  "status": 400
+                },
+                {
+                  "code": "MISSING_REQUIRED_FIELD",
+                  "status": 422
+                },
+                {
+                  "code": "RESTRICTED_API_KEY",
+                  "status": 401
+                },
+                {
+                  "code": "VALIDATION_ERROR",
+                  "status": 422
+                }
+              ]
+            }
+          },
+          {
+            "id": "create-domain",
+            "operationId": "domains.create",
+            "method": "POST",
+            "path": "/domains",
+            "auth": {
+              "kind": "bearer",
+              "schemes": ["Bearer"]
+            },
+            "requestBody": "json",
+            "response": {
+              "successStatus": 201,
+              "errors": [
+                {
+                  "code": "INVALID_API_KEY",
+                  "status": 403
+                },
+                {
+                  "code": "INVALID_IDEMPOTENCY_KEY",
+                  "status": 400
+                },
+                {
+                  "code": "MISSING_REQUIRED_FIELD",
+                  "status": 422
+                },
+                {
+                  "code": "RESTRICTED_API_KEY",
+                  "status": 401
+                },
+                {
+                  "code": "VALIDATION_ERROR",
+                  "status": 422
+                }
+              ]
+            }
+          },
+          {
+            "id": "create-segment",
+            "operationId": "segments.create",
+            "method": "POST",
+            "path": "/segments",
+            "auth": {
+              "kind": "bearer",
+              "schemes": ["Bearer"]
+            },
+            "requestBody": "json",
+            "response": {
+              "successStatus": 201,
+              "errors": [
+                {
+                  "code": "INVALID_API_KEY",
+                  "status": 403
+                },
+                {
+                  "code": "INVALID_IDEMPOTENCY_KEY",
+                  "status": 400
+                },
+                {
+                  "code": "MISSING_REQUIRED_FIELD",
+                  "status": 422
+                },
+                {
+                  "code": "RESTRICTED_API_KEY",
+                  "status": 401
+                },
+                {
+                  "code": "VALIDATION_ERROR",
+                  "status": 422
+                }
+              ]
+            }
+          },
+          {
+            "id": "get-contact",
+            "operationId": "contacts.get",
+            "method": "GET",
+            "path": "/contacts/{id}",
+            "auth": {
+              "kind": "bearer",
+              "schemes": ["Bearer"]
+            },
+            "requestBody": "none",
+            "response": {
+              "successStatus": 200,
+              "errors": [
+                {
+                  "code": "INVALID_API_KEY",
+                  "status": 403
+                },
+                {
+                  "code": "INVALID_PARAMETER",
+                  "status": 422
+                },
+                {
+                  "code": "MISSING_REQUIRED_FIELD",
+                  "status": 422
+                },
+                {
+                  "code": "NOT_FOUND",
+                  "status": 404
+                },
+                {
+                  "code": "RESTRICTED_API_KEY",
+                  "status": 401
+                }
+              ]
+            }
+          },
+          {
+            "id": "get-domain",
+            "operationId": "domains.get",
+            "method": "GET",
+            "path": "/domains/{domain_id}",
+            "auth": {
+              "kind": "bearer",
+              "schemes": ["Bearer"]
+            },
+            "requestBody": "none",
+            "response": {
+              "successStatus": 200,
+              "errors": [
+                {
+                  "code": "INVALID_API_KEY",
+                  "status": 403
+                },
+                {
+                  "code": "INVALID_PARAMETER",
+                  "status": 422
+                },
+                {
+                  "code": "NOT_FOUND",
+                  "status": 404
+                },
+                {
+                  "code": "RESTRICTED_API_KEY",
+                  "status": 401
+                }
+              ]
+            }
+          },
+          {
+            "id": "get-email",
+            "operationId": "emails.get",
+            "method": "GET",
+            "path": "/emails/{email_id}",
+            "auth": {
+              "kind": "bearer",
+              "schemes": ["Bearer"]
+            },
+            "requestBody": "none",
+            "response": {
+              "successStatus": 200,
+              "errors": [
+                {
+                  "code": "INVALID_API_KEY",
+                  "status": 403
+                },
+                {
+                  "code": "INVALID_PARAMETER",
+                  "status": 422
+                },
+                {
+                  "code": "NOT_FOUND",
+                  "status": 404
+                },
+                {
+                  "code": "RESTRICTED_API_KEY",
+                  "status": 401
+                }
+              ]
+            }
+          },
+          {
+            "id": "list-api-keys",
+            "operationId": "api_keys.list",
+            "method": "GET",
+            "path": "/api-keys",
+            "auth": {
+              "kind": "bearer",
+              "schemes": ["Bearer"]
+            },
+            "requestBody": "none",
+            "response": {
+              "successStatus": 200,
+              "errors": [
+                {
+                  "code": "APPLICATION_ERROR",
+                  "status": 500
+                },
+                {
+                  "code": "INVALID_API_KEY",
+                  "status": 403
+                },
+                {
+                  "code": "RESTRICTED_API_KEY",
+                  "status": 401
+                },
+                {
+                  "code": "VALIDATION_ERROR",
+                  "status": 422
+                }
+              ]
+            }
+          },
+          {
+            "id": "list-contact-segments",
+            "operationId": "contacts.list_segments",
+            "method": "GET",
+            "path": "/contacts/{contact_id}/segments",
+            "auth": {
+              "kind": "bearer",
+              "schemes": ["Bearer"]
+            },
+            "requestBody": "none",
+            "response": {
+              "successStatus": 200,
+              "errors": [
+                {
+                  "code": "APPLICATION_ERROR",
+                  "status": 500
+                },
+                {
+                  "code": "INVALID_API_KEY",
+                  "status": 403
+                },
+                {
+                  "code": "INVALID_PARAMETER",
+                  "status": 422
+                },
+                {
+                  "code": "MISSING_REQUIRED_FIELD",
+                  "status": 422
+                },
+                {
+                  "code": "NOT_FOUND",
+                  "status": 404
+                },
+                {
+                  "code": "RESTRICTED_API_KEY",
+                  "status": 401
+                },
+                {
+                  "code": "VALIDATION_ERROR",
+                  "status": 422
+                }
+              ]
+            }
+          },
+          {
+            "id": "list-contacts",
+            "operationId": "contacts.list",
+            "method": "GET",
+            "path": "/contacts",
+            "auth": {
+              "kind": "bearer",
+              "schemes": ["Bearer"]
+            },
+            "requestBody": "none",
+            "response": {
+              "successStatus": 200,
+              "errors": [
+                {
+                  "code": "APPLICATION_ERROR",
+                  "status": 500
+                },
+                {
+                  "code": "INVALID_API_KEY",
+                  "status": 403
+                },
+                {
+                  "code": "INVALID_PARAMETER",
+                  "status": 422
+                },
+                {
+                  "code": "NOT_FOUND",
+                  "status": 404
+                },
+                {
+                  "code": "RESTRICTED_API_KEY",
+                  "status": 401
+                },
+                {
+                  "code": "VALIDATION_ERROR",
+                  "status": 422
+                }
+              ]
+            }
+          },
+          {
+            "id": "list-domains",
+            "operationId": "domains.list",
+            "method": "GET",
+            "path": "/domains",
+            "auth": {
+              "kind": "bearer",
+              "schemes": ["Bearer"]
+            },
+            "requestBody": "none",
+            "response": {
+              "successStatus": 200,
+              "errors": [
+                {
+                  "code": "APPLICATION_ERROR",
+                  "status": 500
+                },
+                {
+                  "code": "INVALID_API_KEY",
+                  "status": 403
+                },
+                {
+                  "code": "RESTRICTED_API_KEY",
+                  "status": 401
+                },
+                {
+                  "code": "VALIDATION_ERROR",
+                  "status": 422
+                }
+              ]
+            }
+          },
+          {
+            "id": "list-emails",
+            "operationId": "emails.list",
+            "method": "GET",
+            "path": "/emails",
+            "auth": {
+              "kind": "bearer",
+              "schemes": ["Bearer"]
+            },
+            "requestBody": "none",
+            "response": {
+              "successStatus": 200,
+              "errors": [
+                {
+                  "code": "APPLICATION_ERROR",
+                  "status": 500
+                },
+                {
+                  "code": "INVALID_API_KEY",
+                  "status": 403
+                },
+                {
+                  "code": "RESTRICTED_API_KEY",
+                  "status": 401
+                },
+                {
+                  "code": "VALIDATION_ERROR",
+                  "status": 422
+                }
+              ]
+            }
+          },
+          {
+            "id": "list-segments",
+            "operationId": "segments.list",
+            "method": "GET",
+            "path": "/segments",
+            "auth": {
+              "kind": "bearer",
+              "schemes": ["Bearer"]
+            },
+            "requestBody": "none",
+            "response": {
+              "successStatus": 200,
+              "errors": [
+                {
+                  "code": "APPLICATION_ERROR",
+                  "status": 500
+                },
+                {
+                  "code": "INVALID_API_KEY",
+                  "status": 403
+                },
+                {
+                  "code": "RESTRICTED_API_KEY",
+                  "status": 401
+                },
+                {
+                  "code": "VALIDATION_ERROR",
+                  "status": 422
+                }
+              ]
+            }
+          },
+          {
+            "id": "remove-api-key",
+            "operationId": "api_keys.remove",
+            "method": "DELETE",
+            "path": "/api-keys/{api_key_id}",
+            "auth": {
+              "kind": "bearer",
+              "schemes": ["Bearer"]
+            },
+            "requestBody": "none",
+            "response": {
+              "successStatus": 200,
+              "errors": [
+                {
+                  "code": "INVALID_API_KEY",
+                  "status": 403
+                },
+                {
+                  "code": "INVALID_IDEMPOTENCY_KEY",
+                  "status": 400
+                },
+                {
+                  "code": "INVALID_PARAMETER",
+                  "status": 422
+                },
+                {
+                  "code": "NOT_FOUND",
+                  "status": 404
+                },
+                {
+                  "code": "RESTRICTED_API_KEY",
+                  "status": 401
+                },
+                {
+                  "code": "VALIDATION_ERROR",
+                  "status": 422
+                }
+              ]
+            }
+          },
+          {
+            "id": "remove-contact",
+            "operationId": "contacts.remove",
+            "method": "DELETE",
+            "path": "/contacts/{id}",
+            "auth": {
+              "kind": "bearer",
+              "schemes": ["Bearer"]
+            },
+            "requestBody": "none",
+            "response": {
+              "successStatus": 200,
+              "errors": [
+                {
+                  "code": "APPLICATION_ERROR",
+                  "status": 500
+                },
+                {
+                  "code": "INVALID_API_KEY",
+                  "status": 403
+                },
+                {
+                  "code": "INVALID_IDEMPOTENCY_KEY",
+                  "status": 400
+                },
+                {
+                  "code": "INVALID_PARAMETER",
+                  "status": 422
+                },
+                {
+                  "code": "MISSING_REQUIRED_FIELD",
+                  "status": 422
+                },
+                {
+                  "code": "NOT_FOUND",
+                  "status": 404
+                },
+                {
+                  "code": "RESTRICTED_API_KEY",
+                  "status": 401
+                }
+              ]
+            }
+          },
+          {
+            "id": "remove-contact-segment",
+            "operationId": "contacts.remove_segment",
+            "method": "DELETE",
+            "path": "/contacts/{contact_id}/segments/{segment_id}",
+            "auth": {
+              "kind": "bearer",
+              "schemes": ["Bearer"]
+            },
+            "requestBody": "none",
+            "response": {
+              "successStatus": 200,
+              "errors": [
+                {
+                  "code": "INVALID_API_KEY",
+                  "status": 403
+                },
+                {
+                  "code": "INVALID_IDEMPOTENCY_KEY",
+                  "status": 400
+                },
+                {
+                  "code": "INVALID_PARAMETER",
+                  "status": 422
+                },
+                {
+                  "code": "MISSING_REQUIRED_FIELD",
+                  "status": 422
+                },
+                {
+                  "code": "NOT_FOUND",
+                  "status": 404
+                },
+                {
+                  "code": "RESTRICTED_API_KEY",
+                  "status": 401
+                }
+              ]
+            }
+          },
+          {
+            "id": "remove-domain",
+            "operationId": "domains.remove",
+            "method": "DELETE",
+            "path": "/domains/{domain_id}",
+            "auth": {
+              "kind": "bearer",
+              "schemes": ["Bearer"]
+            },
+            "requestBody": "none",
+            "response": {
+              "successStatus": 200,
+              "errors": [
+                {
+                  "code": "INVALID_API_KEY",
+                  "status": 403
+                },
+                {
+                  "code": "INVALID_IDEMPOTENCY_KEY",
+                  "status": 400
+                },
+                {
+                  "code": "INVALID_PARAMETER",
+                  "status": 422
+                },
+                {
+                  "code": "NOT_FOUND",
+                  "status": 404
+                },
+                {
+                  "code": "RESTRICTED_API_KEY",
+                  "status": 401
+                }
+              ]
+            }
+          },
+          {
+            "id": "remove-segment",
+            "operationId": "segments.remove",
+            "method": "DELETE",
+            "path": "/segments/{id}",
+            "auth": {
+              "kind": "bearer",
+              "schemes": ["Bearer"]
+            },
+            "requestBody": "none",
+            "response": {
+              "successStatus": 200,
+              "errors": [
+                {
+                  "code": "APPLICATION_ERROR",
+                  "status": 500
+                },
+                {
+                  "code": "INVALID_API_KEY",
+                  "status": 403
+                },
+                {
+                  "code": "INVALID_IDEMPOTENCY_KEY",
+                  "status": 400
+                },
+                {
+                  "code": "INVALID_PARAMETER",
+                  "status": 422
+                },
+                {
+                  "code": "NOT_FOUND",
+                  "status": 404
+                },
+                {
+                  "code": "RESTRICTED_API_KEY",
+                  "status": 401
+                }
+              ]
+            }
+          },
+          {
+            "id": "send-batch",
+            "operationId": "emails.send_batch",
+            "method": "POST",
+            "path": "/emails/batch",
+            "auth": {
+              "kind": "bearer",
+              "schemes": ["Bearer"]
+            },
+            "requestBody": "json",
+            "response": {
+              "successStatus": 200,
+              "errors": [
+                {
+                  "code": "DAILY_QUOTA_EXCEEDED",
+                  "status": 429
+                },
+                {
+                  "code": "DOMAIN_NOT_VERIFIED",
+                  "status": 403
+                },
+                {
+                  "code": "INVALID_API_KEY",
+                  "status": 403
+                },
+                {
+                  "code": "INVALID_IDEMPOTENCY_KEY",
+                  "status": 400
+                },
+                {
+                  "code": "MISSING_REQUIRED_FIELD",
+                  "status": 422
+                },
+                {
+                  "code": "RATE_LIMIT_EXCEEDED",
+                  "status": 429
+                },
+                {
+                  "code": "VALIDATION_ERROR",
+                  "status": 422
+                }
+              ]
+            }
+          },
+          {
+            "id": "send-email",
+            "operationId": "emails.send",
+            "method": "POST",
+            "path": "/emails",
+            "auth": {
+              "kind": "bearer",
+              "schemes": ["Bearer"]
+            },
+            "requestBody": "json",
+            "response": {
+              "successStatus": 200,
+              "errors": [
+                {
+                  "code": "DAILY_QUOTA_EXCEEDED",
+                  "status": 429
+                },
+                {
+                  "code": "DOMAIN_NOT_VERIFIED",
+                  "status": 403
+                },
+                {
+                  "code": "INVALID_API_KEY",
+                  "status": 403
+                },
+                {
+                  "code": "INVALID_IDEMPOTENCY_KEY",
+                  "status": 400
+                },
+                {
+                  "code": "MISSING_REQUIRED_FIELD",
+                  "status": 422
+                },
+                {
+                  "code": "RATE_LIMIT_EXCEEDED",
+                  "status": 429
+                },
+                {
+                  "code": "VALIDATION_ERROR",
+                  "status": 422
+                }
+              ]
+            }
+          },
+          {
+            "id": "update-contact",
+            "operationId": "contacts.update",
+            "method": "PATCH",
+            "path": "/contacts/{id}",
+            "auth": {
+              "kind": "bearer",
+              "schemes": ["Bearer"]
+            },
+            "requestBody": "json",
+            "response": {
+              "successStatus": 200,
+              "errors": [
+                {
+                  "code": "INVALID_API_KEY",
+                  "status": 403
+                },
+                {
+                  "code": "INVALID_IDEMPOTENCY_KEY",
+                  "status": 400
+                },
+                {
+                  "code": "INVALID_PARAMETER",
+                  "status": 422
+                },
+                {
+                  "code": "MISSING_REQUIRED_FIELD",
+                  "status": 422
+                },
+                {
+                  "code": "NOT_FOUND",
+                  "status": 404
+                },
+                {
+                  "code": "RESTRICTED_API_KEY",
+                  "status": 401
+                },
+                {
+                  "code": "VALIDATION_ERROR",
+                  "status": 422
+                }
+              ]
+            }
+          },
+          {
+            "id": "update-email",
+            "operationId": "emails.update",
+            "method": "PATCH",
+            "path": "/emails/{email_id}",
+            "auth": {
+              "kind": "bearer",
+              "schemes": ["Bearer"]
+            },
+            "requestBody": "json",
+            "response": {
+              "successStatus": 200,
+              "errors": [
+                {
+                  "code": "INVALID_API_KEY",
+                  "status": 403
+                },
+                {
+                  "code": "INVALID_IDEMPOTENCY_KEY",
+                  "status": 400
+                },
+                {
+                  "code": "INVALID_PARAMETER",
+                  "status": 422
+                },
+                {
+                  "code": "MISSING_REQUIRED_FIELD",
+                  "status": 422
+                },
+                {
+                  "code": "NOT_FOUND",
+                  "status": 404
+                },
+                {
+                  "code": "RESTRICTED_API_KEY",
+                  "status": 401
+                },
+                {
+                  "code": "VALIDATION_ERROR",
+                  "status": 422
+                }
+              ]
+            }
+          },
+          {
+            "id": "verify-domain",
+            "operationId": "domains.verify",
+            "method": "POST",
+            "path": "/domains/{domain_id}/verify",
+            "auth": {
+              "kind": "bearer",
+              "schemes": ["Bearer"]
+            },
+            "requestBody": "none",
+            "response": {
+              "successStatus": 200,
+              "errors": [
+                {
+                  "code": "INVALID_API_KEY",
+                  "status": 403
+                },
+                {
+                  "code": "INVALID_IDEMPOTENCY_KEY",
+                  "status": 400
+                },
+                {
+                  "code": "INVALID_PARAMETER",
+                  "status": 422
+                },
+                {
+                  "code": "NOT_FOUND",
+                  "status": 404
+                },
+                {
+                  "code": "RESTRICTED_API_KEY",
+                  "status": 401
+                }
+              ]
+            }
+          }
+        ],
+        "events": ["email.bounced", "email.delivered", "email.sent"],
+        "faults": ["contacts-create-unavailable", "send-rate-limited"],
+        "subscriptions": [],
+        "connections": [
+          {
+            "id": "resend-rest",
+            "title": "Resend-shaped REST subset (Bearer API key, JSON bodies)",
+            "protocol": "http",
+            "environment": {
+              "RESEND_BASE_URL": "FIREDRILL_HTTP_URL",
+              "RESEND_API_KEY": "FIREDRILL_HTTP_TOKEN"
+            },
+            "instructions": "Point a client's Resend base URL at RESEND_BASE_URL and send RESEND_API_KEY as the Bearer token. Routes mirror /emails, /domains, /api-keys, /segments and /contacts; the calling key is the actor attribute resendApiKeyId, not the token. Compatibility with official SDKs is not verified."
+          }
+        ],
+        "browserApp": true
+      },
+      "license": "Apache-2.0",
+      "maintainers": [],
+      "conformanceSuite": "conformance"
+    },
+    {
       "packageName": "@firedrill-community/tool-salesforce",
       "packageVersion": "0.1.0",
       "title": "Salesforce",
@@ -13301,7 +14422,7 @@
       "source": {
         "kind": "git",
         "url": "https://github.com/firedrill-tools/firedrill-community-tools.git",
-        "commit": "81fb316da55231c691283d22309cfe2adbec121e",
+        "commit": "971b16a030adaaa267a4e8b2a730d3ade395ed34",
         "subdirectory": "packages/salesforce"
       },
       "tool": {
@@ -14590,7 +15711,7 @@
       "source": {
         "kind": "git",
         "url": "https://github.com/firedrill-tools/firedrill-community-tools.git",
-        "commit": "81fb316da55231c691283d22309cfe2adbec121e",
+        "commit": "971b16a030adaaa267a4e8b2a730d3ade395ed34",
         "subdirectory": "packages/slack"
       },
       "tool": {
@@ -14757,6 +15878,10 @@
                   "status": 403
                 },
                 {
+                  "code": "RESPONSE_TOO_LARGE",
+                  "status": 400
+                },
+                {
                   "code": "SERVICE_UNAVAILABLE",
                   "status": 503
                 },
@@ -14901,6 +16026,10 @@
                   "status": 403
                 },
                 {
+                  "code": "RESPONSE_TOO_LARGE",
+                  "status": 400
+                },
+                {
                   "code": "THREAD_NOT_FOUND",
                   "status": 404
                 },
@@ -14941,6 +16070,10 @@
                   "status": 403
                 },
                 {
+                  "code": "RESPONSE_TOO_LARGE",
+                  "status": 400
+                },
+                {
                   "code": "TOO_MANY_ROWS",
                   "status": 400
                 }
@@ -14970,6 +16103,10 @@
                 },
                 {
                   "code": "NO_QUERY",
+                  "status": 400
+                },
+                {
+                  "code": "RESPONSE_TOO_LARGE",
                   "status": 400
                 },
                 {
@@ -15165,6 +16302,14 @@
                   "status": 401
                 },
                 {
+                  "code": "INVALID_BLOCKS",
+                  "status": 400
+                },
+                {
+                  "code": "INVALID_BLOCKS_FORMAT",
+                  "status": 400
+                },
+                {
                   "code": "IS_ARCHIVED",
                   "status": 400
                 },
@@ -15219,6 +16364,14 @@
                 {
                   "code": "INVALID_AUTH",
                   "status": 401
+                },
+                {
+                  "code": "INVALID_BLOCKS",
+                  "status": 400
+                },
+                {
+                  "code": "INVALID_BLOCKS_FORMAT",
+                  "status": 400
                 },
                 {
                   "code": "IS_ARCHIVED",
@@ -15347,6 +16500,10 @@
                 {
                   "code": "NOT_IN_CHANNEL",
                   "status": 403
+                },
+                {
+                  "code": "RESPONSE_TOO_LARGE",
+                  "status": 400
                 },
                 {
                   "code": "SERVICE_UNAVAILABLE",
@@ -15625,6 +16782,10 @@
                   "status": 403
                 },
                 {
+                  "code": "RESPONSE_TOO_LARGE",
+                  "status": 400
+                },
+                {
                   "code": "THREAD_NOT_FOUND",
                   "status": 404
                 },
@@ -15751,6 +16912,10 @@
                 {
                   "code": "NOT_IN_CHANNEL",
                   "status": 403
+                },
+                {
+                  "code": "RESPONSE_TOO_LARGE",
+                  "status": 400
                 },
                 {
                   "code": "TOO_MANY_ROWS",
@@ -15925,6 +17090,10 @@
                   "status": 400
                 },
                 {
+                  "code": "RESPONSE_TOO_LARGE",
+                  "status": 400
+                },
+                {
                   "code": "SERVICE_UNAVAILABLE",
                   "status": 503
                 },
@@ -16076,7 +17245,7 @@
       "source": {
         "kind": "git",
         "url": "https://github.com/firedrill-tools/firedrill-community-tools.git",
-        "commit": "81fb316da55231c691283d22309cfe2adbec121e",
+        "commit": "971b16a030adaaa267a4e8b2a730d3ade395ed34",
         "subdirectory": "packages/stripe"
       },
       "tool": {
@@ -17669,7 +18838,7 @@
       "source": {
         "kind": "git",
         "url": "https://github.com/firedrill-tools/firedrill-community-tools.git",
-        "commit": "81fb316da55231c691283d22309cfe2adbec121e",
+        "commit": "971b16a030adaaa267a4e8b2a730d3ade395ed34",
         "subdirectory": "packages/xero"
       },
       "tool": {
@@ -18625,5 +19794,5 @@
     }
   ],
   "sourceRepository": "https://github.com/firedrill-tools/firedrill-community-tools.git",
-  "sourceRevision": "81fb316da55231c691283d22309cfe2adbec121e"
+  "sourceRevision": "971b16a030adaaa267a4e8b2a730d3ade395ed34"
 }
