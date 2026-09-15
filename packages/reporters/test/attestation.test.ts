@@ -61,7 +61,7 @@ function fixture() {
   const publicKeyPem = pair.publicKey.export({ format: "pem", type: "spki" }).toString();
   const manifestBytes = Buffer.from(`${JSON.stringify(manifest(), null, 2)}\n`);
   const statement = createEvidenceAttestationStatement({
-    issuer: "https://api.firedrill.tools",
+    issuer: "https://api.firedrill.run",
     keyId: "evidence-2026-09-v1",
     issuedAtMs: ISSUED_AT_MS,
     manifestBytes,

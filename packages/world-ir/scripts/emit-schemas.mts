@@ -20,6 +20,6 @@ for (const [name, schema] of Object.entries(WorldIrSchemas)) {
   const document = z.toJSONSchema(schema, { target: "draft-2020-12" });
   writeFileSync(
     `${outputDirectory}/${fileName}`,
-    `${JSON.stringify({ $id: `https://firedrill.tools/schema/v1/${fileName}`, ...document }, null, 2)}\n`,
+    `${JSON.stringify({ $id: `https://firedrill.run/schema/v1/${fileName}`, ...document }, null, 2)}\n`,
   );
 }
