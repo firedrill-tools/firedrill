@@ -93,6 +93,18 @@ function artifactWorld() {
             errors: [{ code: "NOT_FOUND", status: 404 }],
           },
         },
+        {
+          id: "json-probe",
+          operationId: "artifacts.get",
+          method: "POST",
+          path: "/v3/json-probe",
+          auth: { kind: "basic", token: "username" },
+          requestBody: "json",
+          response: {
+            successStatus: 200,
+            errors: [{ code: "NOT_FOUND", status: 404 }],
+          },
+        },
       ],
     },
     operations: {
@@ -170,6 +182,18 @@ function artifactWorld() {
             body: { kind: "json", value: { error: outcome.error?.message ?? "request failed" } },
           };
         },
+      },
+      "json-probe": {
+        decode: (request) => {
+          if (request.body.kind !== "json") throw new TypeError("expected a JSON body");
+          return { arguments: { key: "readme" } };
+        },
+        encode: ({ outcome }) => ({
+          body:
+            outcome.status === "ok"
+              ? { kind: "json", value: outcome.value ?? null }
+              : { kind: "json", value: { error: outcome.error?.message ?? "request failed" } },
+        }),
       },
     },
   });
@@ -294,6 +318,25 @@ describe("synthetic HTTP route shapes", () => {
         content: "agent-ready",
       });
 
+      const deeplyNestedJson = `{"ignored":${"[".repeat(3000)}1${"]".repeat(3000)}}`;
+      const deepJsonResponse = await fetch(`${binding.baseUrl}/v3/json-probe`, {
+        method: "POST",
+        headers: { authorization, "content-type": "application/json" },
+        body: deeplyNestedJson,
+      });
+      expect(deepJsonResponse.status).toBe(200);
+      expect(await deepJsonResponse.json()).toEqual({ key: "readme", content: "agent-ready" });
+
+      const nonFiniteJsonNumber = await fetch(`${binding.baseUrl}/v3/json-probe`, {
+        method: "POST",
+        headers: { authorization, "content-type": "application/json" },
+        body: "1e400",
+      });
+      expect(nonFiniteJsonNumber.status).toBe(400);
+      expect(await nonFiniteJsonNumber.json()).toMatchObject({
+        code: "framework.HTTP_BODY_INVALID",
+      });
+
       const unsafeStored = await fetch(`${binding.baseUrl}/v3/artifacts/unsafe-header`, {
         method: "PUT",
         headers: {
@@ -320,7 +363,7 @@ describe("synthetic HTTP route shapes", () => {
           .readEvidence()
           .filter((entry) => entry.kind === "operation")
           .map((entry) => entry.outcome.status),
-      ).toEqual(["tool_error", "tool_error", "ok", "ok", "ok", "ok"]);
+      ).toEqual(["tool_error", "tool_error", "ok", "ok", "ok", "ok", "ok"]);
     } finally {
       await binding.close();
       fixture.store.close();
