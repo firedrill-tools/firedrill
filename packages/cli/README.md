@@ -82,5 +82,5 @@ After conformance passes, `tool contribute` can prepare a new, non-overwriting r
 
 `firedrill agent` dynamically loads the separately installed `@firedrill/agent` package. It uses the Claude Agent SDK and the developer's `ANTHROPIC_API_KEY`; the rest of the CLI has neither dependency. Running the Agent may send repository content to Anthropic, but never to a hosted Firedrill service. Its file access excludes secrets, Git metadata, dependencies, and `.firedrill/` evidence, and it has no shell or publish capability.
 
-See the repository's `docs/quickstart.md` and `examples/quickstart` while the packages are pre-release.
-The complete [CLI reference](https://github.com/firedrill-tools/firedrill/blob/main/docs/cli-reference.md) is generated from the executable release-candidate command surface.
+Start with the [Firedrill quickstart](https://docs.firedrill.run/quickstart).
+The complete [CLI reference](https://docs.firedrill.run/cli/reference) is generated from the executable release-candidate command surface.
