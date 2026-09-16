@@ -1,0 +1,237 @@
+name: Publish npm packages
+
+on:
+  release:
+    types: [published]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: npm-release-${{ github.event.release.tag_name }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    if: github.repository == 'firedrill-tools/firedrill'
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    outputs:
+      dist_tag: ${{ steps.release.outputs.dist_tag }}
+      revision: ${{ steps.release.outputs.revision }}
+      version: ${{ steps.release.outputs.version }}
+    steps:
+      - name: Check out the released tag
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+          ref: ${{ github.event.release.tag_name }}
+
+      - name: Validate release identity
+        id: release
+        env:
+          RELEASE_IS_PRERELEASE: ${{ github.event.release.prerelease }}
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
+        run: |
+          set -euo pipefail
+          version="$(node --input-type=module -e "import manifest from './package.json' with { type: 'json' }; process.stdout.write(manifest.version)")"
+          [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+([+-][0-9A-Za-z.-]+)?$ ]] || {
+            echo "Invalid release version: $version" >&2
+            exit 1
+          }
+          [[ "$RELEASE_TAG" == "v$version" ]] || {
+            echo "Release tag $RELEASE_TAG does not match package version $version" >&2
+            exit 1
+          }
+          revision="$(git rev-parse HEAD)"
+          [[ "$(git rev-list -n 1 "$RELEASE_TAG")" == "$revision" ]] || {
+            echo "Release tag does not resolve to the checked-out commit" >&2
+            exit 1
+          }
+          git merge-base --is-ancestor "$revision" origin/main || {
+            echo "Release commit is not on origin/main" >&2
+            exit 1
+          }
+          if [[ "$version" == *-* ]]; then
+            [[ "$RELEASE_IS_PRERELEASE" == "true" ]] || {
+              echo "A prerelease version must use a GitHub prerelease" >&2
+              exit 1
+            }
+            dist_tag="next"
+          else
+            [[ "$RELEASE_IS_PRERELEASE" == "false" ]] || {
+              echo "A stable version cannot use a GitHub prerelease" >&2
+              exit 1
+            }
+            dist_tag="latest"
+          fi
+          {
+            echo "dist_tag=$dist_tag"
+            echo "revision=$revision"
+            echo "version=$version"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10
+        with:
+          version: 9.15.4
+
+      - name: Install Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 20.19.0
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Install Chromium for browser tests
+        run: pnpm --filter @firedrill/browser-tests exec playwright install --with-deps chromium
+
+      - name: Run the public framework gate
+        run: pnpm check
+
+      - name: Install the pinned SBOM generator
+        id: syft
+        uses: anchore/sbom-action/download-syft@e22c389904149dbc22b58101806040fa8d37a610 # v0.24.0
+        with:
+          syft-version: v1.51.0
+
+      - name: Prepare reproducible packages and SBOMs
+        run: >-
+          pnpm release:prepare --
+          --output "${RUNNER_TEMP}/firedrill-release"
+          --syft "${{ steps.syft.outputs.cmd }}"
+          --require-clean
+
+      - name: Upload verified release bundle
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: firedrill-npm-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/firedrill-release/
+          if-no-files-found: error
+          retention-days: 7
+
+  publish:
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment:
+      name: npm
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - name: Download verified release bundle
+        uses: actions/download-artifact@70fc10c6e5e1ce46ad2ea6f2b72d43f7d47b13c3 # v8.0.0
+        with:
+          name: firedrill-npm-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/firedrill-release
+
+      - name: Install npm trusted-publishing runtime
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24.x
+          registry-url: https://registry.npmjs.org
+          package-manager-cache: false
+
+      - name: Verify npm trusted-publishing requirements
+        run: |
+          set -euo pipefail
+          node --input-type=module <<'NODE'
+          const [major, minor] = process.versions.node.split(".").map(Number);
+          if (major < 22 || (major === 22 && minor < 14)) {
+            throw new Error(`Trusted publishing requires Node >=22.14; found ${process.version}`);
+          }
+          NODE
+          npm --version | node --input-type=module -e '
+            let value = "";
+            process.stdin.setEncoding("utf8");
+            process.stdin.on("data", chunk => { value += chunk; });
+            process.stdin.on("end", () => {
+              const [major, minor] = value.trim().split(".").map(Number);
+              if (major < 11 || (major === 11 && minor < 5)) {
+                throw new Error(`Trusted publishing requires npm >=11.5.1; found ${value.trim()}`);
+              }
+            });
+          '
+
+      - name: Publish verified packages
+        env:
+          DIST_TAG: ${{ needs.build.outputs.dist_tag }}
+          RELEASE_REVISION: ${{ needs.build.outputs.revision }}
+          RELEASE_VERSION: ${{ needs.build.outputs.version }}
+        working-directory: ${{ runner.temp }}/firedrill-release
+        run: |
+          set -euo pipefail
+          [[ "$DIST_TAG" == "next" || "$DIST_TAG" == "latest" ]]
+          [[ "$RELEASE_REVISION" =~ ^[0-9a-f]{40}$ ]]
+          [[ "$RELEASE_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+([+-][0-9A-Za-z.-]+)?$ ]]
+          sha256sum --check SHA256SUMS
+          jq -e \
+            --arg revision "$RELEASE_REVISION" \
+            --arg version "$RELEASE_VERSION" \
+            '.schemaVersion == 1 and
+             .status == "release-candidate" and
+             .source.clean == true and
+             .source.revision == $revision and
+             (.packages | length > 0) and
+             ([.packages[].version] | all(. == $version)) and
+             ([.packages[].name] | length == (unique | length)) and
+             ([.packages[].path] | length == (unique | length))' \
+            release.json >/dev/null
+          mapfile -t archives < <(jq -er '.packages[].path' release.json)
+          [[ "${#archives[@]}" -gt 0 ]]
+          [[ "$(find packages -maxdepth 1 -type f -name '*.tgz' | wc -l)" -eq "${#archives[@]}" ]]
+
+          for archive in "${archives[@]}"; do
+            [[ "$archive" =~ ^packages/[A-Za-z0-9._-]+\.tgz$ && -f "$archive" ]] || {
+              echo "Unsafe or missing package archive: $archive" >&2
+              exit 1
+            }
+            manifest="$(tar -xOf "$archive" package/package.json)"
+            mapfile -t coordinates < <(
+              node --input-type=module -e '
+                let value = "";
+                process.stdin.setEncoding("utf8");
+                process.stdin.on("data", chunk => { value += chunk; });
+                process.stdin.on("end", () => {
+                  const manifest = JSON.parse(value);
+                  if (typeof manifest.name !== "string" || !manifest.name.startsWith("@firedrill/")) {
+                    throw new Error("Unexpected package name");
+                  }
+                  if (typeof manifest.version !== "string") throw new Error("Missing package version");
+                  process.stdout.write(`${manifest.name}\n${manifest.version}\n`);
+                });
+              ' <<< "$manifest"
+            )
+            name="${coordinates[0]}"
+            version="${coordinates[1]}"
+            [[ "$version" == "$RELEASE_VERSION" ]] || {
+              echo "$name has version $version, expected $RELEASE_VERSION" >&2
+              exit 1
+            }
+            local_integrity="sha512-$(openssl dgst -sha512 -binary "$archive" | base64 -w 0)"
+            error_file="$(mktemp)"
+            set +e
+            remote_integrity="$(npm view "$name@$version" dist.integrity --json --loglevel=error 2>"$error_file")"
+            view_status=$?
+            set -e
+            if [[ "$view_status" -eq 0 ]]; then
+              remote_integrity="$(jq -er 'select(type == "string")' <<< "$remote_integrity")"
+              [[ "$remote_integrity" == "$local_integrity" ]] || {
+                echo "$name@$version already exists with different bytes" >&2
+                rm -f "$error_file"
+                exit 1
+              }
+              echo "$name@$version is already published with the verified integrity; skipping"
+            elif grep -Eq 'E404|404 Not Found' "$error_file"; then
+              npm publish "$archive" --access public --tag "$DIST_TAG" --ignore-scripts
+            else
+              cat "$error_file" >&2
+              rm -f "$error_file"
+              exit "$view_status"
+            fi
+            rm -f "$error_file"
+          done
