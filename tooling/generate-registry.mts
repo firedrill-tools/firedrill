@@ -46,12 +46,20 @@ interface ToolDeclaration {
 }
 
 const root = resolve(import.meta.dirname, "..");
-const registryRoot = join(root, "registry");
+function optionValue(name: string): string | undefined {
+  const index = process.argv.indexOf(name);
+  if (index < 0) return undefined;
+  const value = process.argv[index + 1];
+  if (value === undefined || value.startsWith("--")) fail(`${name} requires a value`);
+  return value;
+}
+
+const registryRoot = resolve(optionValue("--output") ?? join(root, "registry"));
 const jsonOutputPath = join(registryRoot, "index.json");
 const markdownOutputPath = join(registryRoot, "README.md");
-const sourceIndex = process.argv.indexOf("--source");
-const sourceRepository =
-  sourceIndex < 0 ? undefined : resolve(process.cwd(), process.argv[sourceIndex + 1] ?? "");
+const source = optionValue("--source");
+const sourceRepository = source === undefined ? undefined : resolve(process.cwd(), source);
+const requestedRevision = optionValue("--revision");
 
 function fail(message: string): never {
   throw new Error(message);
@@ -69,6 +77,21 @@ function command(cwd: string, executable: string, arguments_: readonly string[])
 
 function gitFile(repository: string, revision: string, path: string): string {
   return command(repository, "git", ["show", `${revision}:${path}`]);
+}
+
+function assertCleanRevision(repository: string, revision: string | undefined): string {
+  const head = command(repository, "git", ["rev-parse", "HEAD"]);
+  if (!/^[0-9a-f]{40}$/.test(head)) fail("community Tool source revision is not a full Git commit");
+  if (revision !== undefined && !/^[0-9a-f]{40}$/.test(revision)) {
+    fail("--revision must be an exact 40-character Git commit");
+  }
+  if (revision !== undefined && revision !== head) {
+    fail(`community Tool checkout is at ${head}, not requested revision ${revision}`);
+  }
+  if (command(repository, "git", ["status", "--porcelain", "--untracked-files=all"]) !== "") {
+    fail("community Tool checkout must be clean before catalog generation");
+  }
+  return head;
 }
 
 function httpsRemote(value: string): string {
@@ -108,8 +131,7 @@ function requiredText(value: unknown, label: string): string {
 }
 
 function importCommunityIndex(repository: string): ToolIndex {
-  const revision = command(repository, "git", ["rev-parse", "HEAD"]);
-  if (!/^[0-9a-f]{40,64}$/.test(revision)) fail("community Tool source revision is invalid");
+  const revision = assertCleanRevision(repository, requestedRevision);
   const remote = httpsRemote(command(repository, "git", ["remote", "get-url", "origin"]));
   const packagePaths = command(repository, "git", ["ls-tree", "-r", "--name-only", revision, "packages"])
     .split("\n")
@@ -178,6 +200,9 @@ function importCommunityIndex(repository: string): ToolIndex {
       },
     ];
   });
+  if (assertCleanRevision(repository, revision) !== revision) {
+    fail("community Tool source changed while catalog metadata was produced");
+  }
   return ToolIndexSchema.parse({
     schemaVersion: 1,
     sourceRepository: remote,
