@@ -615,7 +615,7 @@ export async function compileWorld(options: CompileWorldOptions): Promise<Compil
     repository.root,
     "firedrill.json",
     "project manifest",
-    "Add firedrill.json at the repository root. Start with https://firedrill.tools/docs/quickstart.",
+    "Add firedrill.json at the repository root. Run firedrill init --help to choose a setup path.",
   );
   if (configPath.status === "failed") {
     return { status: "failed", diagnostics: sortDiagnostics(configPath.diagnostics) };

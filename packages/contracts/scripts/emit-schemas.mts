@@ -19,7 +19,7 @@ for (const [name, schema] of Object.entries(ContractSchemas)) {
   const fileName = `${kebab(name)}.json`;
   const document = z.toJSONSchema(schema, { target: "draft-2020-12" });
   const withIdentity = {
-    $id: `https://firedrill.tools/schema/v1/${fileName}`,
+    $id: `https://firedrill.run/schema/v1/${fileName}`,
     ...document,
   };
   writeFileSync(`${outputDirectory}/${fileName}`, `${JSON.stringify(withIdentity, null, 2)}\n`);

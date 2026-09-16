@@ -49,7 +49,7 @@
     "url": "git+https://github.com/firedrill-tools/firedrill.git",
     "directory": "packages/simulation"
   },
-  "homepage": "https://firedrill.tools",
+  "homepage": "https://firedrill.run",
   "bugs": {
     "url": "https://github.com/firedrill-tools/firedrill/issues"
   }

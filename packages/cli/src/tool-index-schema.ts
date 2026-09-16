@@ -101,7 +101,7 @@ export type ToolIndexSource = z.infer<typeof ToolIndexSourceSchema>;
 
 export function toolIndexJsonSchema() {
   return {
-    $id: "https://firedrill.tools/schema/v1/tool-index.json",
+    $id: "https://firedrill.run/schema/v1/tool-index.json",
     ...z.toJSONSchema(ToolIndexSchema, { target: "draft-2020-12", io: "input" }),
   };
 }

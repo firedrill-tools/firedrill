@@ -2,7 +2,7 @@ import { z } from "zod";
 import { RunIdSchema, Sha256Schema } from "./identifiers.js";
 import { ReproductionDescriptorSchema } from "./report.js";
 
-export const EVIDENCE_ATTESTATION_PREDICATE = "https://firedrill.tools/attestations/evidence/v1" as const;
+export const EVIDENCE_ATTESTATION_PREDICATE = "https://firedrill.run/attestations/evidence/v1" as const;
 
 export const EvidenceAttestationKeyIdSchema = z
   .string()
