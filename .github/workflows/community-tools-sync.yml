@@ -1,0 +1,342 @@
+name: Community Tool catalog sync
+
+on:
+  schedule:
+    - cron: "17 4 * * *"
+  workflow_dispatch:
+    inputs:
+      community_sha:
+        description: Exact main-branch firedrill-community-tools commit to import
+        required: true
+        type: string
+  repository_dispatch:
+    types: [community-tools-updated]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: community-tools-sync
+  cancel-in-progress: false
+
+jobs:
+  validate:
+    name: Verify release and generate catalog
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    outputs:
+      ready: ${{ steps.ready.outputs.ready }}
+      revision: ${{ steps.source.outputs.revision }}
+    steps:
+      - name: Read automation mode
+        id: mode
+        env:
+          ENABLED: ${{ vars.FIREDRILL_COMMUNITY_SYNC_ENABLED }}
+        run: |
+          if [[ "$ENABLED" == "true" ]]; then
+            echo "enabled=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "enabled=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::Community Tool sync is intentionally disabled by FIREDRILL_COMMUNITY_SYNC_ENABLED."
+          fi
+
+      - name: Validate requested release
+        id: requested
+        if: steps.mode.outputs.enabled == 'true'
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          MANUAL_SHA: ${{ inputs.community_sha }}
+          DISPATCH_SHA: ${{ github.event.client_payload.community_sha }}
+          DISPATCH_RUN_ID: ${{ github.event.client_payload.workflow_run_id }}
+          DISPATCH_ARTIFACT_ID: ${{ github.event.client_payload.artifact_id }}
+          DISPATCH_ARTIFACT_NAME: ${{ github.event.client_payload.artifact_name }}
+          DISPATCH_CATALOG_SHA256: ${{ github.event.client_payload.catalog_sha256 }}
+          DISPATCH_SOURCE_REF: ${{ github.event.client_payload.source_ref }}
+        run: |
+          case "$EVENT_NAME" in
+            workflow_dispatch)
+              revision="$MANUAL_SHA"; run_id=""; artifact_id=""; artifact_name=""; catalog_sha256=""; source_ref="main" ;;
+            schedule)
+              revision=""; run_id=""; artifact_id=""; artifact_name=""; catalog_sha256=""; source_ref="main" ;;
+            repository_dispatch)
+              revision="$DISPATCH_SHA"; run_id="$DISPATCH_RUN_ID"; artifact_id="$DISPATCH_ARTIFACT_ID"
+              artifact_name="$DISPATCH_ARTIFACT_NAME"; catalog_sha256="$DISPATCH_CATALOG_SHA256"; source_ref="$DISPATCH_SOURCE_REF" ;;
+            *) echo "Unsupported event: $EVENT_NAME" >&2; exit 1 ;;
+          esac
+          [[ -z "$revision" || "$revision" =~ ^[0-9a-f]{40}$ ]] || { echo "community_sha must be an exact commit" >&2; exit 1; }
+          [[ -z "$run_id" || "$run_id" =~ ^[0-9]+$ ]] || { echo "workflow_run_id is invalid" >&2; exit 1; }
+          [[ -z "$artifact_id" || "$artifact_id" =~ ^[0-9]+$ ]] || { echo "artifact_id is invalid" >&2; exit 1; }
+          [[ -z "$catalog_sha256" || "$catalog_sha256" =~ ^[0-9a-f]{64}$ ]] || { echo "catalog_sha256 is invalid" >&2; exit 1; }
+          [[ "$source_ref" == "main" ]] || { echo "only the main community Tool channel may update the default catalog" >&2; exit 1; }
+          if [[ "$EVENT_NAME" == "repository_dispatch" ]]; then
+            [[ -n "$revision" && -n "$run_id" && -n "$artifact_id" && -n "$artifact_name" && -n "$catalog_sha256" ]] || {
+              echo "repository dispatch is missing immutable release coordinates" >&2; exit 1;
+            }
+            [[ "$artifact_name" == "community-tools-$revision" ]] || { echo "artifact_name does not match community_sha" >&2; exit 1; }
+          fi
+          {
+            echo "revision=$revision"
+            echo "run_id=$run_id"
+            echo "artifact_id=$artifact_id"
+            echo "artifact_name=$artifact_name"
+            echo "catalog_sha256=$catalog_sha256"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Require automation App configuration
+        if: steps.mode.outputs.enabled == 'true'
+        env:
+          APP_ID: ${{ secrets.FIREDRILL_CI_APP_ID }}
+          APP_PRIVATE_KEY: ${{ secrets.FIREDRILL_CI_APP_PRIVATE_KEY }}
+        run: |
+          [[ -n "$APP_ID" && -n "$APP_PRIVATE_KEY" ]] || {
+            echo "Community Tool sync is enabled but the Firedrill CI App credentials are missing" >&2
+            exit 1
+          }
+
+      - name: Mint read-only community repository token
+        id: source-token
+        if: steps.mode.outputs.enabled == 'true'
+        uses: actions/create-github-app-token@fee1f7d63c2ff003460e3d139729b119787bc349 # v2.2.2
+        with:
+          app-id: ${{ secrets.FIREDRILL_CI_APP_ID }}
+          private-key: ${{ secrets.FIREDRILL_CI_APP_PRIVATE_KEY }}
+          owner: firedrill-tools
+          repositories: firedrill-community-tools
+          permission-actions: read
+          permission-contents: read
+
+      - name: Resolve exact main revision
+        id: resolved
+        if: steps.mode.outputs.enabled == 'true'
+        env:
+          REQUESTED_REVISION: ${{ steps.requested.outputs.revision }}
+          GH_TOKEN: ${{ steps.source-token.outputs.token }}
+        run: |
+          revision="$REQUESTED_REVISION"
+          if [[ -z "$revision" ]]; then
+            revision="$(gh api repos/firedrill-tools/firedrill-community-tools/git/ref/heads/main --jq '.object.sha')"
+          fi
+          [[ "$revision" =~ ^[0-9a-f]{40}$ ]] || { echo "resolved revision is invalid" >&2; exit 1; }
+          echo "revision=$revision" >> "$GITHUB_OUTPUT"
+
+      - name: Resolve successful CI artifact
+        id: artifact
+        if: steps.mode.outputs.enabled == 'true'
+        env:
+          REVISION: ${{ steps.resolved.outputs.revision }}
+          REQUESTED_RUN_ID: ${{ steps.requested.outputs.run_id }}
+          REQUESTED_ARTIFACT_ID: ${{ steps.requested.outputs.artifact_id }}
+          REQUESTED_ARTIFACT_NAME: ${{ steps.requested.outputs.artifact_name }}
+          EXPECTED_CATALOG_SHA256: ${{ steps.requested.outputs.catalog_sha256 }}
+          GH_TOKEN: ${{ steps.source-token.outputs.token }}
+        run: |
+          expected_name="community-tools-$REVISION"
+          if [[ -n "$REQUESTED_ARTIFACT_ID" ]]; then
+            artifact="$(gh api "repos/firedrill-tools/firedrill-community-tools/actions/artifacts/$REQUESTED_ARTIFACT_ID")"
+          else
+            artifacts="$(gh api "repos/firedrill-tools/firedrill-community-tools/actions/artifacts?name=$expected_name&per_page=100")"
+            artifact="$(jq -cer --arg revision "$REVISION" \
+              '[.artifacts[] | select(.expired == false and .workflow_run.head_sha == $revision)] | sort_by(.created_at) | last' \
+              <<<"$artifacts")"
+          fi
+          id="$(jq -er '.id' <<<"$artifact")"; name="$(jq -er '.name' <<<"$artifact")"
+          run_id="$(jq -er '.workflow_run.id' <<<"$artifact")"; head_sha="$(jq -er '.workflow_run.head_sha' <<<"$artifact")"
+          expired="$(jq -er '.expired' <<<"$artifact")"
+          [[ "$id" =~ ^[0-9]+$ && "$run_id" =~ ^[0-9]+$ && "$name" == "$expected_name" && "$head_sha" == "$REVISION" && "$expired" == "false" ]] || {
+            echo "artifact does not belong to the requested revision" >&2; exit 1;
+          }
+          [[ -z "$REQUESTED_ARTIFACT_ID" || "$id" == "$REQUESTED_ARTIFACT_ID" ]] || { echo "artifact id does not match dispatch" >&2; exit 1; }
+          [[ -z "$REQUESTED_RUN_ID" || "$run_id" == "$REQUESTED_RUN_ID" ]] || { echo "workflow run does not match dispatch" >&2; exit 1; }
+          [[ -z "$REQUESTED_ARTIFACT_NAME" || "$name" == "$REQUESTED_ARTIFACT_NAME" ]] || { echo "artifact name does not match dispatch" >&2; exit 1; }
+          run="$(gh api "repos/firedrill-tools/firedrill-community-tools/actions/runs/$run_id")"
+          jq -e --arg revision "$REVISION" '.conclusion == "success" and .event == "push" and .head_branch == "main" and .head_sha == $revision' <<<"$run" >/dev/null || {
+            echo "artifact was not produced by a successful main push CI run" >&2; exit 1;
+          }
+          {
+            echo "id=$id"; echo "name=$name"; echo "run_id=$run_id"
+            echo "catalog_sha256=$EXPECTED_CATALOG_SHA256"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Check out consumer source
+        if: steps.mode.outputs.enabled == 'true'
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Download exact successful release artifact
+        if: steps.mode.outputs.enabled == 'true'
+        uses: actions/download-artifact@70fc10c6e5e1ce46ad2ea6f2b72d43f7d47b13c3 # v8.0.0
+        with:
+          artifact-ids: ${{ steps.artifact.outputs.id }}
+          path: ${{ runner.temp }}/community-tools-release
+          github-token: ${{ steps.source-token.outputs.token }}
+          repository: firedrill-tools/firedrill-community-tools
+          run-id: ${{ steps.artifact.outputs.run_id }}
+
+      - name: Verify exact release artifact
+        if: steps.mode.outputs.enabled == 'true'
+        env:
+          REVISION: ${{ steps.resolved.outputs.revision }}
+          CATALOG_SHA256: ${{ steps.artifact.outputs.catalog_sha256 }}
+        run: |
+          args=(--artifact "$RUNNER_TEMP/community-tools-release" --revision "$REVISION")
+          if [[ -n "$CATALOG_SHA256" ]]; then args+=(--catalog-sha256 "$CATALOG_SHA256"); fi
+          node .github/scripts/verify-community-release.mjs "${args[@]}"
+
+      - name: Check out exact community source
+        if: steps.mode.outputs.enabled == 'true'
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: firedrill-tools/firedrill-community-tools
+          ref: ${{ steps.resolved.outputs.revision }}
+          token: ${{ steps.source-token.outputs.token }}
+          persist-credentials: false
+          path: community-tools-source
+
+      - name: Verify immutable community checkout
+        id: source
+        if: steps.mode.outputs.enabled == 'true'
+        env:
+          REQUESTED_REVISION: ${{ steps.resolved.outputs.revision }}
+        run: |
+          revision="$(git -C community-tools-source rev-parse HEAD)"
+          [[ "$revision" == "$REQUESTED_REVISION" ]]
+          test -z "$(git -C community-tools-source status --porcelain --untracked-files=all)"
+          echo "revision=$revision" >> "$GITHUB_OUTPUT"
+
+      - name: Install pnpm
+        if: steps.mode.outputs.enabled == 'true'
+        uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10
+        with:
+          version: 9.15.4
+
+      - name: Install Node.js
+        if: steps.mode.outputs.enabled == 'true'
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 20.19.0
+          cache: pnpm
+
+      - name: Install consumer dependencies
+        if: steps.mode.outputs.enabled == 'true'
+        run: pnpm install --frozen-lockfile
+
+      - name: Build registry contract dependency
+        if: steps.mode.outputs.enabled == 'true'
+        run: pnpm --filter @firedrill/contracts build
+
+      - name: Generate catalog from exact source and release
+        if: steps.mode.outputs.enabled == 'true'
+        env:
+          COMMUNITY_REVISION: ${{ steps.source.outputs.revision }}
+        run: |
+          pnpm exec tsx tooling/generate-registry.mts \
+            --source "$GITHUB_WORKSPACE/community-tools-source" \
+            --revision "$COMMUNITY_REVISION" \
+            --release-catalog "$RUNNER_TEMP/community-tools-release/catalog.json"
+          pnpm registry:check
+          pnpm registry:test
+
+      - name: Prepare data-only sync artifact
+        if: steps.mode.outputs.enabled == 'true'
+        env:
+          COMMUNITY_REVISION: ${{ steps.source.outputs.revision }}
+        run: >-
+          node .github/scripts/community-sync-artifact.mjs prepare
+          --artifact "$RUNNER_TEMP/community-tools-sync"
+          --revision "$COMMUNITY_REVISION"
+
+      - name: Upload verified sync artifact
+        if: steps.mode.outputs.enabled == 'true'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: community-tools-catalog-${{ steps.source.outputs.revision }}
+          path: ${{ runner.temp }}/community-tools-sync
+          if-no-files-found: error
+          retention-days: 2
+
+      - name: Mark generated artifact ready
+        id: ready
+        if: steps.mode.outputs.enabled == 'true'
+        run: echo "ready=true" >> "$GITHUB_OUTPUT"
+
+  propose:
+    name: Open catalog update pull request
+    needs: validate
+    if: needs.validate.outputs.ready == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - name: Mint consumer pull-request token
+        id: consumer-token
+        uses: actions/create-github-app-token@fee1f7d63c2ff003460e3d139729b119787bc349 # v2.2.2
+        with:
+          app-id: ${{ secrets.FIREDRILL_CI_APP_ID }}
+          private-key: ${{ secrets.FIREDRILL_CI_APP_PRIVATE_KEY }}
+          owner: firedrill-tools
+          repositories: firedrill
+          permission-contents: write
+          permission-pull-requests: write
+
+      - name: Check out trusted consumer source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: main
+          token: ${{ steps.consumer-token.outputs.token }}
+
+      - name: Download generated artifact
+        uses: actions/download-artifact@70fc10c6e5e1ce46ad2ea6f2b72d43f7d47b13c3 # v8.0.0
+        with:
+          name: community-tools-catalog-${{ needs.validate.outputs.revision }}
+          path: ${{ runner.temp }}/community-tools-sync
+
+      - name: Verify and apply generated catalog
+        env:
+          COMMUNITY_REVISION: ${{ needs.validate.outputs.revision }}
+        run: >-
+          node .github/scripts/community-sync-artifact.mjs apply
+          --artifact "$RUNNER_TEMP/community-tools-sync"
+          --revision "$COMMUNITY_REVISION"
+
+      - name: Commit generated catalog branch
+        id: commit
+        env:
+          BRANCH: automation/community-tools-sync
+          COMMUNITY_REVISION: ${{ needs.validate.outputs.revision }}
+          GH_TOKEN: ${{ steps.consumer-token.outputs.token }}
+        run: |
+          git add -- registry/index.json registry/README.md
+          if git diff --cached --quiet; then
+            existing="$(gh api --method GET "repos/$GITHUB_REPOSITORY/pulls" -f state=open -f base=main -f "head=$GITHUB_REPOSITORY_OWNER:$BRANCH" --jq '.[0].number // empty')"
+            if [[ -n "$existing" ]]; then gh api --method PATCH "repos/$GITHUB_REPOSITORY/pulls/$existing" -f state=closed >/dev/null; fi
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          git config user.name "firedrill-ci[bot]"
+          git config user.email "firedrill-ci[bot]@users.noreply.github.com"
+          git checkout -B "$BRANCH"
+          git commit -m "chore: sync community Tools at ${COMMUNITY_REVISION:0:12}"
+          remote_sha="$(git ls-remote --heads origin "refs/heads/$BRANCH" | cut -f1)"
+          if [[ -n "$remote_sha" ]]; then
+            git push --force-with-lease="refs/heads/$BRANCH:$remote_sha" origin "HEAD:refs/heads/$BRANCH"
+          else
+            git push origin "HEAD:refs/heads/$BRANCH"
+          fi
+          echo "changed=true" >> "$GITHUB_OUTPUT"
+
+      - name: Open pull request
+        if: steps.commit.outputs.changed == 'true'
+        env:
+          BRANCH: automation/community-tools-sync
+          COMMUNITY_REVISION: ${{ needs.validate.outputs.revision }}
+          GH_TOKEN: ${{ steps.consumer-token.outputs.token }}
+        run: |
+          body="Imports generated catalog metadata from exact, CI-verified community Tool revision \`$COMMUNITY_REVISION\`. Review and merge normally after CI passes."
+          existing="$(gh api --method GET "repos/$GITHUB_REPOSITORY/pulls" -f state=open -f base=main -f "head=$GITHUB_REPOSITORY_OWNER:$BRANCH" --jq '.[0].number // empty')"
+          if [[ -n "$existing" ]]; then
+            gh api --method PATCH "repos/$GITHUB_REPOSITORY/pulls/$existing" -f title="chore: sync community Tools" -f body="$body" >/dev/null
+          else
+            gh pr create --base main --head "$BRANCH" --title "chore: sync community Tools" --body "$body"
+          fi

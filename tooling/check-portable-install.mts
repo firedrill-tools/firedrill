@@ -8,7 +8,11 @@ const repositoryRoot = resolve(import.meta.dirname, "..");
 const temporaryRoot = mkdtempSync(join(tmpdir(), "firedrill-portability-"));
 const workspace = join(temporaryRoot, "Firedrill üser project with spaces");
 const artifactsDirectory = join(temporaryRoot, "packed artifacts ü");
-const installTimeoutMs = 5 * 60_000;
+// Windows cold installs can spend several minutes compiling native SQLite
+// bindings even when the exact same packed consumer succeeds on every other
+// supported platform. Keep the product commands tightly bounded below, but
+// give the package-manager phase enough room to prove a real cold install.
+const installTimeoutMs = 10 * 60_000;
 const commandTimeoutMs = 60_000;
 
 interface CommandResult {
