@@ -1,5 +1,8 @@
 # Firedrill developer guides
 
+The published documentation is at [docs.firedrill.run](https://docs.firedrill.run).
+These repository guides stay with the framework source and its exact version.
+
 New to Firedrill? The [README user guide](../README.md) walks through installation,
 starting Tools, connecting an agent, the first passing/failing drill, source-file
 organization, and reading reports. This index takes you deeper into each workflow.
