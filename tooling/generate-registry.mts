@@ -45,6 +45,22 @@ interface ToolDeclaration {
   };
 }
 
+interface CommunityReleaseRecord {
+  readonly name?: string;
+  readonly version?: string;
+  readonly tool?: string;
+  readonly lifecycle?: string;
+  readonly sourceSubdirectory?: string;
+  readonly definition?: string;
+}
+
+interface CommunityReleaseCatalog {
+  readonly schemaVersion?: number;
+  readonly sourceRepository?: string;
+  readonly sourceRevision?: string;
+  readonly packages?: readonly CommunityReleaseRecord[];
+}
+
 const root = resolve(import.meta.dirname, "..");
 function optionValue(name: string): string | undefined {
   const index = process.argv.indexOf(name);
@@ -60,6 +76,7 @@ const markdownOutputPath = join(registryRoot, "README.md");
 const source = optionValue("--source");
 const sourceRepository = source === undefined ? undefined : resolve(process.cwd(), source);
 const requestedRevision = optionValue("--revision");
+const releaseCatalogPath = optionValue("--release-catalog");
 
 function fail(message: string): never {
   throw new Error(message);
@@ -133,6 +150,29 @@ function requiredText(value: unknown, label: string): string {
 function importCommunityIndex(repository: string): ToolIndex {
   const revision = assertCleanRevision(repository, requestedRevision);
   const remote = httpsRemote(command(repository, "git", ["remote", "get-url", "origin"]));
+  const releaseCatalog =
+    releaseCatalogPath === undefined
+      ? undefined
+      : (JSON.parse(
+          readFileSync(resolve(process.cwd(), releaseCatalogPath), "utf8"),
+        ) as CommunityReleaseCatalog);
+  if (releaseCatalog !== undefined) {
+    if (
+      releaseCatalog.schemaVersion !== 1 ||
+      releaseCatalog.sourceRepository?.replace(/\.git$/, "") !== remote.replace(/\.git$/, "") ||
+      releaseCatalog.sourceRevision !== revision
+    ) {
+      fail("verified community release catalog does not describe this exact source revision");
+    }
+    if (!Array.isArray(releaseCatalog.packages)) fail("verified community release package list is invalid");
+  }
+  const releaseRecords = new Map<string, CommunityReleaseRecord>();
+  for (const entry of releaseCatalog?.packages ?? []) {
+    const name = requiredText(entry.name, "release package name");
+    if (releaseRecords.has(name)) fail(`verified community release contains duplicate package name ${name}`);
+    releaseRecords.set(name, entry);
+  }
+  const matchedReleasePackages = new Set<string>();
   const packagePaths = command(repository, "git", ["ls-tree", "-r", "--name-only", revision, "packages"])
     .split("\n")
     .filter((path) => /^packages\/[a-z0-9-]+\/package\.json$/.test(path))
@@ -148,13 +188,26 @@ function importCommunityIndex(repository: string): ToolIndex {
     const manifest = declaration.manifest ?? fail(`${package_.name} Tool manifest is missing`);
     const id = requiredText(manifest.id, `${package_.name} Tool id`);
     if (manifest.version !== package_.version) fail(`${package_.name} package and Tool versions differ`);
+    const releaseRecord = releaseRecords.get(package_.name);
+    if (releaseCatalog !== undefined) {
+      if (
+        releaseRecord === undefined ||
+        releaseRecord.version !== package_.version ||
+        releaseRecord.tool !== id ||
+        releaseRecord.lifecycle !== package_.firedrill.lifecycle ||
+        releaseRecord.sourceSubdirectory !== packageDirectory ||
+        releaseRecord.definition !== toolPath
+      ) {
+        fail(`${package_.name} does not match the verified community release catalog`);
+      }
+      matchedReleasePackages.add(package_.name);
+    }
     const operations = (manifest.operations ?? []).map((operation) => ({
       id: requiredText(operation.id, `${package_.name} operation id`),
       fidelity: requiredText(operation.fidelity, `${package_.name} operation fidelity`),
     }));
     if (operations.length === 0) fail(`${package_.name} has no operations`);
     const lifecycle = package_.firedrill.lifecycle ?? fail(`${package_.name} lifecycle is missing`);
-    if (lifecycle === "revoked") return [];
     const conformance = package_.firedrill.conformance;
     const conformanceSuite = typeof conformance === "string" ? conformance : conformance?.suite;
     const maintainers = (package_.maintainers ?? []).flatMap((maintainer) => {
@@ -200,6 +253,9 @@ function importCommunityIndex(repository: string): ToolIndex {
       },
     ];
   });
+  if (releaseCatalog !== undefined && matchedReleasePackages.size !== releaseRecords.size) {
+    fail("verified community release catalog and source package sets differ");
+  }
   if (assertCleanRevision(repository, revision) !== revision) {
     fail("community Tool source changed while catalog metadata was produced");
   }

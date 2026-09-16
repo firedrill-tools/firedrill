@@ -34,7 +34,7 @@
     "registry:write": "tsx tooling/generate-registry.mts",
     "registry:sync-community": "tsx tooling/generate-registry.mts --source ../firedrill-community-tools",
     "registry:check": "tsx tooling/generate-registry.mts --check",
-    "registry:test": "pnpm --filter @firedrill/contracts build && vitest run tooling/generate-registry.test.mts tooling/community-sync-artifact.test.mts",
+    "registry:test": "pnpm --filter @firedrill/contracts build && vitest run tooling/generate-registry.test.mts tooling/community-release.test.mts tooling/community-sync-artifact.test.mts",
     "skill:check": "tsx tooling/check-skill.mts",
     "quickstart:check": "tsx tooling/check-quickstart.mts",
     "pack:artifacts": "pnpm build && tsx tooling/pack-public.mts",
