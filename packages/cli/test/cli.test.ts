@@ -492,7 +492,7 @@ describe("local CLI front door", () => {
     const missing = await invoke(root, []);
     expect(missing.code).toBe(1);
     expect(missing.stderr).toMatch(
-      /project manifest does not exist[\s\S]*Add firedrill\.json at the repository root/,
+      /project manifest does not exist[\s\S]*Add firedrill\.json at the repository root[\s\S]*https:\/\/docs\.firedrill\.run\/quickstart/,
     );
   });
 
