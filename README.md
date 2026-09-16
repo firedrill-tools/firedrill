@@ -11,7 +11,7 @@ changes, and events.
 - Repository-defined tools, including independently distributed packages.
 
 [Quickstart](#quickstart) · [SDK](#using-the-sdk) ·
-[Documentation](docs/README.md) · [Neutral example](examples/quickstart/README.md) ·
+[Documentation](https://docs.firedrill.run) · [Neutral example](examples/quickstart/README.md) ·
 [Gmail Agent example](https://github.com/firedrill-tools/firedrill-example-gmail-agent)
 
 ## Installation
