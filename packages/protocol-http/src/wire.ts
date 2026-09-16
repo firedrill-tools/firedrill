@@ -1,7 +1,13 @@
 import { timingSafeEqual } from "node:crypto";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { validateHeaderValue } from "node:http";
-import type { HttpRouteAuth, HttpRouteContract, OperationOutcome, OperationRef } from "@firedrill/contracts";
+import type {
+  HttpRouteAuth,
+  HttpRouteContract,
+  JsonValue,
+  OperationOutcome,
+  OperationRef,
+} from "@firedrill/contracts";
 import {
   httpPathParameter,
   httpPathSegments,
@@ -315,6 +321,31 @@ function mediaType(header: string | undefined): string | undefined {
   return header?.split(";", 1)[0]?.trim().toLowerCase();
 }
 
+/**
+ * JSON bodies can legitimately be deeper than the schema used by an authored
+ * Tool. Validate the transport shape iteratively so the host does not exhaust
+ * the JavaScript stack before the Tool's own codec can apply its limits.
+ */
+function parseJsonBody(bytes: Buffer): JsonValue {
+  const value: unknown = JSON.parse(bytes.toString("utf8"));
+  const pending: unknown[] = [value];
+  while (pending.length > 0) {
+    const current = pending.pop();
+    if (current === null || typeof current === "string" || typeof current === "boolean") continue;
+    if (typeof current === "number") {
+      if (Number.isFinite(current)) continue;
+      throw new TypeError("JSON numbers must be finite");
+    }
+    if (typeof current !== "object") throw new TypeError("request body contains a non-JSON value");
+    if (Array.isArray(current)) {
+      for (const child of current) pending.push(child);
+      continue;
+    }
+    for (const child of Object.values(current)) pending.push(child);
+  }
+  return value as JsonValue;
+}
+
 function requestBody(
   bytes: Buffer,
   contentType: string | undefined,
@@ -340,7 +371,7 @@ function requestBody(
       );
     }
     try {
-      return { kind: "json", value: JsonValueSchema.parse(JSON.parse(bytes.toString("utf8"))) };
+      return { kind: "json", value: parseJsonBody(bytes) };
     } catch {
       throw new WireRequestError("framework.HTTP_BODY_INVALID", 400, "request body must be valid JSON");
     }
