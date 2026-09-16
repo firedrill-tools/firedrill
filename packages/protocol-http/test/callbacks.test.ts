@@ -486,56 +486,102 @@ describe("outbound callback delivery", () => {
     },
   );
 
-  it("uses one deadline and signal across lookup and real HTTP cleanup", async () => {
+  it("uses one deadline signal across lookup and transport cleanup", async () => {
     const fixture = world([], { timeoutMs: 100 });
     fixture.invoke();
     let seenSignal: AbortSignal | undefined;
     let seenContext: CallbackTransportContext | undefined;
-    let lookupFinishedAt = 0;
-    let transportAbortedAt = 0;
+    let entered!: () => void;
+    let interrupted!: () => void;
+    let releaseCleanup!: () => void;
+    const transportStarted = new Promise<void>((resolve) => {
+      entered = resolve;
+    });
+    const transportAborted = new Promise<void>((resolve) => {
+      interrupted = resolve;
+    });
+    const cleanup = new Promise<void>((resolve) => {
+      releaseCleanup = resolve;
+    });
+    let transportSettled = false;
     let active = false;
-    const baseUrl = await receiver((_request, response) => {
-      response.writeHead(200);
-      response.write("incomplete");
-    });
-    const dispatcher = new CallbackDispatcher({
-      store: fixture.store,
-      tools: [fixture.installed],
-      idempotencyScope: "shared-lookup-budget",
-      resolveReceiver: async (context, signal) => {
-        seenSignal = signal;
-        seenContext = context;
-        await new Promise((resolve) => setTimeout(resolve, 65));
-        lookupFinishedAt = performance.now();
-        return { baseUrl, secret: "test-only-key" };
-      },
-      transport: {
-        ...approvedTransport(baseUrl),
-        fetch: async (input, init, context) => {
-          expect(context).toBe(seenContext);
-          expect(init?.signal).toBe(seenSignal);
-          active = true;
-          try {
-            const response = await globalThis.fetch(input, init);
-            await response.text();
-            return new Response(null, { status: 204 });
-          } catch (error) {
-            transportAbortedAt = performance.now();
-            throw error;
-          } finally {
-            active = false;
-          }
+    const baseUrl = "http://127.0.0.1:4319";
+    vi.useFakeTimers({ toFake: ["clearTimeout", "performance", "setTimeout"] });
+    try {
+      const dispatcher = new CallbackDispatcher({
+        store: fixture.store,
+        tools: [fixture.installed],
+        idempotencyScope: "shared-lookup-budget",
+        resolveReceiver: async (context, signal) => {
+          seenSignal = signal;
+          seenContext = context;
+          await new Promise((resolve) => setTimeout(resolve, 65));
+          return { baseUrl, secret: "test-only-key" };
         },
-      },
-    });
-    await dispatcher.dispatchDue();
-    expect(active).toBe(false);
-    expect(transportAbortedAt).toBeGreaterThan(lookupFinishedAt);
-    expect(transportAbortedAt - lookupFinishedAt).toBeLessThan(80);
-    expect(fixture.store.readEvidence().at(-1)).toMatchObject({
-      error: { code: "framework.CALLBACK_TIMEOUT" },
-    });
-    fixture.store.close();
+        transport: {
+          ...approvedTransport(baseUrl),
+          fetch: async (_input, init, context) => {
+            expect(context).toBe(seenContext);
+            const signal = init?.signal;
+            expect(signal).toBe(seenSignal);
+            if (signal === undefined || signal === null) throw new Error("callback signal missing");
+            active = true;
+            entered();
+            try {
+              await new Promise<void>((resolve) =>
+                signal.addEventListener(
+                  "abort",
+                  () => {
+                    interrupted();
+                    resolve();
+                  },
+                  { once: true },
+                ),
+              );
+              await cleanup;
+              throw signal.reason;
+            } finally {
+              active = false;
+              transportSettled = true;
+            }
+          },
+        },
+      });
+      let settled = false;
+      const pending = dispatcher.dispatchDue();
+      void pending.then(
+        () => {
+          settled = true;
+        },
+        () => {
+          settled = true;
+        },
+      );
+
+      await vi.advanceTimersByTimeAsync(65);
+      await transportStarted;
+      expect(seenSignal?.aborted).toBe(false);
+      await vi.advanceTimersByTimeAsync(34);
+      expect(seenSignal?.aborted).toBe(false);
+      expect(active).toBe(true);
+      await vi.advanceTimersByTimeAsync(1);
+      await transportAborted;
+      expect(seenSignal?.aborted).toBe(true);
+      expect(active).toBe(true);
+      expect(settled).toBe(false);
+
+      releaseCleanup();
+      expect(await pending).toMatchObject({ outcomes: [{ status: "failed" }] });
+      expect(transportSettled).toBe(true);
+      expect(active).toBe(false);
+      expect(fixture.store.readEvidence().at(-1)).toMatchObject({
+        error: { code: "framework.CALLBACK_TIMEOUT" },
+      });
+    } finally {
+      releaseCleanup();
+      vi.useRealTimers();
+      fixture.store.close();
+    }
   });
 
   it.each(["cancel", "timeout"] as const)(
