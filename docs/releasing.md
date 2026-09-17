@@ -34,16 +34,22 @@ The output contains:
 
 ## CI evidence
 
-The manual `Release evidence` workflow runs the complete framework gate, prepares the bundle, and uploads it without publishing anything. On a public repository it also creates GitHub/Sigstore provenance and SBOM attestations for the package archives. Consumers can later verify those attestations with `gh attestation verify` against the public repository.
-
-Every pull request and main-branch commit also installs the packed npm artifacts into an external project on Linux, macOS, and Windows with both the minimum supported Node version and the current release-line version. The project path contains spaces and non-ASCII characters, commands run without a TTY under CI and a non-English locale, and the gate exercises native SQLite, pass/fail reports, exact reproduction, and Tool conformance through the installed CLI. This is the portability claim; a workspace-source test is not a substitute.
+Run the complete framework gate and `release:prepare` in the CI system you
+already use, then retain the resulting bundle as a private build artifact. The
+gate should install the packed npm artifacts into an external project on Linux,
+macOS, and Windows with both the minimum supported Node version and the current
+release-line version. The project path should contain spaces and non-ASCII
+characters, commands should run without a TTY under CI and a non-English locale,
+and the gate should exercise native SQLite, pass/fail reports, exact
+reproduction, and Tool conformance through the installed CLI. This is the
+portability claim; a workspace-source test is not a substitute.
 
 Npm provenance is a separate registry operation. It requires a public repository URL in each package manifest and a supported hosted publisher or npm trusted publishing. Those values and actual publication require explicit release-owner authorization; this repository contains no publish token and the evidence workflow never invokes `npm publish`.
 
 Before the first release, the release owner must:
 
 1. choose real package versions and the public repository URL;
-2. configure npm trusted publishing for that exact repository and workflow;
-3. run and inspect the release-evidence workflow from the intended commit;
-4. verify package contents, checksums, SBOM coverage, and attestations; and
-5. authorize the distinct publication workflow or command.
+2. configure npm trusted publishing for the selected release environment;
+3. run and inspect the release-evidence job from the intended commit;
+4. verify package contents, checksums, and SBOM coverage; and
+5. authorize the distinct publication command.
