@@ -6,7 +6,7 @@ on:
   workflow_dispatch:
     inputs:
       community_sha:
-        description: Exact main-branch firedrill-community-tools commit to import
+        description: Exact main-branch firedrill-tools commit to import
         required: true
         type: string
   repository_dispatch:
@@ -101,7 +101,7 @@ jobs:
           app-id: ${{ secrets.FIREDRILL_CI_APP_ID }}
           private-key: ${{ secrets.FIREDRILL_CI_APP_PRIVATE_KEY }}
           owner: firedrill-tools
-          repositories: firedrill-community-tools
+          repositories: firedrill-tools
           permission-actions: read
           permission-contents: read
 
@@ -114,7 +114,7 @@ jobs:
         run: |
           revision="$REQUESTED_REVISION"
           if [[ -z "$revision" ]]; then
-            revision="$(gh api repos/firedrill-tools/firedrill-community-tools/git/ref/heads/main --jq '.object.sha')"
+            revision="$(gh api repos/firedrill-tools/firedrill-tools/git/ref/heads/main --jq '.object.sha')"
           fi
           [[ "$revision" =~ ^[0-9a-f]{40}$ ]] || { echo "resolved revision is invalid" >&2; exit 1; }
           echo "revision=$revision" >> "$GITHUB_OUTPUT"
@@ -130,11 +130,11 @@ jobs:
           EXPECTED_CATALOG_SHA256: ${{ steps.requested.outputs.catalog_sha256 }}
           GH_TOKEN: ${{ steps.source-token.outputs.token }}
         run: |
-          expected_name="community-tools-$REVISION"
+          expected_name="firedrill-tools-$REVISION"
           if [[ -n "$REQUESTED_ARTIFACT_ID" ]]; then
-            artifact="$(gh api "repos/firedrill-tools/firedrill-community-tools/actions/artifacts/$REQUESTED_ARTIFACT_ID")"
+            artifact="$(gh api "repos/firedrill-tools/firedrill-tools/actions/artifacts/$REQUESTED_ARTIFACT_ID")"
           else
-            artifacts="$(gh api "repos/firedrill-tools/firedrill-community-tools/actions/artifacts?name=$expected_name&per_page=100")"
+            artifacts="$(gh api "repos/firedrill-tools/firedrill-tools/actions/artifacts?name=$expected_name&per_page=100")"
             artifact="$(jq -cer --arg revision "$REVISION" \
               '[.artifacts[] | select(.expired == false and .workflow_run.head_sha == $revision)] | sort_by(.created_at) | last' \
               <<<"$artifacts")"
@@ -148,7 +148,7 @@ jobs:
           [[ -z "$REQUESTED_ARTIFACT_ID" || "$id" == "$REQUESTED_ARTIFACT_ID" ]] || { echo "artifact id does not match dispatch" >&2; exit 1; }
           [[ -z "$REQUESTED_RUN_ID" || "$run_id" == "$REQUESTED_RUN_ID" ]] || { echo "workflow run does not match dispatch" >&2; exit 1; }
           [[ -z "$REQUESTED_ARTIFACT_NAME" || "$name" == "$REQUESTED_ARTIFACT_NAME" ]] || { echo "artifact name does not match dispatch" >&2; exit 1; }
-          run="$(gh api "repos/firedrill-tools/firedrill-community-tools/actions/runs/$run_id")"
+          run="$(gh api "repos/firedrill-tools/firedrill-tools/actions/runs/$run_id")"
           jq -e --arg revision "$REVISION" '.conclusion == "success" and .event == "push" and .head_branch == "main" and .head_sha == $revision' <<<"$run" >/dev/null || {
             echo "artifact was not produced by a successful main push CI run" >&2; exit 1;
           }
@@ -170,7 +170,7 @@ jobs:
           artifact-ids: ${{ steps.artifact.outputs.id }}
           path: ${{ runner.temp }}/community-tools-release
           github-token: ${{ steps.source-token.outputs.token }}
-          repository: firedrill-tools/firedrill-community-tools
+          repository: firedrill-tools/firedrill-tools
           run-id: ${{ steps.artifact.outputs.run_id }}
 
       - name: Verify exact release artifact
@@ -187,7 +187,7 @@ jobs:
         if: steps.mode.outputs.enabled == 'true'
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          repository: firedrill-tools/firedrill-community-tools
+          repository: firedrill-tools/firedrill-tools
           ref: ${{ steps.resolved.outputs.revision }}
           token: ${{ steps.source-token.outputs.token }}
           persist-credentials: false
