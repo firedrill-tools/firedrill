@@ -1,5 +1,5 @@
 import { spawnSync } from "node:child_process";
-import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
@@ -32,7 +32,7 @@ function sourceRepository(lifecycle: "active" | "deprecated" | "revoked" = "acti
     join(root, "packages", "records", "package.json"),
     `${JSON.stringify(
       {
-        name: "@firedrill-community/tool-records",
+        name: "@firedrill-tools/tool-records",
         version: "0.1.0",
         description: "A stateful records Tool.",
         license: "Apache-2.0",
@@ -136,7 +136,7 @@ describe("community registry generation", () => {
           sourceRevision: source.revision,
           packages: [
             {
-              name: "@firedrill-community/tool-records",
+              name: "@firedrill-tools/tool-records",
               version: "0.1.0",
               tool: "records",
               lifecycle: "active",
@@ -193,7 +193,7 @@ describe("community registry generation", () => {
           sourceRevision: source.revision,
           packages: [
             {
-              name: "@firedrill-community/tool-records",
+              name: "@firedrill-tools/tool-records",
               version: "0.1.0",
               tool: "records",
               lifecycle: "revoked",
@@ -229,7 +229,7 @@ describe("community registry generation", () => {
     const releaseRoot = temporaryRoot("firedrill-registry-release-");
     const catalog = join(releaseRoot, "catalog.json");
     const record = {
-      name: "@firedrill-community/tool-records",
+      name: "@firedrill-tools/tool-records",
       version: "0.1.0",
       tool: "records",
       lifecycle: "active",
