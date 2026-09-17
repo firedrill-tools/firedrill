@@ -1,5 +1,5 @@
 {
-  "name": "@firedrill/browser-tests",
+  "name": "@firedrill-tools/browser-tests",
   "version": "0.1.0-rc.1",
   "description": "Optional local browser tests and reusable browser flows for Firedrill",
   "license": "Apache-2.0",

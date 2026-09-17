@@ -19,7 +19,7 @@ Consumers install a pack with their normal package manager and list its package 
   "schemaVersion": 1,
   "sourceRoot": "firedrill",
   "world": "world.yaml",
-  "toolPackages": ["@firedrill/tool-work-queue"]
+  "toolPackages": ["@firedrill-tools/tool-work-queue"]
 }
 ```
 

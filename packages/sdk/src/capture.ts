@@ -27,14 +27,14 @@ import type {
   RunResult,
   StableId,
   TargetResult,
-} from "@firedrill/contracts";
+} from "@firedrill-tools/contracts";
 import {
   CapturePolicySchema,
   RunCaptureSchema,
   RunIdSchema,
   TargetFileAttachmentSchema,
-} from "@firedrill/contracts";
-import type { LocalReportAttachmentSource } from "@firedrill/reporters";
+} from "@firedrill-tools/contracts";
+import type { LocalReportAttachmentSource } from "@firedrill-tools/reporters";
 import { FiredrillProjectError } from "./project-error.js";
 
 export type {
@@ -44,7 +44,7 @@ export type {
   CapturePolicies,
   CapturePolicy,
   RunCaptureHandle,
-} from "@firedrill/contracts";
+} from "@firedrill-tools/contracts";
 export interface RunCaptureOptions {
   readonly logs?: CapturePolicy;
   readonly screenshots?: CapturePolicy;

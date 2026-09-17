@@ -7,11 +7,11 @@ A synthetic, actor-owned mailbox for agent drills. HTTP and MCP operate on the s
 This pack is not published yet. From this repository, build it and install its locally packed archive into a consumer project. Then explicitly select the installed package:
 
 ```sh
-firedrill init --tool @firedrill/tool-mailbox
+firedrill init --tool @firedrill-tools/tool-mailbox
 firedrill tool inspect mailbox
 ```
 
-For an existing project, add `"@firedrill/tool-mailbox"` to `toolPackages` in `firedrill.json`. Installing a package does not activate it. Initialization includes one synthetic inbox message owned by the default `local-dev` actor. Existing worlds supply their own actor grants and scenario data; selecting a pack alone does not insert its starter data.
+For an existing project, add `"@firedrill-tools/tool-mailbox"` to `toolPackages` in `firedrill.json`. Installing a package does not activate it. Initialization includes one synthetic inbox message owned by the default `local-dev` actor. Existing worlds supply their own actor grants and scenario data; selecting a pack alone does not insert its starter data.
 
 Use `FIREDRILL_HTTP_URL` as the HTTP origin and `Authorization: Bearer $FIREDRILL_HTTP_TOKEN`. MCP clients connect to `FIREDRILL_MCP_URL` using `FIREDRILL_MCP_TOKEN`; tool names are `mailbox.messages.list`, `mailbox.messages.get`, `mailbox.messages.write`, `mailbox.messages.send`, and `mailbox.messages.delete`. Both bindings are framework-owned, loopback-only, and actor-scoped.
 
@@ -47,4 +47,4 @@ There is no external delivery, SMTP/IMAP, MIME, attachment handling, threading, 
 
 ## Verification
 
-`pnpm --filter @firedrill/tool-mailbox test` runs the ordinary public Tool conformance command twice with an identical seed, then public SDK tests. The conformance target uses real HTTP and an unmodified MCP client to cover all five operations, every declared error, a draft lifecycle, retry identity, pagination, emitted events, and deletion. SDK tests additionally cover cross-actor refusal, independent worlds, reset, malformed requests, and sparse pagination beyond the 1,000-row scan bound. The operation fidelity labels describe this tested subset only.
+`pnpm --filter @firedrill-tools/tool-mailbox test` runs the ordinary public Tool conformance command twice with an identical seed, then public SDK tests. The conformance target uses real HTTP and an unmodified MCP client to cover all five operations, every declared error, a draft lifecycle, retry identity, pagination, emitted events, and deletion. SDK tests additionally cover cross-actor refusal, independent worlds, reset, malformed requests, and sparse pagination beyond the 1,000-row scan bound. The operation fidelity labels describe this tested subset only.

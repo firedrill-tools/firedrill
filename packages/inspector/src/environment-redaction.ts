@@ -1,4 +1,4 @@
-import type { LocalWorldTool } from "@firedrill/sdk";
+import type { LocalWorldTool } from "@firedrill-tools/sdk";
 
 function object(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === "object" && !Array.isArray(value);

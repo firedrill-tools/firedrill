@@ -1,4 +1,4 @@
-import type { JsonObject } from "@firedrill/contracts";
+import type { JsonObject } from "@firedrill-tools/contracts";
 
 const TOOL_CODE = /^[A-Z][A-Z0-9_]*$/;
 const TOOL_FAILURE_BRAND = Symbol.for("dev.firedrill.tool-failure");

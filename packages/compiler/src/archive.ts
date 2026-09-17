@@ -19,13 +19,13 @@ import {
 import { tmpdir } from "node:os";
 import { basename, dirname, join, relative, resolve, sep } from "node:path";
 import { pipeline } from "node:stream/promises";
-import { canonicalJson } from "@firedrill/contracts";
+import { canonicalJson } from "@firedrill-tools/contracts";
 import {
   BuildManifestSchema,
   CanonicalWorldIrSchema,
   PackageLockSchema,
   semanticHash,
-} from "@firedrill/world-ir";
+} from "@firedrill-tools/world-ir";
 import { create } from "tar";
 import type { CompiledBuild } from "./types.js";
 

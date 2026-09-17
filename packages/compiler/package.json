@@ -1,5 +1,5 @@
 {
-  "name": "@firedrill/compiler",
+  "name": "@firedrill-tools/compiler",
   "version": "0.1.0-rc.1",
   "description": "Deterministic repository compiler for local Firedrill worlds",
   "license": "Apache-2.0",
@@ -33,9 +33,9 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "@firedrill/contracts": "workspace:*",
-    "@firedrill/tool-sdk": "workspace:*",
-    "@firedrill/world-ir": "workspace:*",
+    "@firedrill-tools/contracts": "workspace:*",
+    "@firedrill-tools/tool-sdk": "workspace:*",
+    "@firedrill-tools/world-ir": "workspace:*",
     "ajv": "8.20.0",
     "ajv-formats": "3.0.1",
     "esbuild": "0.28.2",
@@ -46,10 +46,10 @@
     "zod": "4.4.3"
   },
   "devDependencies": {
-    "@firedrill/tool-sdk": "workspace:*",
-    "@firedrill/world-build": "workspace:*",
-    "@firedrill/world-kernel": "workspace:*",
-    "@firedrill/world-store-sqlite": "workspace:*",
+    "@firedrill-tools/tool-sdk": "workspace:*",
+    "@firedrill-tools/world-build": "workspace:*",
+    "@firedrill-tools/world-kernel": "workspace:*",
+    "@firedrill-tools/world-store-sqlite": "workspace:*",
     "@types/semver": "7.8.0",
     "tsx": "4.23.12",
     "typescript": "5.9.3",

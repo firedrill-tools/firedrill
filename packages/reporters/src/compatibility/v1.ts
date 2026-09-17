@@ -5,8 +5,8 @@ import type {
   ReportToolDescriptor,
   RunResult,
   TargetFileAttachment,
-} from "@firedrill/contracts";
-import { compareStableStrings, TargetFileAttachmentSchema } from "@firedrill/contracts";
+} from "@firedrill-tools/contracts";
+import { compareStableStrings, TargetFileAttachmentSchema } from "@firedrill-tools/contracts";
 import type { ReportProjectionInput, ReportProjections } from "./types.js";
 
 const MAX_FILE_ATTACHMENTS = 32;

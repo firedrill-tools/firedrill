@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
-import type { ActorBindingId, JsonObject, OperationRef } from "@firedrill/contracts";
-import { ActorBindingIdSchema, JsonObjectSchema, OperationRefSchema } from "@firedrill/contracts";
+import type { ActorBindingId, JsonObject, OperationRef } from "@firedrill-tools/contracts";
+import { ActorBindingIdSchema, JsonObjectSchema, OperationRefSchema } from "@firedrill-tools/contracts";
 import type { KernelInvocationResult } from "./types.js";
 import type { WorldKernel } from "./world-kernel.js";
 

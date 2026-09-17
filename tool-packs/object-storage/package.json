@@ -1,5 +1,5 @@
 {
-  "name": "@firedrill/tool-object-storage",
+  "name": "@firedrill-tools/tool-object-storage",
   "version": "0.1.0-rc.1",
   "private": true,
   "description": "Stateful synthetic text object storage Tool pack for Firedrill",
@@ -49,10 +49,10 @@
     "test": "node ../../packages/cli/dist/bin.js format --check --root . && node ../../packages/cli/dist/bin.js tool test object-storage --root . && node --test test/public-world.test.mjs"
   },
   "dependencies": {
-    "@firedrill/tool-sdk": "workspace:*"
+    "@firedrill-tools/tool-sdk": "workspace:*"
   },
   "devDependencies": {
-    "@firedrill/sdk": "workspace:*",
+    "@firedrill-tools/sdk": "workspace:*",
     "@modelcontextprotocol/client": "2.0.0",
     "typescript": "5.9.3"
   },

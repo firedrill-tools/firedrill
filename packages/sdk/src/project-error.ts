@@ -1,4 +1,4 @@
-import type { Diagnostic, JsonObject } from "@firedrill/contracts";
+import type { Diagnostic, JsonObject } from "@firedrill-tools/contracts";
 
 export type FiredrillProjectErrorCode =
   | "framework.AGENT_CALLBACK_UNUSED"

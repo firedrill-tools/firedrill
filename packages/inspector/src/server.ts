@@ -7,7 +7,7 @@ import {
   createLocalSimulationRequestHandler,
   LocalSimulationSupervisor,
   type LocalSimulationSupervisorOptions,
-} from "@firedrill/simulation";
+} from "@firedrill-tools/simulation";
 import { createBrowserTestRequestHandler } from "./browser-tests.js";
 import { createLocalEnvironmentRequestHandler, type LocalInspectorEnvironment } from "./environment.js";
 

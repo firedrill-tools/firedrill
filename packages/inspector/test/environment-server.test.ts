@@ -2,7 +2,7 @@ import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "nod
 import { request } from "node:http";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { createLocalWorld, type LocalWorld, type LocalWorldBinding } from "@firedrill/sdk";
+import { createLocalWorld, type LocalWorld, type LocalWorldBinding } from "@firedrill-tools/sdk";
 import { afterEach, describe, expect, it } from "vitest";
 import { type LocalInspectorServer, startLocalInspectorWithAssets } from "../src/server.js";
 

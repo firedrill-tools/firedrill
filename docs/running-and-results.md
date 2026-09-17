@@ -20,7 +20,7 @@ running the agent. `run` executes a selected drill. Bare `firedrill` runs all
 drills. `inspect` starts the local inspector for this project.
 
 If you own the agent lifecycle in a test file, use `runDrills()` from
-`@firedrill/sdk` instead. Targets declared `external` need its `agent` callback;
+`@firedrill-tools/sdk` instead. Targets declared `external` need its `agent` callback;
 the CLI and inspector cannot create that JavaScript callback for you. Module,
 command, and HTTP targets have their launch configuration in repository files.
 

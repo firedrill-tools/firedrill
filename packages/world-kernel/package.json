@@ -1,5 +1,5 @@
 {
-  "name": "@firedrill/world-kernel",
+  "name": "@firedrill-tools/world-kernel",
   "version": "0.1.0-rc.1",
   "description": "Generic deterministic execution kernel for Firedrill worlds",
   "license": "Apache-2.0",
@@ -32,15 +32,15 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "@firedrill/contracts": "workspace:*",
-    "@firedrill/tool-sdk": "workspace:*",
-    "@firedrill/world-store": "workspace:*",
+    "@firedrill-tools/contracts": "workspace:*",
+    "@firedrill-tools/tool-sdk": "workspace:*",
+    "@firedrill-tools/world-store": "workspace:*",
     "ajv": "8.20.0",
     "ajv-formats": "3.0.1",
     "semver": "7.8.5"
   },
   "devDependencies": {
-    "@firedrill/world-store-sqlite": "workspace:*",
+    "@firedrill-tools/world-store-sqlite": "workspace:*",
     "@types/semver": "7.8.0",
     "typescript": "5.9.3",
     "vitest": "4.1.11"

@@ -7,22 +7,22 @@ import type {
   JsonValue,
   OperationOutcome,
   OperationRef,
-} from "@firedrill/contracts";
+} from "@firedrill-tools/contracts";
 import {
   httpPathParameter,
   httpPathSegments,
   httpRoutesOverlap,
   JsonObjectSchema,
   JsonValueSchema,
-} from "@firedrill/contracts";
+} from "@firedrill-tools/contracts";
 import type {
   ToolDefinition,
   ToolHttpOperationResult,
   ToolHttpRequest,
   ToolHttpRequestBody,
   ToolHttpResponse,
-} from "@firedrill/tool-sdk";
-import type { BoundWorldClient } from "@firedrill/world-kernel";
+} from "@firedrill-tools/tool-sdk";
+import type { BoundWorldClient } from "@firedrill-tools/world-kernel";
 
 export const MAX_HTTP_BODY_BYTES = 1024 * 1024;
 export const MAX_HTTP_RESPONSE_HEADERS = 64;

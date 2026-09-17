@@ -12,13 +12,13 @@ import {
 } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
-import { discoverTools, ToolIndexSchema } from "@firedrill/cli/tool-discovery";
-import { createLocalWorld, testTool, verifyReport } from "@firedrill/sdk";
+import { discoverTools, ToolIndexSchema } from "@firedrill-tools/cli/tool-discovery";
+import { createLocalWorld, testTool, verifyReport } from "@firedrill-tools/sdk";
 import { Client, StreamableHTTPClientTransport } from "@modelcontextprotocol/client";
 
 // Copied to an archive-only consumer by check-pack. No workspace source imports.
 const consumer = process.cwd();
-const cli = fileURLToPath(new URL("bin.js", import.meta.resolve("@firedrill/cli")));
+const cli = fileURLToPath(new URL("bin.js", import.meta.resolve("@firedrill-tools/cli")));
 const root = join(consumer, "independent-tool-flow");
 mkdirSync(root);
 function command(executable, args, cwd = root) {
@@ -36,12 +36,12 @@ function firedrill(args, cwd = root) {
   return JSON.parse(command(process.execPath, [cli, ...args, "--json"], cwd));
 }
 const schema = JSON.parse(
-  readFileSync(fileURLToPath(import.meta.resolve("@firedrill/cli/schema/tool-index.json")), "utf8"),
+  readFileSync(fileURLToPath(import.meta.resolve("@firedrill-tools/cli/schema/tool-index.json")), "utf8"),
 );
 assert.equal(schema.$schema, "https://json-schema.org/draft/2020-12/schema");
 const metadataSchema = JSON.parse(
   readFileSync(
-    fileURLToPath(import.meta.resolve("@firedrill/compiler/schema/installed-tool-package")),
+    fileURLToPath(import.meta.resolve("@firedrill-tools/compiler/schema/installed-tool-package")),
     "utf8",
   ),
 );
@@ -215,7 +215,7 @@ await assert.rejects(
 const maintained = join(root, "maintained");
 mkdirSync(maintained);
 for (const id of ["work-queue", "github-issues", "mailbox", "object-storage"]) {
-  firedrill(["tool", "add", `@firedrill/tool-${id}`], maintained);
+  firedrill(["tool", "add", `@firedrill-tools/tool-${id}`], maintained);
   const result = firedrill(["tool", "test", id], maintained);
   assert.equal(result.status, "passed");
   assert.equal(result.suiteSource, "package");

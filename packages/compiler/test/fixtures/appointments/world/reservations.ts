@@ -1,4 +1,4 @@
-import { ToolFailure, defineToolBehavior } from "@firedrill/tool-sdk";
+import { ToolFailure, defineToolBehavior } from "@firedrill-tools/tool-sdk";
 
 export default defineToolBehavior({
   operations: {

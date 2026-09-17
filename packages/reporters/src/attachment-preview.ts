@@ -1,4 +1,4 @@
-import type { TargetFileAttachment } from "@firedrill/contracts";
+import type { TargetFileAttachment } from "@firedrill-tools/contracts";
 
 const MAX_TEXT_PREVIEW_BYTES = 64 * 1024;
 

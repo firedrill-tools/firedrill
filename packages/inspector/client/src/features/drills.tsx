@@ -599,10 +599,10 @@ export function DrillsView({
                         </p>
                         <CodeBlock>{"await startLocalInspector({ root: process.cwd(), agent });"}</CodeBlock>
                         <p>
-                          <code>startLocalInspector</code> is exported by <code>@firedrill/inspector</code>.
-                          The <code>agent</code> variable above is your existing callback, not a built-in
-                          agent. A plain <code>firedrill inspect</code> command cannot load that in-memory
-                          function.
+                          <code>startLocalInspector</code> is exported by{" "}
+                          <code>@firedrill-tools/inspector</code>. The <code>agent</code> variable above is
+                          your existing callback, not a built-in agent. A plain <code>firedrill inspect</code>{" "}
+                          command cannot load that in-memory function.
                         </p>
                         <PaginatedContent
                           items={unavailableTargets.filter((target) => target.source?.readable)}

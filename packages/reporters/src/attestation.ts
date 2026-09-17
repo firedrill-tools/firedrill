@@ -5,7 +5,7 @@ import type {
   EvidenceAttestationSubject,
   EvidenceBundleManifest,
   EvidenceVerificationKey,
-} from "@firedrill/contracts";
+} from "@firedrill-tools/contracts";
 import {
   canonicalJson,
   EVIDENCE_ATTESTATION_PREDICATE,
@@ -14,7 +14,7 @@ import {
   EvidenceBundleManifestSchema,
   EvidenceVerificationKeySchema,
   Sha256Schema,
-} from "@firedrill/contracts";
+} from "@firedrill-tools/contracts";
 
 export type EvidenceAttestationVerificationErrorCode =
   | "reporter.ATTESTATION_INVALID"

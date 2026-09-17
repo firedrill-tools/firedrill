@@ -1,4 +1,4 @@
-# @firedrill/world-store
+# @firedrill-tools/world-store
 
 Storage port used by the generic world kernel. Mutations, semantic evidence, virtual time, randomness, and pending events share one transaction boundary.
 

@@ -4,7 +4,7 @@ import {
   OperationIdSchema,
   PackageIdSchema,
   SemverSchema,
-} from "@firedrill/contracts";
+} from "@firedrill-tools/contracts";
 import { z } from "zod";
 
 // Indexes describe packages. They never grant permission to install or execute one.

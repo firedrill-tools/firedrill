@@ -1,5 +1,5 @@
 {
-  "name": "@firedrill/tool-work-queue",
+  "name": "@firedrill-tools/tool-work-queue",
   "version": "0.1.0-rc.1",
   "private": true,
   "description": "Reference stateful work-queue Tool pack for Firedrill",
@@ -49,7 +49,7 @@
     "test": "node ../../packages/cli/dist/bin.js format --check --root . && node ../../packages/cli/dist/bin.js tool test work-queue --root ."
   },
   "dependencies": {
-    "@firedrill/tool-sdk": "workspace:*"
+    "@firedrill-tools/tool-sdk": "workspace:*"
   },
   "devDependencies": {
     "typescript": "5.9.3"

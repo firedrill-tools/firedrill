@@ -1,8 +1,8 @@
-# `@firedrill/agent`
+# `@firedrill-tools/agent`
 
 Optional local authoring agent for Firedrill. It uses the Claude Agent SDK with the developer's own `ANTHROPIC_API_KEY` to inspect a repository, author or repair Firedrill source, and iterate the public validation and drill loop.
 
-The package is not required to define worlds or run drills. It never owns verdicts, commits, pushes, publishes, reads secret files, or calls hosted Firedrill services. The ordinary `firedrill` CLI and `@firedrill/sdk` remain the source of validation, execution, assertions, and evidence.
+The package is not required to define worlds or run drills. It never owns verdicts, commits, pushes, publishes, reads secret files, or calls hosted Firedrill services. The ordinary `firedrill` CLI and `@firedrill-tools/sdk` remain the source of validation, execution, assertions, and evidence.
 
 Running it invokes Anthropic through the Claude Agent SDK and may send repository content selected during the session to Anthropic under Anthropic's applicable terms. It does not send source to Firedrill. The wrapper is Apache-2.0; the Claude Agent SDK dependency is distributed under Anthropic's own terms.
 
@@ -11,7 +11,7 @@ installed-package workflow; today use a source checkout or reviewed packed
 artifacts as described in the [local environment guide](../../docs/local-environment.md).
 
 ```sh
-pnpm add -D @firedrill/cli @firedrill/agent
+pnpm add -D @firedrill-tools/cli @firedrill-tools/agent
 export ANTHROPIC_API_KEY=your_key
 firedrill init --path firedrill-agent
 firedrill agent
@@ -44,14 +44,14 @@ The same optional policy is accepted by `createFiredrillAuthoringTools` and `cre
 
 ## Optional browser test driver
 
-`@firedrill/agent/browser` exports `createBrowserAgentDriver` and
+`@firedrill-tools/agent/browser` exports `createBrowserAgentDriver` and
 `runBrowserAgentTest`. Give it the URL of your already-running application, a
 task, and independent browser assertions. The Claude Agent SDK chooses actions
 through a small Playwright tool surface; it cannot read your repository, run a
 shell, create assertions, or declare the test passed. Your application and its
 agent remain unchanged and caller-owned.
 
-The browser path requires `@firedrill/browser-tests`, an installed Playwright
+The browser path requires `@firedrill-tools/browser-tests`, an installed Playwright
 Chromium browser, and your `ANTHROPIC_API_KEY`. Its default limits are 40 turns,
 $2 of model spend, and a two-minute browser deadline. Page accessibility content
 and the task are sent to Anthropic. Runtime fill parameters stay local; the model

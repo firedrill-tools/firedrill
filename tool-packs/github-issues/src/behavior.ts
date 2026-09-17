@@ -1,4 +1,4 @@
-import { defineToolBehavior } from "@firedrill/tool-sdk";
+import { defineToolBehavior } from "@firedrill-tools/tool-sdk";
 
 const API_VERSION = "2026-03-10";
 

@@ -16,9 +16,22 @@ changes, and events.
 
 ## Installation
 
-Requirements: Node.js 20.19 or later and pnpm 9.15–10.
+Requirements: Node.js 20.19 or later.
 
-Packages are not yet published to npm. From a checkout of this repository:
+Install the release candidate in your project:
+
+```sh
+npm install --save-dev @firedrill-tools/cli@next @firedrill-tools/sdk@next
+npx firedrill --help
+```
+
+Or run the CLI without adding a project dependency:
+
+```sh
+npx @firedrill-tools/cli@next init
+```
+
+For a source checkout, use pnpm 9.15–10:
 
 ```sh
 pnpm install --frozen-lockfile
@@ -29,10 +42,11 @@ export FIREDRILL_CLI="$PWD/packages/cli/dist/bin.js"
 firedrill() { node "$FIREDRILL_CLI" "$@"; }
 ```
 
-The examples below use this shell function. You can also invoke the CLI directly
+The examples below use `firedrill`; with a project installation, prefix commands
+with `npx`. From source, use the shell function above or invoke the CLI directly
 with `node /path/to/firedrill/packages/cli/dist/bin.js`.
 
-The programmatic API is `@firedrill/sdk`. To prepare installable archives of the
+The programmatic API is `@firedrill-tools/sdk`. To prepare installable archives of the
 CLI, SDK, and other packages from this checkout, run
 `pnpm pack:artifacts -- --output /absolute/path/to/an/empty/directory`.
 The output includes a package manifest.
@@ -128,7 +142,7 @@ Configure the agent's dependencies in test setup:
 | HTTP client | Point its base URL and authentication at the Tool's declared HTTP routes |
 | MCP server | Use the world's MCP endpoint and actor token |
 | CLI tool | Use a test-side command adapter or the Firedrill world CLI |
-| Function or SDK method | Use runner mocks/spies with `mockTool` from `@firedrill/sdk/testing` |
+| Function or SDK method | Use runner mocks/spies with `mockTool` from `@firedrill-tools/sdk/testing` |
 | Web interface | Use a Playwright harness or the optional browser-test package |
 
 Bindings use existing configuration or test-side adapters, leaving production
@@ -149,7 +163,7 @@ Set target timeouts for the complete model/tool loop.
 Use `runDrills` from an existing test runner:
 
 ```ts
-import { runDrills } from "@firedrill/sdk";
+import { runDrills } from "@firedrill-tools/sdk";
 
 const result = await runDrills({
   root: process.cwd(),
@@ -284,7 +298,7 @@ The default workflow creates or edits a synthetic environment. Use
 `--workflow drill` to author tests. Both initialization paths create instructions
 and a repository brief; the agent then authors the definitions.
 
-Firedrill Agent requires `@firedrill/agent` and `ANTHROPIC_API_KEY` in the process
+Firedrill Agent requires `@firedrill-tools/agent` and `ANTHROPIC_API_KEY` in the process
 environment. The source checkout includes the package. The CLI does not load
 `.env` automatically. Selected repository content is sent to Anthropic.
 

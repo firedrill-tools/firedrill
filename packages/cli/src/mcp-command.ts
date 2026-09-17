@@ -1,9 +1,9 @@
 import { randomUUID } from "node:crypto";
 import { resolve } from "node:path";
-import { compileWorld } from "@firedrill/compiler";
-import { FIREDRILL_FRAMEWORK_VERSION, JsonObjectSchema } from "@firedrill/contracts";
-import type { LocalWorld, LocalWorldBinding } from "@firedrill/sdk";
-import { createLocalWorld, FiredrillProjectError, inspectTool, runDrills } from "@firedrill/sdk";
+import { compileWorld } from "@firedrill-tools/compiler";
+import { FIREDRILL_FRAMEWORK_VERSION, JsonObjectSchema } from "@firedrill-tools/contracts";
+import type { LocalWorld, LocalWorldBinding } from "@firedrill-tools/sdk";
+import { createLocalWorld, FiredrillProjectError, inspectTool, runDrills } from "@firedrill-tools/sdk";
 import type { BaseContext, CallToolResult, JsonSchemaType } from "@modelcontextprotocol/server";
 import { fromJsonSchema, McpServer } from "@modelcontextprotocol/server";
 import { StdioServerTransport } from "@modelcontextprotocol/server/stdio";

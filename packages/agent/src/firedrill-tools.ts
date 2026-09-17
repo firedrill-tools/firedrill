@@ -1,7 +1,7 @@
 import { createSdkMcpServer, tool } from "@anthropic-ai/claude-agent-sdk";
-import { compileWorld, formatWorldSources } from "@firedrill/compiler";
-import { FIREDRILL_FRAMEWORK_VERSION } from "@firedrill/contracts";
-import { FiredrillProjectError, inspectTool, runDrills, testTool, validateTool } from "@firedrill/sdk";
+import { compileWorld, formatWorldSources } from "@firedrill-tools/compiler";
+import { FIREDRILL_FRAMEWORK_VERSION } from "@firedrill-tools/contracts";
+import { FiredrillProjectError, inspectTool, runDrills, testTool, validateTool } from "@firedrill-tools/sdk";
 import { z } from "zod";
 import { checkFiredrillEnvironment } from "./environment-check.js";
 import { listRepositoryFiles, searchRepository } from "./repository-inspection.js";

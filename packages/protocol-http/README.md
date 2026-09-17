@@ -1,4 +1,4 @@
-# `@firedrill/protocol-http`
+# `@firedrill-tools/protocol-http`
 
 Loopback HTTP access to one local synthetic world. The adapter exposes only Tool operations granted to the drill's selected actor and delegates every call to the generic kernel.
 

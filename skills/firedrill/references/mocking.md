@@ -11,14 +11,14 @@ Firedrill supplies the stateful world and records what happened.
 ## Replace an imported function
 
 For a target declared as `kind: external` with `bindings: [direct]`, use
-`mockTool` from `@firedrill/sdk/testing` as a mock implementation. This Vitest
+`mockTool` from `@firedrill-tools/sdk/testing` as a mock implementation. This Vitest
 example assumes the existing agent imports `saveRecord` from `records-client`.
 The test imports Firedrill; the application does not.
 
 ```ts
 import { afterEach, expect, test, vi } from "vitest";
-import { runDrills } from "@firedrill/sdk";
-import { mockTool } from "@firedrill/sdk/testing";
+import { runDrills } from "@firedrill-tools/sdk";
+import { mockTool } from "@firedrill-tools/sdk/testing";
 import { saveRecord } from "../src/records-client.js";
 import { runAgent } from "../src/agent.js";
 

@@ -1,4 +1,4 @@
-import type { EvidenceEntry, ReportToolDescriptor, RunResult } from "@firedrill/contracts";
+import type { EvidenceEntry, ReportToolDescriptor, RunResult } from "@firedrill-tools/contracts";
 
 /** Already validated, redacted report values; never raw Tool output. */
 export interface ReportProjectionInput {

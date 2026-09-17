@@ -15,8 +15,13 @@ import {
 import { hostname, tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { canonicalJson, type EvidenceEntry, JsonValueSchema, RunResultSchema } from "@firedrill/contracts";
-import { trajectoryHash } from "@firedrill/world-ir";
+import {
+  canonicalJson,
+  type EvidenceEntry,
+  JsonValueSchema,
+  RunResultSchema,
+} from "@firedrill-tools/contracts";
+import { trajectoryHash } from "@firedrill-tools/world-ir";
 import { afterEach, describe, expect, it } from "vitest";
 import { writeReportIndex } from "../src/report-index.js";
 import { verifyLocalReport, writeLocalReport } from "../src/reporters.js";

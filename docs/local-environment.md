@@ -79,7 +79,7 @@ Use the defaults, edit the repository files, ask your own coding agent, or choos
 - **Your coding agent:** setup installs the canonical skill and a repository
   brief. Ask it to prepare tools for your actual agent. Detection is a hint, not
   proof of the interfaces your agent uses.
-- **Firedrill Agent:** the optional `@firedrill/agent` package uses Claude Agent SDK
+- **Firedrill Agent:** the optional `@firedrill-tools/agent` package uses Claude Agent SDK
   with `ANTHROPIC_API_KEY` from your shell or secret manager. It explains source
   transmission and spending before starting from the wizard. No key is requested
   in a text prompt or written to source. If the key/package is missing, the CLI

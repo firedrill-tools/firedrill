@@ -33,7 +33,7 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       - name: Install Chromium for browser tests
-        run: pnpm --filter @firedrill/browser-tests exec playwright install --with-deps chromium
+        run: pnpm --filter @firedrill-tools/browser-tests exec playwright install --with-deps chromium
 
       - name: Run the public framework gate
         run: pnpm check

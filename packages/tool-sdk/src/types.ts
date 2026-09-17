@@ -9,7 +9,7 @@ import type {
   OperationRef,
   ToolPackageManifest,
   VirtualTime,
-} from "@firedrill/contracts";
+} from "@firedrill-tools/contracts";
 import type { ToolFailureOptions } from "./failure.js";
 
 export interface ToolActor {

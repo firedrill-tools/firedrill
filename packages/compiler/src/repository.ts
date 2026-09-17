@@ -1,8 +1,8 @@
 import { existsSync, lstatSync, readdirSync, realpathSync } from "node:fs";
 import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { diagnostic } from "./diagnostics.js";
-import type { Diagnostic } from "@firedrill/contracts";
-import { compareStableStrings } from "@firedrill/contracts";
+import type { Diagnostic } from "@firedrill-tools/contracts";
+import { compareStableStrings } from "@firedrill-tools/contracts";
 import type { ResourceKind } from "./types.js";
 
 const IGNORED_DIRECTORIES = new Set([".firedrill", ".git", "node_modules"]);

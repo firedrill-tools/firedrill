@@ -3,7 +3,7 @@ import {
   canonicalJson,
   EvidenceAttestationEnvelopeSchema,
   type EvidenceBundleManifest,
-} from "@firedrill/contracts";
+} from "@firedrill-tools/contracts";
 import { describe, expect, it } from "vitest";
 import {
   createEvidenceAttestationStatement,

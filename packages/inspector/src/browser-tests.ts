@@ -7,10 +7,10 @@ import type {
   BrowserTestEvent,
   BrowserTestResult,
   RunBrowserTestOptions,
-} from "@firedrill/browser-tests";
+} from "@firedrill-tools/browser-tests";
 
 const BASE = "/api/browser-tests";
-type BrowserModule = typeof import("@firedrill/browser-tests");
+type BrowserModule = typeof import("@firedrill-tools/browser-tests");
 interface BrowserRequest {
   readonly requestId: string;
   status: "running" | "finished" | "failed";
@@ -155,12 +155,12 @@ export function createBrowserTestRequestHandler(repositoryRoot: string, token: s
   let reserving = false;
   const load = async (): Promise<BrowserModule> => {
     try {
-      return await import("@firedrill/browser-tests");
+      return await import("@firedrill-tools/browser-tests");
     } catch {
       throw new RequestError(
         503,
         "browser.PACKAGE_REQUIRED",
-        "Install @firedrill/browser-tests in this project, then install its Chromium browser with playwright install chromium.",
+        "Install @firedrill-tools/browser-tests in this project, then install its Chromium browser with playwright install chromium.",
       );
     }
   };
@@ -196,7 +196,7 @@ export function createBrowserTestRequestHandler(repositoryRoot: string, token: s
             /* Optional installation. */
           }
           try {
-            await import("@firedrill/agent/browser");
+            await import("@firedrill-tools/agent/browser");
             agentAvailable = true;
           } catch {
             /* Optional installation. */
@@ -277,14 +277,14 @@ export function createBrowserTestRequestHandler(repositoryRoot: string, token: s
               bad("Starting the browser agent requires explicit model-use approval (allowModel: true).");
             let driver: RunBrowserTestOptions["driver"];
             if (useAgent) {
-              let agent: typeof import("@firedrill/agent/browser");
+              let agent: typeof import("@firedrill-tools/agent/browser");
               try {
-                agent = await import("@firedrill/agent/browser");
+                agent = await import("@firedrill-tools/agent/browser");
               } catch {
                 throw new RequestError(
                   503,
                   "browser.AGENT_PACKAGE_REQUIRED",
-                  "Install @firedrill/agent to use the optional browser agent.",
+                  "Install @firedrill-tools/agent to use the optional browser agent.",
                 );
               }
               if (!process.env.ANTHROPIC_API_KEY)

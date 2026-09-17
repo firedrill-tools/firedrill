@@ -14,7 +14,7 @@ import {
   writeFileSync,
 } from "node:fs";
 import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
-import { compileWorld, inspectInstalledToolPackage, ProjectConfigSchema } from "@firedrill/compiler";
+import { compileWorld, inspectInstalledToolPackage, ProjectConfigSchema } from "@firedrill-tools/compiler";
 import { FiredrillProjectError } from "./project-error.js";
 import type { ToolInspection } from "./tool-authoring.js";
 

@@ -1,4 +1,4 @@
-import { CheckpointResultSchema, EvidenceEntrySchema } from "@firedrill/contracts";
+import { CheckpointResultSchema, EvidenceEntrySchema } from "@firedrill-tools/contracts";
 import { describe, expect, it } from "vitest";
 import {
   BuildIdentitySchema,

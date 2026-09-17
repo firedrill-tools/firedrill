@@ -1,4 +1,4 @@
-import { EvidenceEntrySchema, type EvidenceEntry } from "@firedrill/contracts";
+import { EvidenceEntrySchema, type EvidenceEntry } from "@firedrill-tools/contracts";
 import type Database from "better-sqlite3";
 import { decodeStoredCount } from "./codec.js";
 

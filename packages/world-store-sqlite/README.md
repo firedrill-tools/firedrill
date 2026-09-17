@@ -1,4 +1,4 @@
-# @firedrill/world-store-sqlite
+# @firedrill-tools/world-store-sqlite
 
 The native local world substrate. One logical SQLite database contains state, evidence, virtual time, deterministic random state, active faults, pending events, idempotency receipts, and lineage.
 

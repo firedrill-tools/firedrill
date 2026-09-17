@@ -9,7 +9,7 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { compileWorld } from "@firedrill/compiler";
+import { compileWorld } from "@firedrill-tools/compiler";
 import { afterEach, describe, expect, it } from "vitest";
 import { captureScenarioState, createLocalWorld, type ScenarioStateReader } from "../src/index.js";
 

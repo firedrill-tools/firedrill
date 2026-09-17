@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { runDrills, verifyReport } from "@firedrill/sdk";
+import { runDrills, verifyReport } from "@firedrill-tools/sdk";
 
 // Executed after copying into the clean consumer: no workspace implementation imports.
 const root = process.argv[2];

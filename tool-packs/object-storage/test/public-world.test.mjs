@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
-import { createLocalWorld } from "@firedrill/sdk";
+import { createLocalWorld } from "@firedrill-tools/sdk";
 import { Client, StreamableHTTPClientTransport } from "@modelcontextprotocol/client";
 
 const root = fileURLToPath(new URL("../", import.meta.url));

@@ -1,6 +1,6 @@
-import { startLocalInspector } from "@firedrill/inspector";
-import type { LocalWorld, LocalWorldBinding } from "@firedrill/sdk";
-import { createLocalWorld, FiredrillProjectError } from "@firedrill/sdk";
+import { startLocalInspector } from "@firedrill-tools/inspector";
+import type { LocalWorld, LocalWorldBinding } from "@firedrill-tools/sdk";
+import { createLocalWorld, FiredrillProjectError } from "@firedrill-tools/sdk";
 import type { CliWriter } from "./program.js";
 
 export interface ServeCommandInput {

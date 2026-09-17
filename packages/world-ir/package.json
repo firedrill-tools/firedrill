@@ -1,5 +1,5 @@
 {
-  "name": "@firedrill/world-ir",
+  "name": "@firedrill-tools/world-ir",
   "version": "0.1.0-rc.1",
   "description": "Versioned canonical intermediate representation for Firedrill worlds",
   "license": "Apache-2.0",
@@ -33,7 +33,7 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "@firedrill/contracts": "workspace:*",
+    "@firedrill-tools/contracts": "workspace:*",
     "zod": "4.4.3"
   },
   "devDependencies": {

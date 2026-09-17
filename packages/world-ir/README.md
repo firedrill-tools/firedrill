@@ -1,4 +1,4 @@
-# `@firedrill/world-ir`
+# `@firedrill-tools/world-ir`
 
 Versioned, runtime-safe schemas for the canonical world intermediate representation, resolved Tool lock, and immutable build manifest.
 

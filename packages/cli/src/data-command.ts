@@ -6,7 +6,7 @@ import {
   previewDataImport,
   saveDataImport,
   storeDataImportPreview,
-} from "@firedrill/sdk";
+} from "@firedrill-tools/sdk";
 import type { CliIo } from "./program.js";
 
 const HELP = `Import selected data as a reusable scenario

@@ -8,8 +8,8 @@ import type {
   JsonValue,
   ReportRedaction,
   RunResult,
-} from "@firedrill/contracts";
-import { canonicalJson } from "@firedrill/contracts";
+} from "@firedrill-tools/contracts";
+import { canonicalJson } from "@firedrill-tools/contracts";
 import { verifyLocalReport } from "./reporters.js";
 
 export type LocalRunCompatibilityStatus = "exact_inputs" | "descriptive_only" | "incompatible";

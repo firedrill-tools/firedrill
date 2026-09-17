@@ -1,5 +1,10 @@
 /** Frozen presentation-v2 renderer. Saved-report verification must reproduce its exact bytes. */
-import type { AssertionResult, EvidenceEntry, ReportToolDescriptor, RunResult } from "@firedrill/contracts";
+import type {
+  AssertionResult,
+  EvidenceEntry,
+  ReportToolDescriptor,
+  RunResult,
+} from "@firedrill-tools/contracts";
 
 export function escapeHtml(value: unknown): string {
   return String(value)

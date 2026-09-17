@@ -8,9 +8,9 @@ import {
   ToolUiPathSchema,
   toolUiMediaType,
   type OperationOutcome,
-} from "@firedrill/contracts";
-import type { ToolDefinition } from "@firedrill/tool-sdk";
-import type { BoundWorldClient } from "@firedrill/world-kernel";
+} from "@firedrill-tools/contracts";
+import type { ToolDefinition } from "@firedrill-tools/tool-sdk";
+import type { BoundWorldClient } from "@firedrill-tools/world-kernel";
 import { TOOL_UI_CLIENT_SOURCE } from "./tool-ui-client.js";
 
 export interface ToolUiRevision {
