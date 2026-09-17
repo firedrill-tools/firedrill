@@ -2,7 +2,14 @@
 
 This guide explains Firedrill's repository contract. The files belong beside the agent code, can be reviewed in pull requests, and work without an account.
 
-The npm packages are still an unpublished release candidate. After an authorized publication, the normal project-local installation will be `npm install --save-dev @firedrill-tools/cli`, followed by `npx firedrill init`. Until then, use a reviewed packed release artifact or the source-checkout commands in the root README. The exact available flags are generated from the executable in the [CLI reference](cli-reference.md).
+Install the current release candidate in the project that contains your agent:
+
+```sh
+npm install --save-dev @firedrill-tools/cli@next
+npx firedrill init
+```
+
+The exact available flags are generated from the executable in the [CLI reference](cli-reference.md). A source checkout remains available for framework contributors.
 
 For your existing agent, start with [local tools](local-environment.md):
 

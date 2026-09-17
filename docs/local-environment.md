@@ -8,21 +8,19 @@ Everything here runs locally without an account or Docker. Tools are trusted tes
 code, not sandboxed code. Only the optional authoring assistant needs a model key.
 The agent you test keeps its own model/provider configuration.
 
-## Use this release candidate
+## Install this release candidate
 
-Packages are not published yet. In a checkout of the Firedrill repository, run
-`pnpm install` then `pnpm build`. You can now target your actual agent project:
+In the project that contains your agent, install the CLI locally:
 
 ```sh
-node /absolute/path/to/firedrill/packages/cli/dist/bin.js --root /absolute/path/to/your-agent init
-node /absolute/path/to/firedrill/packages/cli/dist/bin.js --root /absolute/path/to/your-agent serve
+npm install --save-dev @firedrill-tools/cli@next
+npx firedrill init
+npx firedrill serve
 ```
 
-Replace those two absolute paths with your checkouts. Alternatively, define
-`alias firedrill='node /absolute/path/to/firedrill/packages/cli/dist/bin.js'` in
-your current shell, then change into your agent project and use the shorter
-commands below. A reviewed packed installation can also provide that command.
-After publication, a project-local CLI installation will remove this checkout step.
+The commands below use `firedrill` for readability. Prefix them with `npx` when
+you have not added a package-manager script or shell alias. Framework contributors
+can still build and invoke the CLI from a source checkout.
 
 ## 1. Choose tools
 
@@ -35,12 +33,9 @@ firedrill init
 The terminal offers real catalog tools and an option to create your own. A pack
 lists its actual supported operations and limitations. Installing a catalog pack
 requires permission and uses the package manager with lifecycle scripts disabled.
-An installed pack is selected without downloading it again. Missing or unpublished
-packages produce a clear installation error; Firedrill never substitutes a sample
+An installed pack is selected without downloading it again. Missing packages
+produce a clear installation error; Firedrill never substitutes a sample
 and calls it compatible.
-
-This release is unpublished. The source-checkout commands in the [README](../README.md)
-and reviewed packed artifacts are available now; registry publication is separate.
 
 For coding agents and scripts:
 

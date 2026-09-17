@@ -4,7 +4,7 @@ Firedrill keeps package releases, the Tool engine contract, authored source, gen
 
 ## Framework packages
 
-All packages under `packages/` ship as one versioned release train. Use one release line across direct Firedrill dependencies; the package manager resolves the exact internal versions from the published manifests. The initial unpublished candidate is `0.1.0-rc.1`.
+All packages under `packages/` ship as one versioned release train. Use one release line across direct Firedrill dependencies; the package manager resolves the exact internal versions from the published manifests. The current candidate is `0.1.0-rc.1`, published under the `@firedrill-tools` npm scope with the `next` dist-tag.
 
 The exact package names, directories, export paths, CLI binary, and supported toolchain are checked against [`release/public-surface.json`](../release/public-surface.json). Changing that file is an intentional public-contract decision, not an incidental consequence of adding code.
 
@@ -30,7 +30,7 @@ Generated builds are immutable, content-addressed artifacts rather than source. 
 
 Local report bundles carry their own schema versions and exact hashes. `firedrill report verify` is the compatibility and integrity gate before a report is inspected or compared. Unsigned local verification proves internal consistency, not producer identity.
 
-This unpublished candidate also records controller-driven fault changes as
+This release candidate also records controller-driven fault changes as
 `fault_control` evidence, separately from a triggered `fault`. An older candidate
 that does not recognize that evidence kind must reject the bundle; do not remove
 entries to make it pass. Use the same release train for execution and inspection.

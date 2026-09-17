@@ -277,12 +277,12 @@ describe("tool-first init", () => {
 
   it("uses explicit pinned installation permission and resumes safely on failure", async () => {
     const root = repository();
-    const pack = join(root, "node_modules/@firedrill-community/tool-gmail");
+    const pack = join(root, "node_modules/@firedrill-tools/tool-gmail");
     mkdirSync(pack, { recursive: true });
     writeFileSync(
       join(pack, "package.json"),
       JSON.stringify({
-        name: "@firedrill-community/tool-gmail",
+        name: "@firedrill-tools/tool-gmail",
         exports: { "./package.json": "./package.json" },
       }),
     );
@@ -315,7 +315,7 @@ describe("tool-first init", () => {
     if (tool === undefined) throw new Error("catalog fixture missing");
     expect(toolInstallPlan(root, tool)).toMatchObject({
       executable: "npm",
-      arguments: ["install", "--save-dev", "--ignore-scripts", "@firedrill-community/tool-gmail@0.1.0"],
+      arguments: ["install", "--save-dev", "--ignore-scripts", "@firedrill-tools/tool-gmail@0.1.1"],
     });
     vi.mocked(installReadyTool).mockImplementation(async (target) => {
       installed(target, tool.packageName, tool.id, tool.id, tool.version);

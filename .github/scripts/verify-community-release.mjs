@@ -49,11 +49,7 @@ try {
   }
   const catalog = JSON.parse(catalogBytes);
   if (catalog.schemaVersion !== 1) fail("community release schema version is unsupported");
-  if (
-    !/^https:\/\/github\.com\/firedrill-tools\/firedrill-community-tools(?:\.git)?$/.test(
-      catalog.sourceRepository,
-    )
-  ) {
+  if (!/^https:\/\/github\.com\/firedrill-tools\/firedrill-tools(?:\.git)?$/.test(catalog.sourceRepository)) {
     fail("community release source repository is unexpected");
   }
   if (catalog.sourceRevision !== revision) fail("community release revision does not match the request");
@@ -69,7 +65,7 @@ try {
   let totalArchiveBytes = 0;
   for (const item of catalog.packages) {
     if (!item || typeof item !== "object") fail("community release package record is invalid");
-    const name = requiredText(item.name, "package name", /^@firedrill-community\/tool-[a-z0-9-]+$/);
+    const name = requiredText(item.name, "package name", /^@firedrill-tools\/tool-[a-z0-9-]+$/);
     const version = requiredText(item.version, `${name} version`, /^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/);
     const tool = requiredText(item.tool, `${name} Tool id`, /^[a-z0-9][a-z0-9-]*$/);
     const lifecycle = requiredText(item.lifecycle, `${name} lifecycle`, /^(active|deprecated|revoked)$/);
