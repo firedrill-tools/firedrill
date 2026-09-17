@@ -109,7 +109,7 @@ if (JSON.stringify(actualNames) !== JSON.stringify(declaredNames)) {
 }
 for (const { path, manifest } of publicPackages) {
   const label = relative(root, path).split(sep).join("/");
-  if (!manifest.name?.startsWith("@firedrill/"))
+  if (!manifest.name?.startsWith("@firedrill-tools/"))
     violations.push(`${label}: package name must use @firedrill`);
   if (!manifest.description?.trim()) violations.push(`${label}: description is required`);
   if (manifest.license !== "Apache-2.0") violations.push(`${label}: license must be Apache-2.0`);
@@ -164,13 +164,13 @@ for (const { path, manifest } of publicPackages) {
   }
 }
 
-const cli = publicPackages.find(({ manifest }) => manifest.name === "@firedrill/cli")?.manifest;
+const cli = publicPackages.find(({ manifest }) => manifest.name === "@firedrill-tools/cli")?.manifest;
 if (
-  publicSurface.cli.package !== "@firedrill/cli" ||
+  publicSurface.cli.package !== "@firedrill-tools/cli" ||
   publicSurface.cli.binary !== "firedrill" ||
   cli?.bin?.[publicSurface.cli.binary] !== publicSurface.cli.entrypoint
 ) {
-  violations.push("@firedrill/cli does not match the frozen executable surface");
+  violations.push("@firedrill-tools/cli does not match the frozen executable surface");
 }
 const helpInvocations = publicSurface.cli.helpCommands?.map((arguments_) => arguments_.join(" ")) ?? [];
 if (

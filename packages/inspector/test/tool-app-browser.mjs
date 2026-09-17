@@ -5,10 +5,10 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { createLocalWorld } from "@firedrill/sdk";
+import { createLocalWorld } from "@firedrill-tools/sdk";
 import { startLocalInspector } from "../dist/index.js";
 
-const browserRequire = createRequire(import.meta.resolve("@firedrill/browser-tests"));
+const browserRequire = createRequire(import.meta.resolve("@firedrill-tools/browser-tests"));
 const { chromium } = browserRequire("playwright");
 const root = mkdtempSync(join(tmpdir(), "firedrill-inspector-app-browser-"));
 const captures = mkdtempSync(join(tmpdir(), "firedrill-inspector-app-captures-"));

@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import { mkdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
-import { createLocalWorld } from "@firedrill/sdk";
+import { createLocalWorld } from "@firedrill-tools/sdk";
 import { Client, StreamableHTTPClientTransport } from "@modelcontextprotocol/client";
 
 // Copied to the packed consumer; declarations, behavior and starters resolve
@@ -14,7 +14,14 @@ mkdirSync(root);
 const cli = join(installedProject, "node_modules", ".bin", "firedrill");
 const initialized = spawnSync(
   cli,
-  ["init", "--tool", "@firedrill/tool-mailbox", "--tool", "@firedrill/tool-object-storage", "--json"],
+  [
+    "init",
+    "--tool",
+    "@firedrill-tools/tool-mailbox",
+    "--tool",
+    "@firedrill-tools/tool-object-storage",
+    "--json",
+  ],
   { cwd: root, encoding: "utf8", timeout: 30000 },
 );
 assert.equal(initialized.status, 0, initialized.stderr);

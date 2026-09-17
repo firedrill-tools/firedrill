@@ -7,11 +7,11 @@ A synthetic, actor-owned UTF-8 text object store for agent drills. HTTP and MCP 
 This pack is not published yet. Build it in this repository and install its locally packed archive into a consumer project, then select the installed package explicitly:
 
 ```sh
-firedrill init --tool @firedrill/tool-object-storage
+firedrill init --tool @firedrill-tools/tool-object-storage
 firedrill tool inspect object-storage
 ```
 
-In an existing project, add `"@firedrill/tool-object-storage"` to `toolPackages` in `firedrill.json` and supply actor grants and scenario records. Selection alone does not insert starter data. Initialization supplies one text object under bucket `documents`, key `welcome.txt`, owned by the default `local-dev` actor.
+In an existing project, add `"@firedrill-tools/tool-object-storage"` to `toolPackages` in `firedrill.json` and supply actor grants and scenario records. Selection alone does not insert starter data. Initialization supplies one text object under bucket `documents`, key `welcome.txt`, owned by the default `local-dev` actor.
 
 HTTP uses `FIREDRILL_HTTP_URL` with `Authorization: Bearer $FIREDRILL_HTTP_TOKEN`. MCP uses `FIREDRILL_MCP_URL` and `FIREDRILL_MCP_TOKEN`; tools are `object-storage.objects.list`, `object-storage.objects.get`, `object-storage.objects.put`, and `object-storage.objects.delete`. Both bindings are framework-owned, loopback-only, and actor-scoped.
 
@@ -46,4 +46,4 @@ State rows use `<actorId>:<bucket>:<key>` with matching `ownerId`; other actors 
 
 ## Verification
 
-`pnpm --filter @firedrill/tool-object-storage test` runs the public Tool conformance command twice with an identical seed, followed by public SDK tests. Real HTTP and an unmodified MCP client cover all four operations and declared errors, UTF-8 byte counts, optimistic conflict handling, retry identity, events, pagination, and deletion. SDK tests additionally prove actor isolation, independent worlds, reset, invalid requests, and sparse pagination beyond the 1,000-row scan bound. The stateful fidelity label covers only this tested semantic subset.
+`pnpm --filter @firedrill-tools/tool-object-storage test` runs the public Tool conformance command twice with an identical seed, followed by public SDK tests. Real HTTP and an unmodified MCP client cover all four operations and declared errors, UTF-8 byte counts, optimistic conflict handling, retry identity, events, pagination, and deletion. SDK tests additionally prove actor isolation, independent worlds, reset, invalid requests, and sparse pagination beyond the 1,000-row scan bound. The stateful fidelity label covers only this tested semantic subset.

@@ -1,4 +1,4 @@
-import { canonicalJson, JsonValueSchema, ToolPackageManifestSchema } from "@firedrill/contracts";
+import { canonicalJson, JsonValueSchema, ToolPackageManifestSchema } from "@firedrill-tools/contracts";
 import { describe, expect, it } from "vitest";
 import { normalizeManifest } from "../src/normalize.js";
 

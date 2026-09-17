@@ -51,13 +51,14 @@ const violations: string[] = [];
 const forbiddenOssImports = [
   "@anthropic-ai/sdk",
   "@firedrill/platform",
+  "@firedrill-tools/platform",
   "@google-cloud/",
   "@workos-inc/",
   "firebase-admin",
   "@octokit/app",
 ];
 const claudeAgentSdk = "@anthropic-ai/claude-agent-sdk";
-const claudeAgentOwner = "@firedrill/agent";
+const claudeAgentOwner = "@firedrill-tools/agent";
 
 function isForbiddenOssImport(specifier: string): boolean {
   return (
@@ -66,7 +67,13 @@ function isForbiddenOssImport(specifier: string): boolean {
   );
 }
 
-for (const canary of ["@firedrill/platform", "@firedrill/platform/control", "firedrill-platform"]) {
+for (const canary of [
+  "@firedrill/platform",
+  "@firedrill/platform/control",
+  "@firedrill-tools/platform",
+  "@firedrill-tools/platform/control",
+  "firedrill-platform",
+]) {
   if (!isForbiddenOssImport(canary)) throw new Error(`hosted import canary was not rejected: ${canary}`);
 }
 if (!isForbiddenOssImport("@anthropic-ai/sdk")) {

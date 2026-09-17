@@ -1,6 +1,6 @@
 import { resolve } from "node:path";
 import { pathToFileURL } from "node:url";
-import type { BrowserTestDefinitionInput } from "@firedrill/browser-tests";
+import type { BrowserTestDefinitionInput } from "@firedrill-tools/browser-tests";
 import type { CliIo } from "./program.js";
 
 const HELP = `Optional browser tests for an existing application
@@ -10,9 +10,9 @@ Usage:
   firedrill browser run --url <url> --task <task> --agent --allow-model [options]
   firedrill browser verify <report-directory> [--root <path>] [--json]
 
-Install once: pnpm add -D @firedrill/browser-tests
+Install once: pnpm add -D @firedrill-tools/browser-tests
 Browser install: pnpm dlx playwright@1.62.1 install chromium
-For the optional task driver: pnpm add -D @firedrill/agent
+For the optional task driver: pnpm add -D @firedrill-tools/agent
 
 Options:
   --root <path>             Project directory; defaults to the current directory
@@ -71,7 +71,7 @@ export async function executeBrowserCommand(args: readonly string[], io: CliIo):
   const values = new Map<string, string[]>();
   const selected = new Set<string>();
   let file: string | undefined;
-  let library: typeof import("@firedrill/browser-tests") | undefined;
+  let library: typeof import("@firedrill-tools/browser-tests") | undefined;
   try {
     const command = args[0];
     if (command !== "run" && command !== "verify")
@@ -115,10 +115,10 @@ export async function executeBrowserCommand(args: readonly string[], io: CliIo):
         );
     }
     try {
-      library = await import("@firedrill/browser-tests");
+      library = await import("@firedrill-tools/browser-tests");
     } catch {
       throw new BrowserCliError(
-        "Install the optional browser package beside the CLI: pnpm add -D @firedrill/browser-tests",
+        "Install the optional browser package beside the CLI: pnpm add -D @firedrill-tools/browser-tests",
       );
     }
     if (command === "verify") {
@@ -158,14 +158,14 @@ export async function executeBrowserCommand(args: readonly string[], io: CliIo):
       value("--step-timeout-ms") === undefined ? undefined : Number(value("--step-timeout-ms"));
     const maxBudgetUsd =
       value("--max-budget-usd") === undefined ? undefined : Number(value("--max-budget-usd"));
-    let driver: import("@firedrill/browser-tests").BrowserTestDriver | undefined;
+    let driver: import("@firedrill-tools/browser-tests").BrowserTestDriver | undefined;
     if (selected.has("--agent")) {
       const model = value("--model");
-      let agent: typeof import("@firedrill/agent/browser");
+      let agent: typeof import("@firedrill-tools/agent/browser");
       try {
-        agent = await import("@firedrill/agent/browser");
+        agent = await import("@firedrill-tools/agent/browser");
       } catch {
-        throw new BrowserCliError("Install the optional browser agent: pnpm add -D @firedrill/agent");
+        throw new BrowserCliError("Install the optional browser agent: pnpm add -D @firedrill-tools/agent");
       }
       driver = agent.createBrowserAgentDriver({
         environment,
@@ -192,7 +192,7 @@ export async function executeBrowserCommand(args: readonly string[], io: CliIo):
       ...(json
         ? {}
         : {
-            onEvent: (event: import("@firedrill/browser-tests").BrowserTestEvent) =>
+            onEvent: (event: import("@firedrill-tools/browser-tests").BrowserTestEvent) =>
               io.stdout.write(`${event.message}\n`),
           }),
     });

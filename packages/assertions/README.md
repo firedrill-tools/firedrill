@@ -1,4 +1,4 @@
-# @firedrill/assertions
+# @firedrill-tools/assertions
 
 Deterministic, read-only evaluation of compiled drill assertions against final world state and run-scoped durable evidence.
 

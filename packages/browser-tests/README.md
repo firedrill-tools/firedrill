@@ -5,7 +5,7 @@ Firedrill opens a fresh Playwright Chromium context, follows explicit steps, and
 checks the visible result. Existing headless agents need none of this.
 
 Packages are pre-release and unpublished. From this checkout, install dependencies
-and the browser once (`pnpm --filter @firedrill/browser-tests exec playwright install chromium`).
+and the browser once (`pnpm --filter @firedrill-tools/browser-tests exec playwright install chromium`).
 Browser binaries are not downloaded when installing Firedrill packages.
 
 For a packed consumer, install Chromium with
@@ -14,7 +14,7 @@ package. A transitive Playwright dependency does not expose its command in the
 consumer's `node_modules/.bin`, so plain `pnpm exec playwright` is not sufficient.
 
 ```ts
-import { runBrowserTest } from "@firedrill/browser-tests";
+import { runBrowserTest } from "@firedrill-tools/browser-tests";
 
 const result = await runBrowserTest({
   definition: {
@@ -88,7 +88,7 @@ deadline; they do not trust the browser agent's summary.
 
 ## Optional task-driven browser agent
 
-`@firedrill/agent/browser` provides `runBrowserAgentTest` with the Claude Agent
+`@firedrill-tools/agent/browser` provides `runBrowserAgentTest` with the Claude Agent
 SDK and your `ANTHROPIC_API_KEY`. Supply a `definition.task` instead of recorded
 steps. The model only receives bounded browser tools and cannot edit your code,
 open a shell or access the repository. Page content sent to Anthropic can contain

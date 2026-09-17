@@ -24,7 +24,7 @@ import type {
   ToolOverrideEvidence,
   VirtualTime,
   WorldInstanceId,
-} from "@firedrill/contracts";
+} from "@firedrill-tools/contracts";
 
 export interface WorldMetadata {
   readonly schemaVersion: 1;

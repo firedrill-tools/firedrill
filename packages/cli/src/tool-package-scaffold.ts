@@ -12,7 +12,7 @@ import {
   writeFileSync,
 } from "node:fs";
 import { basename, dirname, join, resolve, sep } from "node:path";
-import { NodePackageNameSchema, PackageIdSchema, SemverSchema } from "@firedrill/contracts";
+import { NodePackageNameSchema, PackageIdSchema, SemverSchema } from "@firedrill-tools/contracts";
 import { createTool, FiredrillToolSetupError } from "./tool-setup.js";
 
 export interface ToolPackageScaffoldResult {
@@ -107,8 +107,8 @@ export function createToolPackage(input: {
       },
       scripts: { validate: "firedrill validate", test: `firedrill tool test ${input.id}` },
       devDependencies: {
-        "@firedrill/cli": installedCliVersion(),
-        "@firedrill/tool-sdk": installedCliVersion(),
+        "@firedrill-tools/cli": installedCliVersion(),
+        "@firedrill-tools/tool-sdk": installedCliVersion(),
       },
     });
     write("firedrill/baseline.scenario.json", { schemaVersion: 1, id: "baseline", state: starter.state });
@@ -165,7 +165,7 @@ export function createToolPackage(input: {
     write("test/conformance.mjs", conformanceTarget(input.id, template));
     write(
       "README.md",
-      `# ${packageName}\n\nAn independently owned Firedrill Tool. Source and behavior live in \`firedrill/tools/${input.id}/\`; \`starter.json\` supplies initial synthetic data. The optional test suite lives in \`firedrill/\` and its runner in \`test/conformance.mjs\`. No account, Docker, build step, or contribution to another repository is required.\n\n## Develop\n\nInstall reviewed Firedrill packages (\`@firedrill/cli\` and \`@firedrill/tool-sdk\`) using your package manager. Before packages are published, use the framework's reviewed local archives. Then run:\n\n\`\`\`sh\nnpm run validate\nnpm test\nnpm pack\n\`\`\`\n\nThese checks run the ordinary conformance drills twice and compare state and Tool activity. They prove declared coverage and reproducibility, not parity with a real service. Expand them as behavior grows. The package ships its conformance suite so consumers can independently run it using \`firedrill tool test ${input.id}\`.\n\n## Use in another project\n\nFrom another project, add this reviewed source through Firedrill; it packs a scriptless copy before installation:\n\n\`\`\`sh\nfiredrill tool add ../my-tool-package --install\nfiredrill serve\n\`\`\`\n\nConsumers can use their own scenarios and test suites; no changes to this package are required. The package's starting license is \`UNLICENSED\`: choose and add your own license before sharing or publishing. You own this Tool and may distribute it from your own repository or registry.\n\n## Safety\n\nTools and conformance targets are trusted local executable code, not a sandbox. Review before running. npm 10 may execute prepare on a local npm pack despite --ignore-scripts; do not pack untrusted source directly. Keep credentials and generated worlds/reports out of the package and repository. The generated package file list excludes \`.firedrill/\`; keep that exclusion when adding assets.\n`,
+      `# ${packageName}\n\nAn independently owned Firedrill Tool. Source and behavior live in \`firedrill/tools/${input.id}/\`; \`starter.json\` supplies initial synthetic data. The optional test suite lives in \`firedrill/\` and its runner in \`test/conformance.mjs\`. No account, Docker, build step, or contribution to another repository is required.\n\n## Develop\n\nInstall reviewed Firedrill packages (\`@firedrill-tools/cli\` and \`@firedrill-tools/tool-sdk\`) using your package manager. Before packages are published, use the framework's reviewed local archives. Then run:\n\n\`\`\`sh\nnpm run validate\nnpm test\nnpm pack\n\`\`\`\n\nThese checks run the ordinary conformance drills twice and compare state and Tool activity. They prove declared coverage and reproducibility, not parity with a real service. Expand them as behavior grows. The package ships its conformance suite so consumers can independently run it using \`firedrill tool test ${input.id}\`.\n\n## Use in another project\n\nFrom another project, add this reviewed source through Firedrill; it packs a scriptless copy before installation:\n\n\`\`\`sh\nfiredrill tool add ../my-tool-package --install\nfiredrill serve\n\`\`\`\n\nConsumers can use their own scenarios and test suites; no changes to this package are required. The package's starting license is \`UNLICENSED\`: choose and add your own license before sharing or publishing. You own this Tool and may distribute it from your own repository or registry.\n\n## Safety\n\nTools and conformance targets are trusted local executable code, not a sandbox. Review before running. npm 10 may execute prepare on a local npm pack despite --ignore-scripts; do not pack untrusted source directly. Keep credentials and generated worlds/reports out of the package and repository. The generated package file list excludes \`.firedrill/\`; keep that exclusion when adding assets.\n`,
     );
     const created = [
       ...tool.created,
@@ -190,7 +190,7 @@ export function createToolPackage(input: {
       packageName,
       created,
       nextSteps: [
-        "Install reviewed @firedrill/cli and @firedrill/tool-sdk packages.",
+        "Install reviewed @firedrill-tools/cli and @firedrill-tools/tool-sdk packages.",
         "npm run validate",
         "npm test",
         "Choose a license before sharing.",

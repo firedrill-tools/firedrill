@@ -1,9 +1,9 @@
 # Local simulation API
 
-`@firedrill/simulation` is the adapter for a local visual inspector or another read-mostly client. It compiles the repository, delegates execution to the public `runDrills()` API, and exposes a small versioned HTTP surface on loopback. The drill runner and SQLite world remain the canonical implementations; this package does not duplicate their semantics.
+`@firedrill-tools/simulation` is the adapter for a local visual inspector or another read-mostly client. It compiles the repository, delegates execution to the public `runDrills()` API, and exposes a small versioned HTTP surface on loopback. The drill runner and SQLite world remain the canonical implementations; this package does not duplicate their semantics.
 
 ```ts
-import { startLocalSimulationServer } from "@firedrill/simulation";
+import { startLocalSimulationServer } from "@firedrill-tools/simulation";
 
 const server = await startLocalSimulationServer({ root: process.cwd() });
 

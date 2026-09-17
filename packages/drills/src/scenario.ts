@@ -8,7 +8,7 @@ import {
   SeedSchema,
   StableIdSchema,
   WorldInstanceIdSchema,
-} from "@firedrill/contracts";
+} from "@firedrill-tools/contracts";
 import type {
   ActorBindingId,
   ActorId,
@@ -24,12 +24,12 @@ import type {
   VirtualTime,
   WorldInstanceId,
   ResolvedToolOverride,
-} from "@firedrill/contracts";
-import type { LoadedWorldBuild } from "@firedrill/world-build";
-import { BoundWorldClient, WorldKernel } from "@firedrill/world-kernel";
-import type { WorldKernelUsage } from "@firedrill/world-kernel";
-import { SqliteWorldStore } from "@firedrill/world-store-sqlite";
-import type { InitialScheduledEvent, InitialStateRecord } from "@firedrill/world-store-sqlite";
+} from "@firedrill-tools/contracts";
+import type { LoadedWorldBuild } from "@firedrill-tools/world-build";
+import { BoundWorldClient, WorldKernel } from "@firedrill-tools/world-kernel";
+import type { WorldKernelUsage } from "@firedrill-tools/world-kernel";
+import { SqliteWorldStore } from "@firedrill-tools/world-store-sqlite";
+import type { InitialScheduledEvent, InitialStateRecord } from "@firedrill-tools/world-store-sqlite";
 
 export type DrillSetupErrorCode =
   | "framework.DRILL_NOT_FOUND"

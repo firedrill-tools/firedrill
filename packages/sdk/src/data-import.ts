@@ -18,14 +18,14 @@ import {
   ProjectConfigSchema,
   previewScenarioSource,
   type ScenarioSourceSchema,
-} from "@firedrill/compiler";
+} from "@firedrill-tools/compiler";
 import {
   canonicalJson,
   type DataImportPlanInput,
   DataImportPlanSchema,
   type JsonObject,
   type JsonValue,
-} from "@firedrill/contracts";
+} from "@firedrill-tools/contracts";
 import { FiredrillProjectError } from "./project-error.js";
 
 const MAX_BYTES = 1_048_576;

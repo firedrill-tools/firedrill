@@ -1,5 +1,5 @@
 {
-  "name": "@firedrill/drills",
+  "name": "@firedrill-tools/drills",
   "version": "0.1.0-rc.1",
   "description": "Local drill lifecycle and target orchestration for Firedrill",
   "license": "Apache-2.0",
@@ -35,21 +35,21 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "@firedrill/assertions": "workspace:*",
-    "@firedrill/contracts": "workspace:*",
-    "@firedrill/protocol-cli": "workspace:*",
-    "@firedrill/protocol-http": "workspace:*",
-    "@firedrill/protocol-mcp": "workspace:*",
-    "@firedrill/world-build": "workspace:*",
-    "@firedrill/world-ir": "workspace:*",
-    "@firedrill/world-kernel": "workspace:*",
-    "@firedrill/world-store": "workspace:*",
-    "@firedrill/world-store-sqlite": "workspace:*",
+    "@firedrill-tools/assertions": "workspace:*",
+    "@firedrill-tools/contracts": "workspace:*",
+    "@firedrill-tools/protocol-cli": "workspace:*",
+    "@firedrill-tools/protocol-http": "workspace:*",
+    "@firedrill-tools/protocol-mcp": "workspace:*",
+    "@firedrill-tools/world-build": "workspace:*",
+    "@firedrill-tools/world-ir": "workspace:*",
+    "@firedrill-tools/world-kernel": "workspace:*",
+    "@firedrill-tools/world-store": "workspace:*",
+    "@firedrill-tools/world-store-sqlite": "workspace:*",
     "tsx": "4.23.12",
     "zod": "4.4.3"
   },
   "devDependencies": {
-    "@firedrill/tool-sdk": "workspace:*",
+    "@firedrill-tools/tool-sdk": "workspace:*",
     "@modelcontextprotocol/client": "2.0.0",
     "typescript": "5.9.3",
     "vitest": "4.1.11"

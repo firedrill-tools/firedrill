@@ -557,8 +557,8 @@ describe("local CLI front door", () => {
         name: "customer-agent",
         private: true,
         dependencies: {
-          "@firedrill/agent": "0.0.0",
-          "@firedrill/cli": "0.0.0",
+          "@firedrill-tools/agent": "0.0.0",
+          "@firedrill-tools/cli": "0.0.0",
           ai: "5.0.0",
         },
       })}\n`,

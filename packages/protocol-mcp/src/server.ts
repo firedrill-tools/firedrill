@@ -8,13 +8,13 @@ import type {
   OperationOutcome,
   OperationRef,
   ToolPackageManifest,
-} from "@firedrill/contracts";
+} from "@firedrill-tools/contracts";
 import {
   FIREDRILL_FRAMEWORK_VERSION,
   JsonObjectSchema,
   JsonValueSchema,
   McpToolAliasSchema,
-} from "@firedrill/contracts";
+} from "@firedrill-tools/contracts";
 import {
   localhostHostValidation,
   localhostOriginValidation,

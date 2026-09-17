@@ -1,5 +1,5 @@
-import { compileWorld } from "@firedrill/compiler";
-import { createLocalWorld, FiredrillProjectError } from "@firedrill/sdk";
+import { compileWorld } from "@firedrill-tools/compiler";
+import { createLocalWorld, FiredrillProjectError } from "@firedrill-tools/sdk";
 
 export interface FiredrillEnvironmentCheck {
   readonly status: "ready" | "source-validated" | "failed";

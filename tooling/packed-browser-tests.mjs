@@ -4,13 +4,13 @@ import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "nod
 import { createServer } from "node:http";
 import { join, relative, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
-import { bundleBrowserTestReport, verifyBrowserTestReport } from "@firedrill/browser-tests";
+import { bundleBrowserTestReport, verifyBrowserTestReport } from "@firedrill-tools/browser-tests";
 
 // Copy this file into the tarball-only consumer before executing it. No workspace imports.
 const consumer = resolve(process.cwd());
 const minimalConsumer = resolve(process.argv[2] ?? "");
 assert.ok(process.argv[2], "Pass the separately installed consumer without optional browser dependencies");
-const installedBrowser = fileURLToPath(import.meta.resolve("@firedrill/browser-tests"));
+const installedBrowser = fileURLToPath(import.meta.resolve("@firedrill-tools/browser-tests"));
 assert.ok(
   installedBrowser.startsWith(`${consumer}${sep}node_modules${sep}`),
   "The browser proof must resolve an installed tarball, not workspace source",
@@ -76,7 +76,7 @@ const minimalCli = join(minimalConsumer, "node_modules", ".bin", "firedrill");
 const absent = await run(minimalCli, ["browser", "verify", "missing-report", "--json"], minimalConsumer);
 assert.equal(absent.code, 2, absent.stderr);
 assert.match(JSON.parse(absent.stdout).message, /Install the optional browser package/);
-assert.match(JSON.parse(absent.stdout).message, /@firedrill\/browser-tests/);
+assert.match(JSON.parse(absent.stdout).message, /@firedrill-tools\/browser-tests/);
 const help = await run(minimalCli, ["--help"], minimalConsumer);
 assert.equal(help.code, 0, help.stderr);
 assert.match(help.stdout, /firedrill/);

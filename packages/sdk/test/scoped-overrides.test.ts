@@ -2,7 +2,7 @@ import { cpSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:f
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { OperationOutcomeSchema, type ToolOverride } from "@firedrill/contracts";
+import { OperationOutcomeSchema, type ToolOverride } from "@firedrill-tools/contracts";
 import { afterEach, describe, expect, it } from "vitest";
 import { type AgentCallback, createLocalWorld, runDrills, verifyReport } from "../src/index.js";
 

@@ -8,8 +8,8 @@ import {
   StableIdSchema,
   VirtualTimeSchema,
   WorldInstanceIdSchema,
-} from "@firedrill/contracts";
-import type { EvidenceEntry, PackageId, StableId } from "@firedrill/contracts";
+} from "@firedrill-tools/contracts";
+import type { EvidenceEntry, PackageId, StableId } from "@firedrill-tools/contracts";
 import type {
   ActiveFault,
   CallbackDelivery,
@@ -19,7 +19,7 @@ import type {
   StoredStateRecord,
   WorldMetadata,
   WorldReader,
-} from "@firedrill/world-store";
+} from "@firedrill-tools/world-store";
 import Database from "better-sqlite3";
 import { decodeObject, decodeStoredCount } from "./codec.js";
 import { latestEvidenceSequence } from "./evidence-head.js";

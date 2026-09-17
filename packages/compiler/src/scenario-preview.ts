@@ -1,5 +1,5 @@
-import { compareStableStrings } from "@firedrill/contracts";
-import { type CanonicalWorldIr, CanonicalWorldIrSchema } from "@firedrill/world-ir";
+import { compareStableStrings } from "@firedrill-tools/contracts";
+import { type CanonicalWorldIr, CanonicalWorldIrSchema } from "@firedrill-tools/world-ir";
 import { resolveScenario } from "./normalize.js";
 import { ScenarioSourceSchema } from "./source-schemas.js";
 import { validateWorldData, type WorldDataIssue } from "./validate-world-data.js";

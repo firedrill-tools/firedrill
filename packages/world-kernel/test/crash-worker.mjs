@@ -1,6 +1,6 @@
 import { writeFileSync } from "node:fs";
-import { defineTool } from "@firedrill/tool-sdk";
-import { SqliteWorldStore } from "@firedrill/world-store-sqlite";
+import { defineTool } from "@firedrill-tools/tool-sdk";
+import { SqliteWorldStore } from "@firedrill-tools/world-store-sqlite";
 import { WorldKernel } from "../dist/index.js";
 
 const [filePath, signalPath] = process.argv.slice(2);

@@ -9,7 +9,7 @@ import {
   SourcePathSchema,
   type SourceSpan,
   StableIdSchema,
-} from "@firedrill/contracts";
+} from "@firedrill-tools/contracts";
 import { z } from "zod";
 import { diagnostic } from "./diagnostics.js";
 import type { ResolvedRepositoryPath } from "./repository.js";

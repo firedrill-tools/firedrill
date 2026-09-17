@@ -1,5 +1,5 @@
-import type { CanonicalWorldIr } from "@firedrill/world-ir";
-import type { ResolvedToolOverride } from "@firedrill/contracts";
+import type { CanonicalWorldIr } from "@firedrill-tools/world-ir";
+import type { ResolvedToolOverride } from "@firedrill-tools/contracts";
 import { Ajv } from "ajv";
 import type { ErrorObject, ValidateFunction } from "ajv";
 import formatsModule from "ajv-formats";

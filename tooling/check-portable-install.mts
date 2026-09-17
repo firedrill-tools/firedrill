@@ -94,7 +94,7 @@ function requireFile(path: string, description: string): void {
 }
 
 function installedCli(arguments_: readonly string[], expectedStatus = 0): CommandResult {
-  const cli = join(workspace, "node_modules", "@firedrill", "cli", "dist", "bin.js");
+  const cli = join(workspace, "node_modules", "@firedrill-tools", "cli", "dist", "bin.js");
   requireFile(cli, "installed CLI entrypoint");
   return requireStatus(
     run(process.execPath, [cli, ...arguments_], { env: executionEnvironment }),

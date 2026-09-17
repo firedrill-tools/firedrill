@@ -1,7 +1,7 @@
 import { closeSync, constants, fstatSync, lstatSync, openSync, readSync, realpathSync } from "node:fs";
 import { join } from "node:path";
-import { MAX_TOOL_UI_ASSET_BYTES } from "@firedrill/contracts";
-import { type PackageLock, sha256Text } from "@firedrill/world-ir";
+import { MAX_TOOL_UI_ASSET_BYTES } from "@firedrill-tools/contracts";
+import { type PackageLock, sha256Text } from "@firedrill-tools/world-ir";
 import type { LoadedToolUi } from "./types.js";
 
 /** Read every static byte before importing any behavior module. */

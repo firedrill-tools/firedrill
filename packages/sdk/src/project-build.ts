@@ -1,9 +1,9 @@
 import { join } from "node:path";
-import { compileWorld } from "@firedrill/compiler";
-import type { Diagnostic, RunWorldSetup, StableId } from "@firedrill/contracts";
-import { Sha256Schema } from "@firedrill/contracts";
-import type { LoadedWorldBuild } from "@firedrill/world-build";
-import { loadWorldBuild } from "@firedrill/world-build";
+import { compileWorld } from "@firedrill-tools/compiler";
+import type { Diagnostic, RunWorldSetup, StableId } from "@firedrill-tools/contracts";
+import { Sha256Schema } from "@firedrill-tools/contracts";
+import type { LoadedWorldBuild } from "@firedrill-tools/world-build";
+import { loadWorldBuild } from "@firedrill-tools/world-build";
 import { FiredrillProjectError } from "./project-error.js";
 
 export interface PreparedExecutableBuild {

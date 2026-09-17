@@ -9,9 +9,9 @@ export async function executeCloudCommand(arguments_: readonly string[], io: Cli
   try {
     let entry: string;
     try {
-      entry = createRequire(join(io.cwd, "package.json")).resolve("@firedrill/cloud/cli");
+      entry = createRequire(join(io.cwd, "package.json")).resolve("@firedrill-tools/cloud/cli");
     } catch {
-      entry = createRequire(import.meta.url).resolve("@firedrill/cloud/cli");
+      entry = createRequire(import.meta.url).resolve("@firedrill-tools/cloud/cli");
     }
     // Fixed integration name above, not a user-selected path or remote import.
     const extension = (await import(pathToFileURL(entry).href)) as {
@@ -21,7 +21,7 @@ export async function executeCloudCommand(arguments_: readonly string[], io: Cli
     run = extension.runCloudCli;
   } catch {
     const message =
-      "The optional cloud client is unavailable or failed to start. Install @firedrill/cloud alongside @firedrill/cli. Local commands remain available without it.";
+      "The optional cloud client is unavailable or failed to start. Install @firedrill-tools/cloud alongside @firedrill-tools/cli. Local commands remain available without it.";
     if (arguments_.includes("--json"))
       io.stdout.write(
         `${JSON.stringify({ schemaVersion: 1, command: "cloud", status: "failed", code: "FD_CLOUD_EXTENSION_UNAVAILABLE", message })}\n`,

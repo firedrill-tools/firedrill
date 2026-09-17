@@ -11,8 +11,8 @@ import fs, {
 import { syncBuiltinESMExports } from "node:module";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import type { RunCaptureHandle, RunResult } from "@firedrill/contracts";
-import { RunIdSchema } from "@firedrill/contracts";
+import type { RunCaptureHandle, RunResult } from "@firedrill-tools/contracts";
+import { RunIdSchema } from "@firedrill-tools/contracts";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { LocalCaptureManager } from "../src/capture.js";
 import { type AgentInvocation, runDrills, verifyReport } from "../src/index.js";

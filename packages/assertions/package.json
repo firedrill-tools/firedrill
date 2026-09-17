@@ -1,5 +1,5 @@
 {
-  "name": "@firedrill/assertions",
+  "name": "@firedrill-tools/assertions",
   "version": "0.1.0-rc.1",
   "description": "Deterministic assertion evaluation for Firedrill worlds",
   "license": "Apache-2.0",
@@ -32,8 +32,8 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "@firedrill/contracts": "workspace:*",
-    "@firedrill/world-store": "workspace:*"
+    "@firedrill-tools/contracts": "workspace:*",
+    "@firedrill-tools/world-store": "workspace:*"
   },
   "devDependencies": {
     "typescript": "5.9.3",

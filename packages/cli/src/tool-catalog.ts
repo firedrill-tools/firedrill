@@ -1,7 +1,7 @@
 import { existsSync, readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { inspectInstalledToolPackage } from "@firedrill/compiler";
+import { inspectInstalledToolPackage } from "@firedrill-tools/compiler";
 import { type ToolIndex, type ToolIndexEntry, ToolIndexSchema } from "./tool-index-schema.js";
 
 export interface ReadyTool {

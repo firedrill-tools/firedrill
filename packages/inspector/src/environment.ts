@@ -1,7 +1,12 @@
 import { timingSafeEqual } from "node:crypto";
 import type { IncomingMessage, ServerResponse } from "node:http";
-import type { LocalWorld, LocalWorldBinding, LocalWorldCall, LocalWorldDescription } from "@firedrill/sdk";
-import { FiredrillProjectError } from "@firedrill/sdk";
+import type {
+  LocalWorld,
+  LocalWorldBinding,
+  LocalWorldCall,
+  LocalWorldDescription,
+} from "@firedrill-tools/sdk";
+import { FiredrillProjectError } from "@firedrill-tools/sdk";
 import { redactEnvironmentValue } from "./environment-redaction.js";
 
 /** The caller owns this runtime and its listeners; closing the inspector does not stop them. */

@@ -3,7 +3,7 @@ import { spawn, spawnSync } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync } from "node:fs";
 import { createServer } from "node:net";
 import { join } from "node:path";
-import { mcpToolName } from "@firedrill/protocol-mcp";
+import { mcpToolName } from "@firedrill-tools/protocol-mcp";
 import { Client, StreamableHTTPClientTransport } from "@modelcontextprotocol/client";
 
 // This driver is copied into the existing packed consumer. The CLI and worlds
@@ -33,9 +33,9 @@ assert.equal(existsSync(join(root, "firedrill.json")), false);
 const initialized = command([
   "init",
   "--tool",
-  "@firedrill/tool-work-queue",
+  "@firedrill-tools/tool-work-queue",
   "--tool",
-  "@firedrill/tool-github-issues",
+  "@firedrill-tools/tool-github-issues",
 ]);
 assert.equal(initialized.status, "initialized");
 assert.equal(initialized.sourceValidated, true);

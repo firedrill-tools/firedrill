@@ -1,4 +1,4 @@
-# `@firedrill/sdk`
+# `@firedrill-tools/sdk`
 
 The repository-level TypeScript API for Firedrill's complete local loop. Start synthetic Tools and baseline data with `createLocalWorld()`; run actual agent tests with `runDrills()`. Both use the same world runtime. The testing API creates an isolated world per trial, invokes the declared agent target, evaluates consequences, and writes and verifies every report format.
 
@@ -7,7 +7,7 @@ The repository-level TypeScript API for Firedrill's complete local loop. Start s
 No scenario, drill, target, or agent is required:
 
 ```ts
-import { createLocalWorld } from "@firedrill/sdk";
+import { createLocalWorld } from "@firedrill-tools/sdk";
 
 const world = await createLocalWorld({ root: process.cwd() });
 const binding = await world.listen({ actorId: "operator", protocols: ["http", "mcp"] });
@@ -40,7 +40,7 @@ The handle can call a Tool as a declared actor, inspect current state and causal
 ## Run an agent drill
 
 ```ts
-import { runDrills } from "@firedrill/sdk";
+import { runDrills } from "@firedrill-tools/sdk";
 
 const result = await runDrills({
   root: process.cwd(),
@@ -97,7 +97,7 @@ expect(result.verdict).toBe("passed");
 
 `setup.scenario` layers actors, state actions, faults, initial events, `toolOverrides`, and optional virtual time after the drill's declared scenario. A later `upsert` for the same Tool namespace and row becomes that trial's starting value. `setup.tools.packages` selects an installed reusable Tool for this run; `behaviorOverrides` points to a repository-relative deterministic module that must implement the already-declared Tool manifest. Canonical behavior must be reproducible source, not an unrecorded closure.
 
-For existing imported functions or SDK methods, install `mockTool(binding, options)` from `@firedrill/sdk/testing` using your test runner's module mock or spy. It preserves synchronous/Promise signatures and native error mapping while delegating to the same world operation. Production agent code stays unchanged. Declarative `toolOverrides` provide baseline → scenario → drill → per-test return/error/original rules, optional argument/actor matching, and durable `times` limits. See [test-side mocking](../../docs/test-mocking.md) for the complete example, precedence, reset and interception boundaries.
+For existing imported functions or SDK methods, install `mockTool(binding, options)` from `@firedrill-tools/sdk/testing` using your test runner's module mock or spy. It preserves synchronous/Promise signatures and native error mapping while delegating to the same world operation. Production agent code stays unchanged. Declarative `toolOverrides` provide baseline → scenario → drill → per-test return/error/original rules, optional argument/actor matching, and durable `times` limits. See [test-side mocking](../../docs/test-mocking.md) for the complete example, precedence, reset and interception boundaries.
 
 `setup.bindings.environment` maps the configuration names an existing agent already consumes to invocation-scoped Firedrill HTTP, MCP, or CLI values. A command target receives the projected variables automatically. A caller-owned target passes `binding.environment` into its existing configuration seam. The canonical `FIREDRILL_*` values remain available, and an unavailable protocol mapping fails before the agent starts.
 

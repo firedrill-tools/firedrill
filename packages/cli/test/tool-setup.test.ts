@@ -11,7 +11,7 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
-import { compileWorld } from "@firedrill/compiler";
+import { compileWorld } from "@firedrill-tools/compiler";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { addToolPackages } from "../src/index.js";
 import { addToolPackage, createTool, FiredrillToolSetupError } from "../src/tool-setup.js";

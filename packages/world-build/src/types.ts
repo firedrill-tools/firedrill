@@ -1,6 +1,11 @@
-import type { Diagnostic } from "@firedrill/contracts";
-import type { ToolDefinition } from "@firedrill/tool-sdk";
-import type { BuildManifest, CanonicalWorldIr, PackageLock, ResolvedRunSetup } from "@firedrill/world-ir";
+import type { Diagnostic } from "@firedrill-tools/contracts";
+import type { ToolDefinition } from "@firedrill-tools/tool-sdk";
+import type {
+  BuildManifest,
+  CanonicalWorldIr,
+  PackageLock,
+  ResolvedRunSetup,
+} from "@firedrill-tools/world-ir";
 
 export interface LoadedToolUiAsset {
   readonly path: string;

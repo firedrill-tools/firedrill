@@ -14,7 +14,7 @@ import type {
   ToolEventContract,
   ToolOverrideEvidence,
   ToolPackageManifest,
-} from "@firedrill/contracts";
+} from "@firedrill-tools/contracts";
 import {
   CorrelationIdSchema,
   canonicalJson,
@@ -29,7 +29,7 @@ import {
   Sha256Schema,
   StableIdSchema,
   VirtualTimeSchema,
-} from "@firedrill/contracts";
+} from "@firedrill-tools/contracts";
 import type {
   ToolActor,
   ToolContext,
@@ -37,15 +37,15 @@ import type {
   ToolExecutionSource,
   ToolOperationHandler,
   ToolSubscriptionHandler,
-} from "@firedrill/tool-sdk";
-import { isToolFailure, ToolFailure } from "@firedrill/tool-sdk";
+} from "@firedrill-tools/tool-sdk";
+import { isToolFailure, ToolFailure } from "@firedrill-tools/tool-sdk";
 import type {
   EvidenceDraft,
   StoredActor,
   WorldStore,
   WorldTransaction,
   WorldTransactionResult,
-} from "@firedrill/world-store";
+} from "@firedrill-tools/world-store";
 import type { ValidateFunction } from "ajv";
 import { satisfies, validRange } from "semver";
 import { ExecutionAbort, frameworkError, toolError, worldError } from "./errors.js";

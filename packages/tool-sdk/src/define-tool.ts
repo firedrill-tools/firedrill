@@ -1,4 +1,4 @@
-import { ToolPackageManifestSchema } from "@firedrill/contracts";
+import { ToolPackageManifestSchema } from "@firedrill-tools/contracts";
 import type { ToolDefinition, ToolDefinitionInput } from "./types.js";
 import { defineToolBehavior } from "./define-behavior.js";
 

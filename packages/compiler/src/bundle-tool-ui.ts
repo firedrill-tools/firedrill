@@ -18,8 +18,8 @@ import {
   ToolUiPathSchema,
   type ToolUiSource,
   toolUiMediaType,
-} from "@firedrill/contracts";
-import { sha256Text, type ToolUiLock, ToolUiLockSchema } from "@firedrill/world-ir";
+} from "@firedrill-tools/contracts";
+import { sha256Text, type ToolUiLock, ToolUiLockSchema } from "@firedrill-tools/world-ir";
 import { diagnostic } from "./diagnostics.js";
 
 export interface BundledToolUi {

@@ -1,4 +1,4 @@
-# @firedrill/protocol-cli
+# @firedrill-tools/protocol-cli
 
 The local CLI adapter for a running Firedrill world. A drill that declares a
 `cli` binding exposes the same Tool operations and state consequences as the

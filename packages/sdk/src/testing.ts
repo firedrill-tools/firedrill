@@ -4,8 +4,8 @@ import type {
   JsonValue,
   OperationOutcome,
   OperationRef,
-} from "@firedrill/contracts";
-import { JsonObjectSchema, OperationOutcomeSchema, OperationRefSchema } from "@firedrill/contracts";
+} from "@firedrill-tools/contracts";
+import { JsonObjectSchema, OperationOutcomeSchema, OperationRefSchema } from "@firedrill-tools/contracts";
 import type { AgentBinding } from "./run-drills.js";
 
 export interface MockToolOptions<Arguments extends readonly unknown[], Result = JsonValue> {

@@ -12,11 +12,11 @@ function consumer(module?: string) {
   const root = mkdtempSync(join(tmpdir(), "firedrill-cloud-cli-test-"));
   roots.push(root);
   if (module !== undefined) {
-    const directory = join(root, "node_modules", "@firedrill", "cloud");
+    const directory = join(root, "node_modules", "@firedrill-tools", "cloud");
     mkdirSync(directory, { recursive: true });
     writeFileSync(
       join(directory, "package.json"),
-      JSON.stringify({ name: "@firedrill/cloud", type: "module", exports: { "./cli": "./cloud.mjs" } }),
+      JSON.stringify({ name: "@firedrill-tools/cloud", type: "module", exports: { "./cli": "./cloud.mjs" } }),
     );
     writeFileSync(join(directory, "cloud.mjs"), module);
   }

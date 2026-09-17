@@ -32,7 +32,7 @@ import {
   ToolStateContractSchema,
   VirtualTimeSchema,
   WorldInstanceIdSchema,
-} from "@firedrill/contracts";
+} from "@firedrill-tools/contracts";
 import { z } from "zod";
 
 const RelativeSourcePathSchema = z

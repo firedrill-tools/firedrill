@@ -1,4 +1,4 @@
-import { defineToolBehavior, type ToolContext, type ToolOperationHandler } from "@firedrill/tool-sdk";
+import { defineToolBehavior, type ToolContext, type ToolOperationHandler } from "@firedrill-tools/tool-sdk";
 import { failure, nextVersion, page, route } from "./support.js";
 
 type Input = Parameters<ToolOperationHandler>[0];

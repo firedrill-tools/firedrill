@@ -1,4 +1,4 @@
-export type { CallbackReceiver } from "@firedrill/drills";
+export type { CallbackReceiver } from "@firedrill-tools/drills";
 export type {
   CaptureDriver,
   CaptureDriverContext,

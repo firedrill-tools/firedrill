@@ -1,13 +1,18 @@
 import { createHash, randomUUID } from "node:crypto";
 import { existsSync, lstatSync, readdirSync, readFileSync, realpathSync } from "node:fs";
 import { extname, isAbsolute, join, relative, resolve, sep } from "node:path";
-import type { ErrorEnvelope, RunId, RunResult, StableId } from "@firedrill/contracts";
-import { PackageIdSchema, RunIdSchema, StableIdSchema } from "@firedrill/contracts";
-import { renderSavedReport, verifyLocalReport } from "@firedrill/reporters";
-import type { AgentCallback, CallbackReceiver, LocalRunComparison, RunDrillsResult } from "@firedrill/sdk";
-import { compareRuns, FiredrillProjectError, runDrills } from "@firedrill/sdk";
-import type { WorldReader } from "@firedrill/world-store";
-import { SqliteWorldReader } from "@firedrill/world-store-sqlite";
+import type { ErrorEnvelope, RunId, RunResult, StableId } from "@firedrill-tools/contracts";
+import { PackageIdSchema, RunIdSchema, StableIdSchema } from "@firedrill-tools/contracts";
+import { renderSavedReport, verifyLocalReport } from "@firedrill-tools/reporters";
+import type {
+  AgentCallback,
+  CallbackReceiver,
+  LocalRunComparison,
+  RunDrillsResult,
+} from "@firedrill-tools/sdk";
+import { compareRuns, FiredrillProjectError, runDrills } from "@firedrill-tools/sdk";
+import type { WorldReader } from "@firedrill-tools/world-store";
+import { SqliteWorldReader } from "@firedrill-tools/world-store-sqlite";
 import type {
   SimulationEvidencePage,
   SimulationProject,

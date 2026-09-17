@@ -1,6 +1,14 @@
 # Release evidence
 
-Firedrill does not publish from a developer laptop. A release candidate is built from committed, clean source on GitHub-hosted CI, and publication remains a separate authorized action.
+Release archives are built from committed, clean source on GitHub-hosted CI.
+Publication is a separate release-owner action: download the exact CI bundle,
+verify its checksums and source revision, then publish those archives. Never
+rebuild an archive on a workstation and substitute it for the reviewed CI output.
+
+The npm organization is `firedrill-tools`. All framework packages publish under
+`@firedrill-tools/`; the executable remains `firedrill`. Release candidates use
+the `next` dist-tag, not `latest`. Publish dependencies before their consumers,
+and verify a clean registry installation before announcing the release.
 
 ## Local rehearsal
 

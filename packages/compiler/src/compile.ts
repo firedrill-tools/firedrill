@@ -18,7 +18,7 @@ import type {
   RunWorldSetup,
   ScenarioDefinition,
   ToolPackageManifest,
-} from "@firedrill/contracts";
+} from "@firedrill-tools/contracts";
 import {
   canonicalJson,
   compareStableStrings,
@@ -29,8 +29,8 @@ import {
   SourcePathSchema,
   StableIdSchema,
   TargetDescriptorSchema,
-} from "@firedrill/contracts";
-import type { BuildProvenanceEntry, CanonicalWorldIr, ResolvedRunSetup } from "@firedrill/world-ir";
+} from "@firedrill-tools/contracts";
+import type { BuildProvenanceEntry, CanonicalWorldIr, ResolvedRunSetup } from "@firedrill-tools/world-ir";
 import {
   BuildIdentitySchema,
   BuildManifestSchema,
@@ -38,7 +38,7 @@ import {
   PackageLockSchema,
   ResolvedRunSetupSchema,
   semanticHash,
-} from "@firedrill/world-ir";
+} from "@firedrill-tools/world-ir";
 import { satisfies, validRange } from "semver";
 import type { z } from "zod";
 import { bundleTool } from "./bundle-tool.js";

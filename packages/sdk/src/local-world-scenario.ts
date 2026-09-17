@@ -10,15 +10,15 @@ import {
   writeFileSync,
 } from "node:fs";
 import { dirname, isAbsolute, join, relative, resolve } from "node:path";
-import { compileWorld, ProjectConfigSchema, ScenarioSourceSchema } from "@firedrill/compiler";
+import { compileWorld, ProjectConfigSchema, ScenarioSourceSchema } from "@firedrill-tools/compiler";
 import {
   canonicalJson,
   compareStableStrings,
   type JsonObject,
   PackageIdSchema,
   StableIdSchema,
-} from "@firedrill/contracts";
-import type { LoadedWorldBuild } from "@firedrill/world-build";
+} from "@firedrill-tools/contracts";
+import type { LoadedWorldBuild } from "@firedrill-tools/world-build";
 import type { LocalWorld } from "./local-world.js";
 import { FiredrillProjectError } from "./project-error.js";
 

@@ -1,6 +1,6 @@
-import { AssertionDefinitionSchema, EvidenceEntrySchema } from "@firedrill/contracts";
-import type { EvidenceEntry, OperationOutcome } from "@firedrill/contracts";
-import type { StateScanOptions, StoredStateRecord } from "@firedrill/world-store";
+import { AssertionDefinitionSchema, EvidenceEntrySchema } from "@firedrill-tools/contracts";
+import type { EvidenceEntry, OperationOutcome } from "@firedrill-tools/contracts";
+import type { StateScanOptions, StoredStateRecord } from "@firedrill-tools/world-store";
 import { describe, expect, it } from "vitest";
 import { AssertionEvidenceIndex, evaluateAssertions } from "../src/index.js";
 

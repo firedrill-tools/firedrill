@@ -6,8 +6,8 @@ import type {
   OperationInvocation,
   OperationOutcome,
   VirtualTime,
-} from "@firedrill/contracts";
-import type { CallbackTransition, WorldTransaction } from "@firedrill/world-store";
+} from "@firedrill-tools/contracts";
+import type { CallbackTransition, WorldTransaction } from "@firedrill-tools/world-store";
 import Database from "better-sqlite3";
 import { afterEach, describe, expect, it } from "vitest";
 import { SqliteWorldReader, SqliteWorldStore } from "../src/index.js";

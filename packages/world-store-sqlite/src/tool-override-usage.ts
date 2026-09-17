@@ -1,5 +1,5 @@
-import type { PackageId, StableId } from "@firedrill/contracts";
-import { PackageIdSchema, StableIdSchema } from "@firedrill/contracts";
+import type { PackageId, StableId } from "@firedrill-tools/contracts";
+import { PackageIdSchema, StableIdSchema } from "@firedrill-tools/contracts";
 import type Database from "better-sqlite3";
 import { decodeStoredCount } from "./codec.js";
 

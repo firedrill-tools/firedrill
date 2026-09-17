@@ -1,5 +1,5 @@
 {
-  "name": "@firedrill/contracts",
+  "name": "@firedrill-tools/contracts",
   "version": "0.1.0-rc.1",
   "description": "Runtime-safe public contracts for the Firedrill framework",
   "license": "Apache-2.0",

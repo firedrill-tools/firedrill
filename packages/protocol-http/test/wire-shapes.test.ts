@@ -1,9 +1,9 @@
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { defineTool } from "@firedrill/tool-sdk";
-import { BoundWorldClient, WorldKernel } from "@firedrill/world-kernel";
-import { SqliteWorldStore } from "@firedrill/world-store-sqlite";
+import { defineTool } from "@firedrill-tools/tool-sdk";
+import { BoundWorldClient, WorldKernel } from "@firedrill-tools/world-kernel";
+import { SqliteWorldStore } from "@firedrill-tools/world-store-sqlite";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { HttpWireRequest } from "../src/index.js";
 import {

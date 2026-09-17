@@ -4,7 +4,7 @@
   "pnpm": ">=9.15 <11",
   "packageManager": "pnpm@9.15.4",
   "cli": {
-    "package": "@firedrill/cli",
+    "package": "@firedrill-tools/cli",
     "binary": "firedrill",
     "entrypoint": "./dist/bin.js",
     "helpCommands": [
@@ -41,121 +41,121 @@
   },
   "packages": [
     {
-      "name": "@firedrill/agent",
+      "name": "@firedrill-tools/agent",
       "directory": "packages/agent",
       "layer": "adapter",
       "exports": [".", "./browser"]
     },
     {
-      "name": "@firedrill/browser-tests",
+      "name": "@firedrill-tools/browser-tests",
       "directory": "packages/browser-tests",
       "layer": "adapter",
       "exports": [".", "./contracts"]
     },
     {
-      "name": "@firedrill/assertions",
+      "name": "@firedrill-tools/assertions",
       "directory": "packages/assertions",
       "layer": "core",
       "exports": ["."]
     },
     {
-      "name": "@firedrill/cli",
+      "name": "@firedrill-tools/cli",
       "directory": "packages/cli",
       "layer": "app",
       "exports": [".", "./schema/tool-index.json", "./tool-discovery"]
     },
     {
-      "name": "@firedrill/compiler",
+      "name": "@firedrill-tools/compiler",
       "directory": "packages/compiler",
       "layer": "adapter",
       "exports": [".", "./schema/*"]
     },
     {
-      "name": "@firedrill/contracts",
+      "name": "@firedrill-tools/contracts",
       "directory": "packages/contracts",
       "layer": "core",
       "exports": [".", "./schema/*", "./schemas"]
     },
     {
-      "name": "@firedrill/drills",
+      "name": "@firedrill-tools/drills",
       "directory": "packages/drills",
       "layer": "adapter",
       "exports": ["."]
     },
     {
-      "name": "@firedrill/inspector",
+      "name": "@firedrill-tools/inspector",
       "directory": "packages/inspector",
       "layer": "adapter",
       "exports": ["."]
     },
     {
-      "name": "@firedrill/protocol-cli",
+      "name": "@firedrill-tools/protocol-cli",
       "directory": "packages/protocol-cli",
       "layer": "adapter",
       "exports": ["."]
     },
     {
-      "name": "@firedrill/protocol-http",
+      "name": "@firedrill-tools/protocol-http",
       "directory": "packages/protocol-http",
       "layer": "adapter",
       "exports": ["."]
     },
     {
-      "name": "@firedrill/protocol-mcp",
+      "name": "@firedrill-tools/protocol-mcp",
       "directory": "packages/protocol-mcp",
       "layer": "adapter",
       "exports": ["."]
     },
     {
-      "name": "@firedrill/reporters",
+      "name": "@firedrill-tools/reporters",
       "directory": "packages/reporters",
       "layer": "adapter",
       "exports": ["."]
     },
     {
-      "name": "@firedrill/sdk",
+      "name": "@firedrill-tools/sdk",
       "directory": "packages/sdk",
       "layer": "adapter",
       "exports": [".", "./testing"]
     },
     {
-      "name": "@firedrill/simulation",
+      "name": "@firedrill-tools/simulation",
       "directory": "packages/simulation",
       "layer": "adapter",
       "exports": ["."]
     },
     {
-      "name": "@firedrill/tool-sdk",
+      "name": "@firedrill-tools/tool-sdk",
       "directory": "packages/tool-sdk",
       "layer": "core",
       "exports": [".", "./behavior-runtime", "./package.json"]
     },
     {
-      "name": "@firedrill/world-build",
+      "name": "@firedrill-tools/world-build",
       "directory": "packages/world-build",
       "layer": "adapter",
       "exports": ["."]
     },
     {
-      "name": "@firedrill/world-ir",
+      "name": "@firedrill-tools/world-ir",
       "directory": "packages/world-ir",
       "layer": "core",
       "exports": [".", "./schema/*"]
     },
     {
-      "name": "@firedrill/world-kernel",
+      "name": "@firedrill-tools/world-kernel",
       "directory": "packages/world-kernel",
       "layer": "core",
       "exports": ["."]
     },
     {
-      "name": "@firedrill/world-store",
+      "name": "@firedrill-tools/world-store",
       "directory": "packages/world-store",
       "layer": "core",
       "exports": ["."]
     },
     {
-      "name": "@firedrill/world-store-sqlite",
+      "name": "@firedrill-tools/world-store-sqlite",
       "directory": "packages/world-store-sqlite",
       "layer": "core",
       "exports": ["."]
