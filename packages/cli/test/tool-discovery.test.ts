@@ -69,7 +69,7 @@ describe("independent Tool discovery", () => {
   it("reads the bundled catalog without a network request and retains readyTools behavior", async () => {
     const root = directory();
     const network = vi.spyOn(globalThis, "fetch").mockRejectedValue(new Error("No network permitted"));
-    const result = await discoverTools({ root });
+    const result = await discoverTools({ root, limit: 100 });
     const bundled = readyTools(root);
     expect(result.source.kind).toBe("bundled");
     expect(result.total).toBe(bundled.length);

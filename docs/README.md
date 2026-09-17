@@ -74,6 +74,7 @@ The individual-developer loop is local and needs no Firedrill account. An agent
 that uses a model still needs its own provider setup. A seeded synthetic world
 does not make live model output deterministic.
 
-Packages are currently an unpublished release candidate. The
-[root README](../README.md#installation) gives source-checkout
-commands; do not assume an npm release is available.
+Framework packages are published as a release candidate under the
+`@firedrill-tools` npm scope. Start with the
+[root README](../README.md#installation), and keep direct Firedrill dependencies
+on the same release line.

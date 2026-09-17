@@ -4,8 +4,15 @@ Use a browser test when the application or agent you want to exercise has a UI.
 Firedrill opens a fresh Playwright Chromium context, follows explicit steps, and
 checks the visible result. Existing headless agents need none of this.
 
-Packages are pre-release and unpublished. From this checkout, install dependencies
-and the browser once (`pnpm --filter @firedrill-tools/browser-tests exec playwright install chromium`).
+Packages are pre-release and published under the `@firedrill-tools` npm scope.
+Install the package and matching browser once:
+
+```sh
+pnpm add -D @firedrill-tools/browser-tests@next
+pnpm dlx playwright@1.62.1 install chromium
+```
+
+From a framework checkout, use `pnpm --filter @firedrill-tools/browser-tests exec playwright install chromium`.
 Browser binaries are not downloaded when installing Firedrill packages.
 
 For a packed consumer, install Chromium with

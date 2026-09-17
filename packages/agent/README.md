@@ -6,12 +6,11 @@ The package is not required to define worlds or run drills. It never owns verdic
 
 Running it invokes Anthropic through the Claude Agent SDK and may send repository content selected during the session to Anthropic under Anthropic's applicable terms. It does not send source to Firedrill. The wrapper is Apache-2.0; the Claude Agent SDK dependency is distributed under Anthropic's own terms.
 
-Packages are pre-release and not published yet. The commands below describe the
-installed-package workflow; today use a source checkout or reviewed packed
-artifacts as described in the [local environment guide](../../docs/local-environment.md).
+Packages are pre-release and published under the `@firedrill-tools` npm scope
+with the `next` dist-tag.
 
 ```sh
-pnpm add -D @firedrill-tools/cli @firedrill-tools/agent
+pnpm add -D @firedrill-tools/cli@next @firedrill-tools/agent@next
 export ANTHROPIC_API_KEY=your_key
 firedrill init --path firedrill-agent
 firedrill agent

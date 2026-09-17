@@ -6,191 +6,311 @@ Browse the catalog from any project with `firedrill tool list`, narrow it with `
 
 A Tool may also come from any npm package, Git repository, local directory, or private catalog that follows the same open contract. Inclusion here is optional and does not replace source review or conformance checks.
 
-## [Attio](https://github.com/firedrill-tools/firedrill-community-tools/tree/971b16a030adaaa267a4e8b2a730d3ade395ed34/packages/attio)
+## [Attio](https://github.com/firedrill-tools/firedrill-tools/tree/b73cba39bd37aa06685f0087cbe0dcccbb480eda/packages/attio)
 
 Synthetic Attio workspace (REST API v2 subset: people, companies, deals, attributes, lists and entries, notes, tasks, workspace members) Tool package for Firedrill
 
-- Package: `@firedrill-community/tool-attio@0.1.0`
+- Package: `@firedrill-tools/tool-attio@0.1.0`
 - Tool ID: `attio`
 - Lifecycle: `active`
 - Operations: 27
 - Interfaces: `browser app`, `http`, `mcp`, `cli`, `function`
 
-## [Discord](https://github.com/firedrill-tools/firedrill-community-tools/tree/971b16a030adaaa267a4e8b2a730d3ade395ed34/packages/discord)
+## [Box](https://github.com/firedrill-tools/firedrill-tools/tree/b73cba39bd37aa06685f0087cbe0dcccbb480eda/packages/box)
+
+Synthetic Box Content API 2.0 subset (folders, files, versions, trash, search, collaborations, comments, events) as a Firedrill Tool
+
+- Package: `@firedrill-tools/tool-box@0.1.0`
+- Tool ID: `box`
+- Lifecycle: `active`
+- Operations: 23
+- Interfaces: `http`, `mcp`, `cli`, `function`
+
+## [Check](https://github.com/firedrill-tools/firedrill-tools/tree/b73cba39bd37aa06685f0087cbe0dcccbb480eda/packages/check)
+
+Synthetic Check payroll sandbox partner account (companies, workplaces, employees, earning rates, pay schedules, payrolls with preview/approve/reopen, payroll items; Check-shaped REST routes) Tool package for Firedrill
+
+- Package: `@firedrill-tools/tool-check@0.1.1`
+- Tool ID: `check`
+- Lifecycle: `active`
+- Operations: 25
+- Interfaces: `browser app`, `http`, `mcp`, `cli`, `function`
+
+## [Datadog](https://github.com/firedrill-tools/firedrill-tools/tree/b73cba39bd37aa06685f0087cbe0dcccbb480eda/packages/datadog)
+
+Synthetic Datadog organization (monitors with deterministic evaluation, events, metric intake and queries, dashboards, incidents; Datadog-shaped REST routes) Tool package for Firedrill
+
+- Package: `@firedrill-tools/tool-datadog@0.1.0`
+- Tool ID: `datadog`
+- Lifecycle: `active`
+- Operations: 25
+- Interfaces: `browser app`, `http`, `mcp`, `cli`, `function`
+
+## [Discord](https://github.com/firedrill-tools/firedrill-tools/tree/b73cba39bd37aa06685f0087cbe0dcccbb480eda/packages/discord)
 
 Synthetic Discord Tool package for Firedrill: a stateful Discord HTTP API v10 subset (guilds, channels, threads, messages, reactions, members, roles, DMs) at /api/v10
 
-- Package: `@firedrill-community/tool-discord@0.1.0`
+- Package: `@firedrill-tools/tool-discord@0.1.0`
 - Tool ID: `discord`
 - Lifecycle: `active`
 - Operations: 21
 - Interfaces: `browser app`, `http`, `mcp`, `cli`, `function`
 
-## [GitHub](https://github.com/firedrill-tools/firedrill-community-tools/tree/971b16a030adaaa267a4e8b2a730d3ade395ed34/packages/github)
+## [Documenso](https://github.com/firedrill-tools/firedrill-tools/tree/b73cba39bd37aa06685f0087cbe0dcccbb480eda/packages/documenso)
+
+Synthetic Documenso public API v2 subset (documents, recipients, fields, templates, signing lifecycle, audit log) as a Firedrill Tool
+
+- Package: `@firedrill-tools/tool-documenso@0.1.0`
+- Tool ID: `documenso`
+- Lifecycle: `active`
+- Operations: 24
+- Interfaces: `browser app`, `http`, `mcp`, `cli`, `function`
+
+## [Dropbox](https://github.com/firedrill-tools/firedrill-tools/tree/b73cba39bd37aa06685f0087cbe0dcccbb480eda/packages/dropbox)
+
+Synthetic Dropbox account (API v2 subset: files, folders, revisions, search, change feed, shared links) Tool package for Firedrill
+
+- Package: `@firedrill-tools/tool-dropbox@0.1.0`
+- Tool ID: `dropbox`
+- Lifecycle: `active`
+- Operations: 19
+- Interfaces: `browser app`, `http`, `mcp`, `cli`, `function`
+
+## [GitHub](https://github.com/firedrill-tools/firedrill-tools/tree/b73cba39bd37aa06685f0087cbe0dcccbb480eda/packages/github)
 
 Synthetic GitHub instance (REST API 2022-11-28 subset, GitHub MCP server tool names, browser app) Tool package for Firedrill
 
-- Package: `@firedrill-community/tool-github@0.1.0`
+- Package: `@firedrill-tools/tool-github@0.1.0`
 - Tool ID: `github`
 - Lifecycle: `active`
 - Operations: 26
 - Interfaces: `browser app`, `mcp`, `http`, `cli`, `function`
 
-## [Gitlab](https://github.com/firedrill-tools/firedrill-community-tools/tree/971b16a030adaaa267a4e8b2a730d3ade395ed34/packages/gitlab)
+## [Gitlab](https://github.com/firedrill-tools/firedrill-tools/tree/b73cba39bd37aa06685f0087cbe0dcccbb480eda/packages/gitlab)
 
 Synthetic GitLab instance (REST API v4 subset, GitLab MCP server tool-name aliases, browser app) Tool package for Firedrill
 
-- Package: `@firedrill-community/tool-gitlab@0.1.0`
+- Package: `@firedrill-tools/tool-gitlab@0.1.0`
 - Tool ID: `gitlab`
 - Lifecycle: `active`
 - Operations: 26
 - Interfaces: `browser app`, `mcp`, `http`, `cli`, `function`
 
-## [Gmail](https://github.com/firedrill-tools/firedrill-community-tools/tree/971b16a030adaaa267a4e8b2a730d3ade395ed34/packages/gmail)
+## [Gmail](https://github.com/firedrill-tools/firedrill-tools/tree/b73cba39bd37aa06685f0087cbe0dcccbb480eda/packages/gmail)
 
 Synthetic Gmail (Gmail API v1 subset + Google Gmail MCP tool names) Tool package for Firedrill, with a browser mail client
 
-- Package: `@firedrill-community/tool-gmail@0.1.0`
+- Package: `@firedrill-tools/tool-gmail@0.1.1`
 - Tool ID: `gmail`
 - Lifecycle: `active`
 - Operations: 27
 - Interfaces: `browser app`, `mcp`, `http`, `cli`, `function`
 
-## [Google Calendar](https://github.com/firedrill-tools/firedrill-community-tools/tree/971b16a030adaaa267a4e8b2a730d3ade395ed34/packages/google-calendar)
+## [Google Calendar](https://github.com/firedrill-tools/firedrill-tools/tree/b73cba39bd37aa06685f0087cbe0dcccbb480eda/packages/google-calendar)
 
 Synthetic Google Calendar (Calendar API v3 subset + Google Calendar MCP tool names) Tool package for Firedrill
 
-- Package: `@firedrill-community/tool-google-calendar@0.1.0`
+- Package: `@firedrill-tools/tool-google-calendar@0.1.0`
 - Tool ID: `google-calendar`
 - Lifecycle: `active`
 - Operations: 23
 - Interfaces: `browser app`, `mcp`, `http`, `cli`, `function`
 
-## [Google Docs](https://github.com/firedrill-tools/firedrill-community-tools/tree/971b16a030adaaa267a4e8b2a730d3ade395ed34/packages/google-docs)
+## [Google Docs](https://github.com/firedrill-tools/firedrill-tools/tree/b73cba39bd37aa06685f0087cbe0dcccbb480eda/packages/google-docs)
 
 Synthetic Google Docs (Docs API v1 subset + the Drive API v3 endpoints a Docs agent needs) Tool package for Firedrill
 
-- Package: `@firedrill-community/tool-google-docs@0.1.0`
+- Package: `@firedrill-tools/tool-google-docs@0.1.0`
 - Tool ID: `google-docs`
 - Lifecycle: `active`
 - Operations: 22
 - Interfaces: `browser app`, `http`, `mcp`, `cli`, `function`
 
-## [Google Drive](https://github.com/firedrill-tools/firedrill-community-tools/tree/971b16a030adaaa267a4e8b2a730d3ade395ed34/packages/google-drive)
+## [Google Drive](https://github.com/firedrill-tools/firedrill-tools/tree/b73cba39bd37aa06685f0087cbe0dcccbb480eda/packages/google-drive)
 
 Synthetic Google Drive (Drive API v3 subset + Google Drive MCP tool names) Tool package for Firedrill
 
-- Package: `@firedrill-community/tool-google-drive@0.1.0`
+- Package: `@firedrill-tools/tool-google-drive@0.1.0`
 - Tool ID: `google-drive`
 - Lifecycle: `active`
 - Operations: 19
 - Interfaces: `browser app`, `mcp`, `http`, `cli`, `function`
 
-## [Google Sheets](https://github.com/firedrill-tools/firedrill-community-tools/tree/971b16a030adaaa267a4e8b2a730d3ade395ed34/packages/google-sheets)
+## [Google Sheets](https://github.com/firedrill-tools/firedrill-tools/tree/b73cba39bd37aa06685f0087cbe0dcccbb480eda/packages/google-sheets)
 
 Synthetic Google Sheets (Sheets API v4 subset + the Drive API v3 file and sharing endpoints a Sheets agent needs) Tool package for Firedrill
 
-- Package: `@firedrill-community/tool-google-sheets@0.1.0`
+- Package: `@firedrill-tools/tool-google-sheets@0.1.0`
 - Tool ID: `google-sheets`
 - Lifecycle: `active`
 - Operations: 21
 - Interfaces: `browser app`, `http`, `mcp`, `cli`, `function`
 
-## [HubSpot](https://github.com/firedrill-tools/firedrill-community-tools/tree/971b16a030adaaa267a4e8b2a730d3ade395ed34/packages/hubspot)
+## [Google Workspace](https://github.com/firedrill-tools/firedrill-tools/tree/b73cba39bd37aa06685f0087cbe0dcccbb480eda/packages/google-workspace)
+
+Synthetic Google Workspace developer APIs (People v1, Workspace Events v1, Apps Script v1) as a Firedrill Tool
+
+- Package: `@firedrill-tools/tool-google-workspace@0.1.2`
+- Tool ID: `google-workspace`
+- Lifecycle: `active`
+- Operations: 27
+- Interfaces: `http`, `mcp`, `cli`, `function`
+
+## [HubSpot](https://github.com/firedrill-tools/firedrill-tools/tree/b73cba39bd37aa06685f0087cbe0dcccbb480eda/packages/hubspot)
 
 Synthetic HubSpot CRM portal (CRM v3 objects, search, associations v4, owners, pipelines, properties; HubSpot MCP server tool names) Tool package for Firedrill
 
-- Package: `@firedrill-community/tool-hubspot@0.1.0`
+- Package: `@firedrill-tools/tool-hubspot@0.1.0`
 - Tool ID: `hubspot`
 - Lifecycle: `active`
 - Operations: 24
 - Interfaces: `http`, `mcp`, `cli`, `function`
 
-## [Jira](https://github.com/firedrill-tools/firedrill-community-tools/tree/971b16a030adaaa267a4e8b2a730d3ade395ed34/packages/jira)
+## [Jira](https://github.com/firedrill-tools/firedrill-tools/tree/b73cba39bd37aa06685f0087cbe0dcccbb480eda/packages/jira)
 
 Synthetic Jira Cloud site (REST API v3 issues, JQL search, comments, transitions, users, projects; agile 1.0 boards and sprints; Atlassian Remote MCP Server Jira tool names) Tool package for Firedrill
 
-- Package: `@firedrill-community/tool-jira@0.1.0`
+- Package: `@firedrill-tools/tool-jira@0.1.0`
 - Tool ID: `jira`
 - Lifecycle: `active`
 - Operations: 27
 - Interfaces: `mcp`, `http`, `cli`, `function`
 
-## [Linear](https://github.com/firedrill-tools/firedrill-community-tools/tree/971b16a030adaaa267a4e8b2a730d3ade395ed34/packages/linear)
+## [Linear](https://github.com/firedrill-tools/firedrill-tools/tree/b73cba39bd37aa06685f0087cbe0dcccbb480eda/packages/linear)
 
 Synthetic Linear workspace (GraphQL API subset on POST /graphql: viewer, teams, workflow states, labels, projects, cycles, issues, comments; official Linear MCP server tool names) Tool package for Firedrill
 
-- Package: `@firedrill-community/tool-linear@0.1.0`
+- Package: `@firedrill-tools/tool-linear@0.1.0`
 - Tool ID: `linear`
 - Lifecycle: `active`
 - Operations: 24
 - Interfaces: `http`, `mcp`, `cli`, `function`
 
-## [Notion](https://github.com/firedrill-tools/firedrill-community-tools/tree/971b16a030adaaa267a4e8b2a730d3ade395ed34/packages/notion)
+## [Linkedin](https://github.com/firedrill-tools/firedrill-tools/tree/b73cba39bd37aa06685f0087cbe0dcccbb480eda/packages/linkedin)
+
+Synthetic LinkedIn member network (versioned /rest Community Management subset plus /v2 consumer endpoints: posts, comments, reactions, social metadata, organizations, connections) as a Firedrill Tool
+
+- Package: `@firedrill-tools/tool-linkedin@0.1.0`
+- Tool ID: `linkedin`
+- Lifecycle: `active`
+- Operations: 24
+- Interfaces: `browser app`, `http`, `mcp`, `cli`, `function`
+
+## [Netsuite](https://github.com/firedrill-tools/firedrill-tools/tree/b73cba39bd37aa06685f0087cbe0dcccbb480eda/packages/netsuite)
+
+Synthetic NetSuite Tool for Firedrill: SuiteTalk REST record API subset (customer, salesOrder, invoice, customerPayment, inventoryItem, subsidiary) plus SuiteQL over deterministic local state.
+
+- Package: `@firedrill-tools/tool-netsuite@0.1.1`
+- Tool ID: `netsuite`
+- Lifecycle: `active`
+- Operations: 26
+- Interfaces: `browser app`, `http`, `mcp`, `cli`, `function`
+
+## [Notion](https://github.com/firedrill-tools/firedrill-tools/tree/b73cba39bd37aa06685f0087cbe0dcccbb480eda/packages/notion)
 
 Synthetic Notion workspace (REST API 2025-09-03 pages, data sources, blocks, comments, search, users; page-markdown endpoints; Notion MCP server tool names) Tool package for Firedrill
 
-- Package: `@firedrill-community/tool-notion@0.1.0`
+- Package: `@firedrill-tools/tool-notion@0.1.0`
 - Tool ID: `notion`
 - Lifecycle: `active`
 - Operations: 25
 - Interfaces: `browser app`, `mcp`, `http`, `cli`, `function`
 
-## [Quickbooks](https://github.com/firedrill-tools/firedrill-community-tools/tree/971b16a030adaaa267a4e8b2a730d3ade395ed34/packages/quickbooks)
+## [Quickbooks](https://github.com/firedrill-tools/firedrill-tools/tree/b73cba39bd37aa06685f0087cbe0dcccbb480eda/packages/quickbooks)
 
 Synthetic QuickBooks Online (Accounting API v3 subset) Tool for Firedrill: customers, items, invoices, payments, accounts and the query language over deterministic local state.
 
-- Package: `@firedrill-community/tool-quickbooks@0.1.0`
+- Package: `@firedrill-tools/tool-quickbooks@0.1.1`
 - Tool ID: `quickbooks`
 - Lifecycle: `active`
 - Operations: 25
 - Interfaces: `browser app`, `mcp`, `http`, `cli`, `function`
 
-## [Resend](https://github.com/firedrill-tools/firedrill-community-tools/tree/971b16a030adaaa267a4e8b2a730d3ade395ed34/packages/resend)
+## [Resend](https://github.com/firedrill-tools/firedrill-tools/tree/b73cba39bd37aa06685f0087cbe0dcccbb480eda/packages/resend)
 
 Synthetic Resend team (emails with synthetic delivery, domains, API keys, segments, contacts; Resend-shaped REST routes and MCP tool names) Tool package for Firedrill
 
-- Package: `@firedrill-community/tool-resend@0.1.0`
+- Package: `@firedrill-tools/tool-resend@0.1.0`
 - Tool ID: `resend`
 - Lifecycle: `active`
 - Operations: 26
 - Interfaces: `browser app`, `http`, `mcp`, `cli`, `function`
 
-## [Salesforce](https://github.com/firedrill-tools/firedrill-community-tools/tree/971b16a030adaaa267a4e8b2a730d3ade395ed34/packages/salesforce)
+## [Salesforce](https://github.com/firedrill-tools/firedrill-tools/tree/b73cba39bd37aa06685f0087cbe0dcccbb480eda/packages/salesforce)
 
 Synthetic Salesforce org (Platform REST API subset: sObject rows and upsert by external id, SOQL query/queryAll, parameterized search, sObject Collections, Composite, limits, describe, OpenID userinfo; @salesforce/mcp data tool names) Tool package for Firedrill
 
-- Package: `@firedrill-community/tool-salesforce@0.1.0`
+- Package: `@firedrill-tools/tool-salesforce@0.1.0`
 - Tool ID: `salesforce`
 - Lifecycle: `active`
 - Operations: 20
 - Interfaces: `http`, `mcp`, `cli`, `function`
 
-## [Slack](https://github.com/firedrill-tools/firedrill-community-tools/tree/971b16a030adaaa267a4e8b2a730d3ade395ed34/packages/slack)
+## [Slack](https://github.com/firedrill-tools/firedrill-tools/tree/b73cba39bd37aa06685f0087cbe0dcccbb480eda/packages/slack)
 
 Synthetic Slack workspace (Slack Web API subset at /api/<method>, the reference Slack MCP tool names and a Slack-client browser app) Tool package for Firedrill
 
-- Package: `@firedrill-community/tool-slack@0.1.0`
+- Package: `@firedrill-tools/tool-slack@0.1.0`
 - Tool ID: `slack`
 - Lifecycle: `active`
 - Operations: 25
 - Interfaces: `browser app`, `mcp`, `http`, `cli`, `function`
 
-## [Stripe](https://github.com/firedrill-tools/firedrill-community-tools/tree/971b16a030adaaa267a4e8b2a730d3ade395ed34/packages/stripe)
+## [Stripe](https://github.com/firedrill-tools/firedrill-tools/tree/b73cba39bd37aa06685f0087cbe0dcccbb480eda/packages/stripe)
 
 Synthetic Stripe test-mode account (customers, cards, PaymentIntents, charges, refunds, products, prices, invoices, subscriptions, balance; Stripe REST v1 routes and agent-toolkit MCP tool names) Tool package for Firedrill
 
-- Package: `@firedrill-community/tool-stripe@0.1.0`
+- Package: `@firedrill-tools/tool-stripe@0.1.0`
 - Tool ID: `stripe`
 - Lifecycle: `active`
 - Operations: 38
 - Interfaces: `browser app`, `mcp`, `http`, `cli`, `function`
 
-## [Xero](https://github.com/firedrill-tools/firedrill-community-tools/tree/971b16a030adaaa267a4e8b2a730d3ade395ed34/packages/xero)
+## [Trolley](https://github.com/firedrill-tools/firedrill-tools/tree/b73cba39bd37aa06685f0087cbe0dcccbb480eda/packages/trolley)
+
+Synthetic Trolley sandbox merchant (recipients, payout accounts, batches with quotes and processing, payments, balances; Trolley REST API v1 routes) Tool package for Firedrill
+
+- Package: `@firedrill-tools/tool-trolley@0.1.0`
+- Tool ID: `trolley`
+- Lifecycle: `active`
+- Operations: 24
+- Interfaces: `browser app`, `http`, `mcp`, `cli`, `function`
+
+## [Unified](https://github.com/firedrill-tools/firedrill-tools/tree/b73cba39bd37aa06685f0087cbe0dcccbb480eda/packages/unified)
+
+Synthetic Unified.to workspace (connections, unified CRM and Messaging REST API) as a Firedrill Tool
+
+- Package: `@firedrill-tools/tool-unified@0.1.0`
+- Tool ID: `unified`
+- Lifecycle: `active`
+- Operations: 29
+- Interfaces: `mcp`, `http`, `cli`, `function`
+
+## [Unstructured](https://github.com/firedrill-tools/firedrill-tools/tree/b73cba39bd37aa06685f0087cbe0dcccbb480eda/packages/unstructured)
+
+Synthetic Unstructured account (Partition Endpoint and Workflow Endpoint subset) as a Firedrill Tool
+
+- Package: `@firedrill-tools/tool-unstructured@0.1.3`
+- Tool ID: `unstructured`
+- Lifecycle: `active`
+- Operations: 25
+- Interfaces: `http`, `mcp`, `cli`, `function`
+
+## [Waterfall](https://github.com/firedrill-tools/firedrill-tools/tree/b73cba39bd37aa06685f0087cbe0dcccbb480eda/packages/waterfall)
+
+Synthetic Waterfall account (contact, phone and company enrichment jobs, contact and company search, job change, e-mail verification, account reporter, API keys; Waterfall-shaped REST routes) Tool package for Firedrill
+
+- Package: `@firedrill-tools/tool-waterfall@0.1.0`
+- Tool ID: `waterfall`
+- Lifecycle: `active`
+- Operations: 17
+- Interfaces: `http`, `mcp`, `cli`, `function`
+
+## [Xero](https://github.com/firedrill-tools/firedrill-tools/tree/b73cba39bd37aa06685f0087cbe0dcccbb480eda/packages/xero)
 
 Synthetic Xero Accounting API 2.0 (subset) Tool for Firedrill: organisation, chart of accounts, tax rates, contacts, sales invoices and bills, and payments over deterministic local state.
 
-- Package: `@firedrill-community/tool-xero@0.1.0`
+- Package: `@firedrill-tools/tool-xero@0.1.0`
 - Tool ID: `xero`
 - Lifecycle: `active`
 - Operations: 20

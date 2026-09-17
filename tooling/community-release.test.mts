@@ -20,11 +20,11 @@ function digest(algorithm: "sha256" | "sha512", bytes: Buffer): string {
 }
 
 function activeRecord(root: string) {
-  const archive = "firedrill-community-tool-records-0.1.0.tgz";
+  const archive = "firedrill-tools-tool-records-0.1.0.tgz";
   const bytes = Buffer.from("deterministic package bytes\n");
   writeFileSync(join(root, archive), bytes);
   return {
-    name: "@firedrill-community/tool-records",
+    name: "@firedrill-tools/tool-records",
     version: "0.1.0",
     tool: "records",
     lifecycle: "active",
@@ -40,7 +40,7 @@ function activeRecord(root: string) {
 
 function revokedRecord() {
   return {
-    name: "@firedrill-community/tool-retired",
+    name: "@firedrill-tools/tool-retired",
     version: "0.1.0",
     tool: "retired",
     lifecycle: "revoked",
@@ -57,7 +57,7 @@ function writeCatalog(root: string, packages: readonly unknown[]): string {
     `${JSON.stringify(
       {
         schemaVersion: 1,
-        sourceRepository: "https://github.com/firedrill-tools/firedrill-community-tools.git",
+        sourceRepository: "https://github.com/firedrill-tools/firedrill-tools.git",
         sourceRevision: revision,
         packages,
       },
