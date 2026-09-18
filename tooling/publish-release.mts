@@ -50,7 +50,7 @@ interface NpmCommandResult {
 
 export type NpmCommandRunner = (arguments_: readonly string[]) => NpmCommandResult;
 
-export type PublishOutcome = "published" | "reconciled";
+export type PublishOutcome = "published" | "reconciled" | "accepted";
 
 const repositoryRoot = resolve(import.meta.dirname, "..");
 const npmScope = "@firedrill-run/";
@@ -260,7 +260,11 @@ export function publishArchive(
     return result.status === 0 ? "published" : "reconciled";
   }
   if (result.status === 0) {
-    throw new Error(`npm did not expose ${artifact.name}@${artifact.version} after publish`);
+    // npm may hold a successful upload for publish-time malware scanning before
+    // exposing registry metadata. Never repeat the write just because the
+    // accepted version is not readable yet; a later idempotent rerun will
+    // reconcile the exact archive bytes once scanning completes.
+    return "accepted";
   }
   if (rateLimited(output)) {
     throw new Error(
@@ -312,8 +316,10 @@ async function main(): Promise<void> {
       }
       const outcome = publishArchive(artifact, { provenance, tag });
       process.stdout.write(
-        `${outcome === "reconciled" ? "reconciled" : "published"} and verified: ` +
-          `${artifact.name}@${artifact.version}\n`,
+        outcome === "accepted"
+          ? `accepted by npm; registry scan pending: ${artifact.name}@${artifact.version}\n`
+          : `${outcome === "reconciled" ? "reconciled" : "published"} and verified: ` +
+              `${artifact.name}@${artifact.version}\n`,
       );
     }
   }

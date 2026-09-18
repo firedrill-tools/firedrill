@@ -79,6 +79,19 @@ describe("release publication order", () => {
 });
 
 describe("release publication failure reconciliation", () => {
+  it("does not retry a successful upload while npm publish-time scanning is pending", () => {
+    const commands: string[][] = [];
+    const runNpm: NpmCommandRunner = (arguments_) => {
+      commands.push([...arguments_]);
+      return arguments_[0] === "publish"
+        ? commandResult(0, "+ @firedrill-run/example@1.2.3")
+        : commandResult(1, "", "npm error code E404");
+    };
+
+    expect(publishArchive(publishArtifact(), { provenance: false, tag: "next" }, runNpm)).toBe("accepted");
+    expect(commands.map(([command]) => command)).toEqual(["publish", "view"]);
+  });
+
   it("disables npm fetch retries and stops after one rate-limited registry write", () => {
     const commands: string[][] = [];
     const runNpm: NpmCommandRunner = (arguments_) => {
