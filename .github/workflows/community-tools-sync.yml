@@ -52,15 +52,20 @@ jobs:
           DISPATCH_ARTIFACT_NAME: ${{ github.event.client_payload.artifact_name }}
           DISPATCH_CATALOG_SHA256: ${{ github.event.client_payload.catalog_sha256 }}
           DISPATCH_SOURCE_REF: ${{ github.event.client_payload.source_ref }}
+          DISPATCH_SOURCE_REPOSITORY: ${{ github.event.client_payload.source_repository }}
+          DISPATCH_CONTRACT_VERSION: ${{ github.event.client_payload.contract_version }}
         run: |
           case "$EVENT_NAME" in
             workflow_dispatch)
-              revision="$MANUAL_SHA"; run_id=""; artifact_id=""; artifact_name=""; catalog_sha256=""; source_ref="main" ;;
+              revision="$MANUAL_SHA"; run_id=""; artifact_id=""; artifact_name=""; catalog_sha256=""; source_ref="main"
+              source_repository="firedrill-tools/firedrill-tools"; contract_version="1" ;;
             schedule)
-              revision=""; run_id=""; artifact_id=""; artifact_name=""; catalog_sha256=""; source_ref="main" ;;
+              revision=""; run_id=""; artifact_id=""; artifact_name=""; catalog_sha256=""; source_ref="main"
+              source_repository="firedrill-tools/firedrill-tools"; contract_version="1" ;;
             repository_dispatch)
               revision="$DISPATCH_SHA"; run_id="$DISPATCH_RUN_ID"; artifact_id="$DISPATCH_ARTIFACT_ID"
-              artifact_name="$DISPATCH_ARTIFACT_NAME"; catalog_sha256="$DISPATCH_CATALOG_SHA256"; source_ref="$DISPATCH_SOURCE_REF" ;;
+              artifact_name="$DISPATCH_ARTIFACT_NAME"; catalog_sha256="$DISPATCH_CATALOG_SHA256"; source_ref="$DISPATCH_SOURCE_REF"
+              source_repository="$DISPATCH_SOURCE_REPOSITORY"; contract_version="$DISPATCH_CONTRACT_VERSION" ;;
             *) echo "Unsupported event: $EVENT_NAME" >&2; exit 1 ;;
           esac
           [[ -z "$revision" || "$revision" =~ ^[0-9a-f]{40}$ ]] || { echo "community_sha must be an exact commit" >&2; exit 1; }
@@ -68,11 +73,13 @@ jobs:
           [[ -z "$artifact_id" || "$artifact_id" =~ ^[0-9]+$ ]] || { echo "artifact_id is invalid" >&2; exit 1; }
           [[ -z "$catalog_sha256" || "$catalog_sha256" =~ ^[0-9a-f]{64}$ ]] || { echo "catalog_sha256 is invalid" >&2; exit 1; }
           [[ "$source_ref" == "main" ]] || { echo "only the main community Tool channel may update the default catalog" >&2; exit 1; }
+          [[ "$source_repository" == "firedrill-tools/firedrill-tools" ]] || { echo "only the canonical public Tool repository may update the default catalog" >&2; exit 1; }
+          [[ "$contract_version" == "1" ]] || { echo "community Tool dispatch contract is unsupported" >&2; exit 1; }
           if [[ "$EVENT_NAME" == "repository_dispatch" ]]; then
-            [[ -n "$revision" && -n "$run_id" && -n "$artifact_id" && -n "$artifact_name" && -n "$catalog_sha256" ]] || {
+            [[ -n "$revision" && -n "$run_id" && -n "$artifact_id" && -n "$artifact_name" && -n "$catalog_sha256" && -n "$source_repository" && -n "$contract_version" ]] || {
               echo "repository dispatch is missing immutable release coordinates" >&2; exit 1;
             }
-            [[ "$artifact_name" == "community-tools-$revision" ]] || { echo "artifact_name does not match community_sha" >&2; exit 1; }
+            [[ "$artifact_name" == "firedrill-tools-$revision" ]] || { echo "artifact_name does not match community_sha" >&2; exit 1; }
           fi
           {
             echo "revision=$revision"
