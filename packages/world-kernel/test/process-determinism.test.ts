@@ -3,7 +3,7 @@ import { existsSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { SqliteWorldStore } from "@firedrill-tools/world-store-sqlite";
+import { SqliteWorldStore } from "@firedrill-run/world-store-sqlite";
 import { afterEach, describe, expect, it } from "vitest";
 
 const runner = fileURLToPath(new URL("./process-runner.mjs", import.meta.url));

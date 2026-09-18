@@ -1,5 +1,5 @@
 {
-  "name": "@firedrill-tools/cli",
+  "name": "@firedrill-run/cli",
   "version": "0.1.0-rc.1",
   "description": "Local command-line interface for the Firedrill framework",
   "license": "Apache-2.0",
@@ -44,31 +44,31 @@
   },
   "dependencies": {
     "@modelcontextprotocol/server": "2.0.0",
-    "@firedrill-tools/compiler": "workspace:*",
-    "@firedrill-tools/contracts": "workspace:*",
-    "@firedrill-tools/inspector": "workspace:*",
-    "@firedrill-tools/protocol-cli": "workspace:*",
-    "@firedrill-tools/sdk": "workspace:*",
-    "@firedrill-tools/world-build": "workspace:*",
+    "@firedrill-run/compiler": "workspace:*",
+    "@firedrill-run/contracts": "workspace:*",
+    "@firedrill-run/inspector": "workspace:*",
+    "@firedrill-run/protocol-cli": "workspace:*",
+    "@firedrill-run/sdk": "workspace:*",
+    "@firedrill-run/world-build": "workspace:*",
     "tar": "7.5.22",
     "zod": "4.4.3"
   },
   "peerDependencies": {
-    "@firedrill-tools/browser-tests": "workspace:*",
-    "@firedrill-tools/agent": "workspace:*"
+    "@firedrill-run/browser-tests": "workspace:*",
+    "@firedrill-run/agent": "workspace:*"
   },
   "peerDependenciesMeta": {
-    "@firedrill-tools/browser-tests": {
+    "@firedrill-run/browser-tests": {
       "optional": true
     },
-    "@firedrill-tools/agent": {
+    "@firedrill-run/agent": {
       "optional": true
     }
   },
   "devDependencies": {
-    "@firedrill-tools/browser-tests": "workspace:*",
+    "@firedrill-run/browser-tests": "workspace:*",
     "@modelcontextprotocol/client": "2.0.0",
-    "@firedrill-tools/agent": "workspace:*",
+    "@firedrill-run/agent": "workspace:*",
     "typescript": "5.9.3",
     "vitest": "4.1.11"
   },

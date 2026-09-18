@@ -1,4 +1,4 @@
-import type { SimulationReportAttachments as ReportAttachments } from "@firedrill-tools/simulation";
+import type { SimulationReportAttachments as ReportAttachments } from "@firedrill-run/simulation";
 import type {
   BrowserAvailability,
   BrowserReportPage,

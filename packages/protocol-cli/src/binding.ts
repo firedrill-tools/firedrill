@@ -1,6 +1,6 @@
-import { startHttpWorldBinding } from "@firedrill-tools/protocol-http";
-import type { ToolDefinition } from "@firedrill-tools/tool-sdk";
-import type { BoundWorldClient } from "@firedrill-tools/world-kernel";
+import { startHttpWorldBinding } from "@firedrill-run/protocol-http";
+import type { ToolDefinition } from "@firedrill-run/tool-sdk";
+import type { BoundWorldClient } from "@firedrill-run/world-kernel";
 
 export const FIREDRILL_CLI_URL = "FIREDRILL_CLI_URL";
 export const FIREDRILL_CLI_TOKEN = "FIREDRILL_CLI_TOKEN";

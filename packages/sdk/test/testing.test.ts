@@ -1,6 +1,6 @@
-import type { ErrorEnvelope, JsonObject, JsonValue, OperationOutcome } from "@firedrill-tools/contracts";
-import { OperationInvocationSchema } from "@firedrill-tools/contracts";
-import { BoundWorldClient, type WorldKernel } from "@firedrill-tools/world-kernel";
+import type { ErrorEnvelope, JsonObject, JsonValue, OperationOutcome } from "@firedrill-run/contracts";
+import { OperationInvocationSchema } from "@firedrill-run/contracts";
+import { BoundWorldClient, type WorldKernel } from "@firedrill-run/world-kernel";
 import { describe, expect, expectTypeOf, it, vi } from "vitest";
 import type { AgentBinding } from "../src/run-drills.js";
 import { type MockToolOptions, mockTool, ToolMockError } from "../src/testing.js";

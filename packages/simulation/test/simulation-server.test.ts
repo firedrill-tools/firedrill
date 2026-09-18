@@ -16,8 +16,8 @@ import {
   DrillTimelineSchema,
   RunResultSchema,
   type ToolOverride,
-} from "@firedrill-tools/contracts";
-import { writeLocalReport } from "@firedrill-tools/reporters";
+} from "@firedrill-run/contracts";
+import { writeLocalReport } from "@firedrill-run/reporters";
 import { afterEach, describe, expect, it } from "vitest";
 import {
   SimulationProjectSchema,

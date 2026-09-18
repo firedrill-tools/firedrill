@@ -6,8 +6,8 @@ import type {
   EvidenceEntry,
   OperationEvidence,
   OperationRef,
-} from "@firedrill-tools/contracts";
-import { EvidenceEntrySchema } from "@firedrill-tools/contracts";
+} from "@firedrill-run/contracts";
+import { EvidenceEntrySchema } from "@firedrill-run/contracts";
 
 function operationKey(operation: OperationRef): string {
   return `${operation.packageId}\u0000${operation.operationId}`;

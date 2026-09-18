@@ -90,14 +90,11 @@ function inspectArchive(archivePath: string, name: string): void {
       throw new Error(`${name} leaks a private repository or local path: ${file}`);
     }
   }
-  if (
-    name === "@firedrill-tools/agent" &&
-    !packedFiles.some((file) => file.endsWith("/dist/skill/SKILL.md"))
-  ) {
-    throw new Error("@firedrill-tools/agent does not contain the canonical bundled skill");
+  if (name === "@firedrill-run/agent" && !packedFiles.some((file) => file.endsWith("/dist/skill/SKILL.md"))) {
+    throw new Error("@firedrill-run/agent does not contain the canonical bundled skill");
   }
-  if (name === "@firedrill-tools/agent" && !packedFiles.some((file) => file.endsWith("/THIRD_PARTY.md"))) {
-    throw new Error("@firedrill-tools/agent does not contain its third-party terms notice");
+  if (name === "@firedrill-run/agent" && !packedFiles.some((file) => file.endsWith("/THIRD_PARTY.md"))) {
+    throw new Error("@firedrill-run/agent does not contain its third-party terms notice");
   }
 }
 
@@ -168,21 +165,21 @@ try {
       'import { spawn, spawnSync } from "node:child_process";',
       'import { tmpdir } from "node:os";',
       'import { join } from "node:path";',
-      'import { evaluateAssertions } from "@firedrill-tools/assertions";',
-      'import { createFiredrillAuthoringTools, runFiredrillAgent } from "@firedrill-tools/agent";',
-      'import { compileWorld } from "@firedrill-tools/compiler";',
-      'import { createDrillWorld } from "@firedrill-tools/drills";',
-      'import { startLocalInspector } from "@firedrill-tools/inspector";',
-      'import { invokeCliWorldOperation, listCliWorldTools, startCliWorldBinding } from "@firedrill-tools/protocol-cli";',
-      'import { startHttpWorldBinding } from "@firedrill-tools/protocol-http";',
-      'import { mcpToolName, startMcpWorldBinding } from "@firedrill-tools/protocol-mcp";',
-      'import { createLocalWorld, runDrills, verifyReport } from "@firedrill-tools/sdk";',
-      'import { mockTool } from "@firedrill-tools/sdk/testing";',
-      'import { startLocalSimulationServer } from "@firedrill-tools/simulation";',
-      'import { defineTool } from "@firedrill-tools/tool-sdk";',
-      'import { loadWorldBuild } from "@firedrill-tools/world-build";',
-      'import { SqliteWorldStore } from "@firedrill-tools/world-store-sqlite";',
-      'import { WorldKernel } from "@firedrill-tools/world-kernel";',
+      'import { evaluateAssertions } from "@firedrill-run/assertions";',
+      'import { createFiredrillAuthoringTools, runFiredrillAgent } from "@firedrill-run/agent";',
+      'import { compileWorld } from "@firedrill-run/compiler";',
+      'import { createDrillWorld } from "@firedrill-run/drills";',
+      'import { startLocalInspector } from "@firedrill-run/inspector";',
+      'import { invokeCliWorldOperation, listCliWorldTools, startCliWorldBinding } from "@firedrill-run/protocol-cli";',
+      'import { startHttpWorldBinding } from "@firedrill-run/protocol-http";',
+      'import { mcpToolName, startMcpWorldBinding } from "@firedrill-run/protocol-mcp";',
+      'import { createLocalWorld, runDrills, verifyReport } from "@firedrill-run/sdk";',
+      'import { mockTool } from "@firedrill-run/sdk/testing";',
+      'import { startLocalSimulationServer } from "@firedrill-run/simulation";',
+      'import { defineTool } from "@firedrill-run/tool-sdk";',
+      'import { loadWorldBuild } from "@firedrill-run/world-build";',
+      'import { SqliteWorldStore } from "@firedrill-run/world-store-sqlite";',
+      'import { WorldKernel } from "@firedrill-run/world-kernel";',
       'import { Client, StreamableHTTPClientTransport } from "@modelcontextprotocol/client";',
       'const directory = mkdtempSync(join(tmpdir(), "firedrill-packed-consumer-"));',
       'const runChild = (command, arguments_, options = {}) => new Promise((resolve_, reject) => { const child = spawn(command, arguments_, { ...options, stdio: ["ignore", "pipe", "pipe"] }); let stdout = ""; let stderr = ""; child.stdout.on("data", (chunk) => stdout += chunk); child.stderr.on("data", (chunk) => stderr += chunk); child.once("error", reject); child.once("close", (code) => resolve_({ code, stdout, stderr })); });',
@@ -446,7 +443,7 @@ try {
         private: true,
         type: "module",
         dependencies: {
-          "@firedrill-tools/cli": `file:${archives.get("@firedrill-tools/cli")}`,
+          "@firedrill-run/cli": `file:${archives.get("@firedrill-run/cli")}`,
           "@firedrill-tools/tool-github-issues": `file:${archives.get("@firedrill-tools/tool-github-issues")}`,
           "@firedrill-tools/tool-mailbox": `file:${archives.get("@firedrill-tools/tool-mailbox")}`,
           "@firedrill-tools/tool-object-storage": `file:${archives.get("@firedrill-tools/tool-object-storage")}`,

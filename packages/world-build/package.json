@@ -1,5 +1,5 @@
 {
-  "name": "@firedrill-tools/world-build",
+  "name": "@firedrill-run/world-build",
   "version": "0.1.0-rc.1",
   "description": "Verified loader for immutable Firedrill world builds",
   "license": "Apache-2.0",
@@ -35,9 +35,9 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "@firedrill-tools/contracts": "workspace:*",
-    "@firedrill-tools/tool-sdk": "workspace:*",
-    "@firedrill-tools/world-ir": "workspace:*"
+    "@firedrill-run/contracts": "workspace:*",
+    "@firedrill-run/tool-sdk": "workspace:*",
+    "@firedrill-run/world-ir": "workspace:*"
   },
   "devDependencies": {
     "typescript": "5.9.3",

@@ -2,10 +2,10 @@ import { cpSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:f
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
-import type { ToolOverride } from "@firedrill-tools/contracts";
-import { loadWorldBuild } from "@firedrill-tools/world-build";
-import { WorldKernel } from "@firedrill-tools/world-kernel";
-import { SqliteWorldStore } from "@firedrill-tools/world-store-sqlite";
+import type { ToolOverride } from "@firedrill-run/contracts";
+import { loadWorldBuild } from "@firedrill-run/world-build";
+import { WorldKernel } from "@firedrill-run/world-kernel";
+import { SqliteWorldStore } from "@firedrill-run/world-store-sqlite";
 import { afterEach, describe, expect, it } from "vitest";
 import { parse, stringify } from "yaml";
 import { compileWorld } from "../src/index.js";

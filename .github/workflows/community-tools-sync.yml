@@ -223,7 +223,7 @@ jobs:
 
       - name: Build registry contract dependency
         if: steps.mode.outputs.enabled == 'true'
-        run: pnpm --filter @firedrill-tools/contracts build
+        run: pnpm --filter @firedrill-run/contracts build
 
       - name: Generate catalog from exact source and release
         if: steps.mode.outputs.enabled == 'true'

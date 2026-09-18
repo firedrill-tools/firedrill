@@ -27,7 +27,7 @@ import type {
   StableId,
   TargetFileAttachment,
   TargetInvocation,
-} from "@firedrill-tools/contracts";
+} from "@firedrill-run/contracts";
 import {
   compareStableStrings,
   DrillShardSchema,
@@ -36,7 +36,7 @@ import {
   SeedSchema,
   StableIdSchema,
   TargetFileAttachmentSchema,
-} from "@firedrill-tools/contracts";
+} from "@firedrill-run/contracts";
 import type {
   CallbackReceiver,
   DrillAttemptHookContext,
@@ -44,12 +44,12 @@ import type {
   DrillTrialHookContext,
   TargetAttachmentSink,
   TargetExecutionContext,
-} from "@firedrill-tools/drills";
-import { runDrill, TargetAttachmentError } from "@firedrill-tools/drills";
-import type { LocalReportAttachmentSource, WrittenLocalReport } from "@firedrill-tools/reporters";
-import { verifyLocalReport, writeLocalReport, writeReportIndex } from "@firedrill-tools/reporters";
-import type { LoadedWorldBuild } from "@firedrill-tools/world-build";
-import type { BoundWorldClient } from "@firedrill-tools/world-kernel";
+} from "@firedrill-run/drills";
+import { runDrill, TargetAttachmentError } from "@firedrill-run/drills";
+import type { LocalReportAttachmentSource, WrittenLocalReport } from "@firedrill-run/reporters";
+import { verifyLocalReport, writeLocalReport, writeReportIndex } from "@firedrill-run/reporters";
+import type { LoadedWorldBuild } from "@firedrill-run/world-build";
+import type { BoundWorldClient } from "@firedrill-run/world-kernel";
 import { LocalCaptureManager, type RunCaptureOptions, validateCaptureOptions } from "./capture.js";
 import type { LocalWorldApp } from "./local-world-bindings.js";
 import { prepareExecutableBuild } from "./project-build.js";

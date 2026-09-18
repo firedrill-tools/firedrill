@@ -50,7 +50,7 @@
     "test": "node test/pack.test.mjs"
   },
   "dependencies": {
-    "@firedrill-tools/tool-sdk": "workspace:*"
+    "@firedrill-run/tool-sdk": "workspace:*"
   },
   "devDependencies": {
     "@octokit/rest": "21.1.1",

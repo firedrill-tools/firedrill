@@ -1,4 +1,4 @@
-import { AssertionEvidenceIndex, evaluateAssertions } from "@firedrill-tools/assertions";
+import { AssertionEvidenceIndex, evaluateAssertions } from "@firedrill-run/assertions";
 import type {
   AssertionDefinition,
   AssertionResult,
@@ -15,7 +15,7 @@ import type {
   RunResult,
   StableId,
   TargetResult,
-} from "@firedrill-tools/contracts";
+} from "@firedrill-run/contracts";
 import {
   CheckpointResultSchema,
   CorrelationIdSchema,
@@ -30,11 +30,11 @@ import {
   TargetResultSchema,
   VirtualTimeSchema,
   WorldInstanceIdSchema,
-} from "@firedrill-tools/contracts";
-import type { LoadedWorldBuild } from "@firedrill-tools/world-build";
-import { trajectoryHash } from "@firedrill-tools/world-ir";
-import type { WorldKernel } from "@firedrill-tools/world-kernel";
-import type { WorldStore } from "@firedrill-tools/world-store";
+} from "@firedrill-run/contracts";
+import type { LoadedWorldBuild } from "@firedrill-run/world-build";
+import { trajectoryHash } from "@firedrill-run/world-ir";
+import type { WorldKernel } from "@firedrill-run/world-kernel";
+import type { WorldStore } from "@firedrill-run/world-store";
 import { z } from "zod";
 import { boundedDiagnosticMessage } from "./diagnostics.js";
 import { DrillSetupError } from "./scenario.js";

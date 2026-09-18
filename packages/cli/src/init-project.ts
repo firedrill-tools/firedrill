@@ -9,7 +9,7 @@ import {
 } from "node:fs";
 import { dirname, extname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
-import { compareStableStrings } from "@firedrill-tools/contracts";
+import { compareStableStrings } from "@firedrill-run/contracts";
 
 export type InitPath = "firedrill-agent" | "coding-agent" | "template" | "manual";
 
@@ -224,7 +224,9 @@ export function detectRepository(repositoryRoot: string): RepositoryDetection {
   }
   const files = shallowFiles(root);
   const packages = packageNames(root, files);
-  const applicationPackages = packages.filter((name) => !name.startsWith("@firedrill-tools/"));
+  const applicationPackages = packages.filter(
+    (name) => !name.startsWith("@firedrill-run/") && !name.startsWith("@firedrill-tools/"),
+  );
   const pythonPackages = pythonPackageNames(root, files);
   const has = (name: string) => files.includes(name);
   const languages = unique([
@@ -600,7 +602,7 @@ export function initProject(
       repositoryBrief(detection, guidance),
     ];
     next = [
-      "Install the optional package beside the CLI if needed: pnpm add -D @firedrill-tools/agent",
+      "Install the optional package beside the CLI if needed: pnpm add -D @firedrill-run/agent",
       "Set ANTHROPIC_API_KEY in your shell if it is not already set.",
       "Run firedrill agent. Add --prompt only when you want to narrow the default end-to-end authoring task.",
       "The ordinary Firedrill CLI remains fully usable without the Agent or an Anthropic key.",

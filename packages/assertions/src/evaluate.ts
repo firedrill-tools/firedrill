@@ -1,5 +1,5 @@
 import { isDeepStrictEqual } from "node:util";
-import { AssertionResultSchema } from "@firedrill-tools/contracts";
+import { AssertionResultSchema } from "@firedrill-run/contracts";
 import type {
   AssertionDefinition,
   AssertionDiff,
@@ -10,8 +10,8 @@ import type {
   JsonValue,
   OperationEvidence,
   OperationRef,
-} from "@firedrill-tools/contracts";
-import type { StateScanOptions, StoredStateRecord } from "@firedrill-tools/world-store";
+} from "@firedrill-run/contracts";
+import type { StateScanOptions, StoredStateRecord } from "@firedrill-run/world-store";
 import { AssertionEvidenceIndex } from "./evidence-index.js";
 
 export interface AssertionStateReader {

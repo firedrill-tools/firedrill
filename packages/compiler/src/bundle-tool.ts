@@ -1,27 +1,23 @@
 import { existsSync, readFileSync, realpathSync } from "node:fs";
 import { builtinModules, createRequire } from "node:module";
 import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
-import type { Diagnostic, ToolPackageManifest } from "@firedrill-tools/contracts";
-import { compareStableStrings, Sha256Schema, SourcePathSchema } from "@firedrill-tools/contracts";
-import { semanticHash, sha256Text } from "@firedrill-tools/world-ir";
+import type { Diagnostic, ToolPackageManifest } from "@firedrill-run/contracts";
+import { compareStableStrings, Sha256Schema, SourcePathSchema } from "@firedrill-run/contracts";
+import { semanticHash, sha256Text } from "@firedrill-run/world-ir";
 import { build, type Plugin } from "esbuild";
 import { diagnostic } from "./diagnostics.js";
 import type { BundledTool } from "./types.js";
 
-const BUNDLED_FRAMEWORK_PACKAGES = new Set(["@firedrill-tools/tool-sdk"]);
+const BUNDLED_FRAMEWORK_PACKAGES = new Set(["@firedrill-run/tool-sdk"]);
 const ALLOWED_TOOL_SDK_IMPORTS = new Set([
-  "@firedrill-tools/tool-sdk",
-  "@firedrill-tools/tool-sdk/behavior-runtime",
-  // Existing repository-owned Tools used this scope before npm publication.
-  // Resolve only these two entry points to our bundled runtime, never to npm.
-  "@firedrill/tool-sdk",
-  "@firedrill/tool-sdk/behavior-runtime",
+  "@firedrill-run/tool-sdk",
+  "@firedrill-run/tool-sdk/behavior-runtime",
 ]);
 const BUILTINS = new Set([...builtinModules, ...builtinModules.map((name) => `node:${name}`)]);
 const FRAMEWORK_RESOLVER = createRequire(import.meta.url);
 
 function toolSdkRuntimePath(): string {
-  const manifestPath = FRAMEWORK_RESOLVER.resolve("@firedrill-tools/tool-sdk/package.json");
+  const manifestPath = FRAMEWORK_RESOLVER.resolve("@firedrill-run/tool-sdk/package.json");
   return resolve(dirname(manifestPath), "dist/behavior-runtime.js");
 }
 
@@ -207,7 +203,7 @@ export async function bundleTool(input: {
             end: { line, column: column + 1 },
           },
           suggestion:
-            "Keep Tool behavior deterministic and local; use defineToolBehavior/context.fail from @firedrill-tools/tool-sdk for runtime helpers.",
+            "Keep Tool behavior deterministic and local; use defineToolBehavior/context.fail from @firedrill-run/tool-sdk for runtime helpers.",
         });
       }),
     };

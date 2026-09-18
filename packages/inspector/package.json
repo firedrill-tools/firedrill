@@ -1,5 +1,5 @@
 {
-  "name": "@firedrill-tools/inspector",
+  "name": "@firedrill-run/inspector",
   "version": "0.1.0-rc.1",
   "description": "Offline local inspector for Firedrill worlds and drill evidence",
   "license": "Apache-2.0",
@@ -33,12 +33,12 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "@firedrill-tools/sdk": "workspace:*",
-    "@firedrill-tools/simulation": "workspace:*"
+    "@firedrill-run/sdk": "workspace:*",
+    "@firedrill-run/simulation": "workspace:*"
   },
   "devDependencies": {
-    "@firedrill-tools/browser-tests": "workspace:*",
-    "@firedrill-tools/agent": "workspace:*",
+    "@firedrill-run/browser-tests": "workspace:*",
+    "@firedrill-run/agent": "workspace:*",
     "@fontsource-variable/inter": "5.3.0",
     "@tailwindcss/vite": "4.3.3",
     "@types/prismjs": "1.26.6",
@@ -56,14 +56,14 @@
     "vitest": "4.1.11"
   },
   "peerDependencies": {
-    "@firedrill-tools/browser-tests": "workspace:*",
-    "@firedrill-tools/agent": "workspace:*"
+    "@firedrill-run/browser-tests": "workspace:*",
+    "@firedrill-run/agent": "workspace:*"
   },
   "peerDependenciesMeta": {
-    "@firedrill-tools/browser-tests": {
+    "@firedrill-run/browser-tests": {
       "optional": true
     },
-    "@firedrill-tools/agent": {
+    "@firedrill-run/agent": {
       "optional": true
     }
   },

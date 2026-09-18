@@ -20,8 +20,8 @@ import {
   type EvidenceEntry,
   JsonValueSchema,
   RunResultSchema,
-} from "@firedrill-tools/contracts";
-import { trajectoryHash } from "@firedrill-tools/world-ir";
+} from "@firedrill-run/contracts";
+import { trajectoryHash } from "@firedrill-run/world-ir";
 import { afterEach, describe, expect, it } from "vitest";
 import { writeReportIndex } from "../src/report-index.js";
 import { verifyLocalReport, writeLocalReport } from "../src/reporters.js";

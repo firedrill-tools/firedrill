@@ -3,12 +3,9 @@ import {
   LocalReportVerificationError,
   compareLocalReports,
   compareLocalReportDetails,
-} from "@firedrill-tools/reporters";
-import type {
-  LocalRunComparisonDetailOptions,
-  LocalRunComparisonDetailPage,
-} from "@firedrill-tools/reporters";
-import type { LocalRunComparison } from "@firedrill-tools/reporters";
+} from "@firedrill-run/reporters";
+import type { LocalRunComparisonDetailOptions, LocalRunComparisonDetailPage } from "@firedrill-run/reporters";
+import type { LocalRunComparison } from "@firedrill-run/reporters";
 import { FiredrillProjectError } from "./project-error.js";
 
 export interface CompareRunsOptions {
@@ -28,7 +25,7 @@ export function compareRuns(options: CompareRunsOptions): LocalRunComparison {
   }
 }
 
-export type { LocalRunComparison } from "@firedrill-tools/reporters";
+export type { LocalRunComparison } from "@firedrill-run/reporters";
 
 /** Read bounded recorded differences; never invokes an agent or mutates reports. */
 export function compareRunDetails(
@@ -52,4 +49,4 @@ export type {
   LocalRunComparisonDetailPage,
   RunComparisonDetailItem,
   RecordedComparisonValue,
-} from "@firedrill-tools/reporters";
+} from "@firedrill-run/reporters";

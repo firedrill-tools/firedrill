@@ -17,7 +17,7 @@ import { createServer } from "node:http";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
-import { inspectInstalledToolPackage } from "@firedrill-tools/compiler";
+import { inspectInstalledToolPackage } from "@firedrill-run/compiler";
 import { create } from "tar";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { installToolSource } from "../src/tool-installation.js";

@@ -1,5 +1,5 @@
-import { ErrorEnvelopeSchema } from "@firedrill-tools/contracts";
-import type { CorrelationId, ErrorEnvelope, ErrorIssue, JsonObject } from "@firedrill-tools/contracts";
+import { ErrorEnvelopeSchema } from "@firedrill-run/contracts";
+import type { CorrelationId, ErrorEnvelope, ErrorIssue, JsonObject } from "@firedrill-run/contracts";
 
 export function frameworkError(
   correlationId: CorrelationId,

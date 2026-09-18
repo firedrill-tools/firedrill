@@ -1,6 +1,6 @@
 import { resolve } from "node:path";
-import type { VerifiedLocalReport } from "@firedrill-tools/reporters";
-import { LocalReportVerificationError, verifyLocalReport } from "@firedrill-tools/reporters";
+import type { VerifiedLocalReport } from "@firedrill-run/reporters";
+import { LocalReportVerificationError, verifyLocalReport } from "@firedrill-run/reporters";
 import { FiredrillProjectError } from "./project-error.js";
 
 export interface VerifyReportOptions {
@@ -20,4 +20,4 @@ export function verifyReport(options: VerifyReportOptions): VerifiedLocalReport 
   }
 }
 
-export type { VerifiedLocalReport } from "@firedrill-tools/reporters";
+export type { VerifiedLocalReport } from "@firedrill-run/reporters";

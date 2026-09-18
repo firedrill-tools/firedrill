@@ -1,5 +1,5 @@
-import { DiagnosticSchema, compareStableStrings } from "@firedrill-tools/contracts";
-import type { Diagnostic, SourceSpan } from "@firedrill-tools/contracts";
+import { DiagnosticSchema, compareStableStrings } from "@firedrill-run/contracts";
+import type { Diagnostic, SourceSpan } from "@firedrill-run/contracts";
 import type { z } from "zod";
 import type { SourceDocument } from "./types.js";
 

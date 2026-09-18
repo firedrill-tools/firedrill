@@ -1,5 +1,5 @@
 {
-  "name": "@firedrill-tools/protocol-http",
+  "name": "@firedrill-run/protocol-http",
   "version": "0.1.0-rc.1",
   "description": "Loopback HTTP binding for local Firedrill worlds",
   "license": "Apache-2.0",
@@ -32,14 +32,14 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "@firedrill-tools/contracts": "workspace:*",
-    "@firedrill-tools/tool-sdk": "workspace:*",
-    "@firedrill-tools/world-kernel": "workspace:*",
-    "@firedrill-tools/world-store": "workspace:*"
+    "@firedrill-run/contracts": "workspace:*",
+    "@firedrill-run/tool-sdk": "workspace:*",
+    "@firedrill-run/world-kernel": "workspace:*",
+    "@firedrill-run/world-store": "workspace:*"
   },
   "devDependencies": {
-    "@firedrill-tools/tool-sdk": "workspace:*",
-    "@firedrill-tools/world-store-sqlite": "workspace:*",
+    "@firedrill-run/tool-sdk": "workspace:*",
+    "@firedrill-run/world-store-sqlite": "workspace:*",
     "typescript": "5.9.3",
     "vitest": "4.1.11"
   },

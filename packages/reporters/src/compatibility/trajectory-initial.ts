@@ -7,8 +7,8 @@ import type {
   OperationOutcome,
   Sha256,
   TargetResult,
-} from "@firedrill-tools/contracts";
-import { semanticHash } from "@firedrill-tools/world-ir";
+} from "@firedrill-run/contracts";
+import { semanticHash } from "@firedrill-run/world-ir";
 
 export interface TrajectoryHashInput {
   readonly interactions: readonly InteractionResult[];

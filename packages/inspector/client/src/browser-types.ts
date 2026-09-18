@@ -5,7 +5,7 @@ import type {
   BrowserTestReportSummary,
   BrowserTestResult,
   SavedBrowserTest,
-} from "@firedrill-tools/browser-tests";
+} from "@firedrill-run/browser-tests";
 
 export type { BrowserTestDefinitionInput, BrowserTestResult };
 export type BrowserSavedPage = BrowserListPage<SavedBrowserTest>;

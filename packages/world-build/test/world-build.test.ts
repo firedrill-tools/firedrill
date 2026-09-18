@@ -1,7 +1,7 @@
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
-import { FIREDRILL_ENGINE_VERSION } from "@firedrill-tools/contracts";
+import { FIREDRILL_ENGINE_VERSION } from "@firedrill-run/contracts";
 import {
   BuildIdentitySchema,
   BuildManifestSchema,
@@ -9,7 +9,7 @@ import {
   PackageLockSchema,
   semanticHash,
   sha256Text,
-} from "@firedrill-tools/world-ir";
+} from "@firedrill-run/world-ir";
 import { afterEach, describe, expect, it } from "vitest";
 import { loadWorldBuild } from "../src/index.js";
 

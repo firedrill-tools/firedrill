@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
-import { type Diagnostic, FIREDRILL_ENGINE_VERSION, NodePackageNameSchema } from "@firedrill-tools/contracts";
-import { CanonicalWorldIrSchema } from "@firedrill-tools/world-ir";
+import { type Diagnostic, FIREDRILL_ENGINE_VERSION, NodePackageNameSchema } from "@firedrill-run/contracts";
+import { CanonicalWorldIrSchema } from "@firedrill-run/world-ir";
 import { satisfies, validRange } from "semver";
 import { bundleToolUi } from "./bundle-tool-ui.js";
 import { diagnostic, schemaDiagnostics } from "./diagnostics.js";

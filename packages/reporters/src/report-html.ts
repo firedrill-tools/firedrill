@@ -4,8 +4,8 @@ import type {
   ReportToolDescriptor,
   RunResult,
   TargetFileAttachment,
-} from "@firedrill-tools/contracts";
-import { TargetFileAttachmentSchema } from "@firedrill-tools/contracts";
+} from "@firedrill-run/contracts";
+import { TargetFileAttachmentSchema } from "@firedrill-run/contracts";
 import { type AttachmentPreview, readableCaptureLog } from "./attachment-preview.js";
 
 export function escapeHtml(value: unknown): string {

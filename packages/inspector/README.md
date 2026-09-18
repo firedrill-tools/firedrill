@@ -1,7 +1,7 @@
-# `@firedrill-tools/inspector`
+# `@firedrill-run/inspector`
 
 Offline local inspector for a repository-defined Firedrill world. It serves the
-same authenticated loopback API as `@firedrill-tools/simulation` and a bundled web UI
+same authenticated loopback API as `@firedrill-run/simulation` and a bundled web UI
 from one origin. It does not contact a hosted service or supply a customer agent;
 drills still invoke the repository's declared module, command, HTTP, or
 caller-owned target through the normal public runner.
@@ -22,8 +22,8 @@ external targets remain in their process.
 ## Borrow an existing live environment
 
 ```ts
-import { startLocalInspector } from "@firedrill-tools/inspector";
-import { createLocalWorld } from "@firedrill-tools/sdk";
+import { startLocalInspector } from "@firedrill-run/inspector";
+import { createLocalWorld } from "@firedrill-run/sdk";
 
 const root = process.cwd();
 const world = await createLocalWorld({ root });

@@ -85,11 +85,11 @@ the package's name and exact version, so users can identify it independently of
 where it is stored. An index cannot substitute a mutable branch for a revision.
 
 The public Draft 2020-12 JSON Schema ships at
-`@firedrill-tools/cli/schema/tool-index.json`. The matching runtime validator and reader
-are exported from `@firedrill-tools/cli/tool-discovery`:
+`@firedrill-run/cli/schema/tool-index.json`. The matching runtime validator and reader
+are exported from `@firedrill-run/cli/tool-discovery`:
 
 ```ts
-import { discoverTools, resolveDiscoveredTool, ToolIndexSchema } from "@firedrill-tools/cli/tool-discovery";
+import { discoverTools, resolveDiscoveredTool, ToolIndexSchema } from "@firedrill-run/cli/tool-discovery";
 
 ToolIndexSchema.parse(yourIndex);
 const results = await discoverTools({

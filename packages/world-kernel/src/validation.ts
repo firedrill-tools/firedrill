@@ -1,4 +1,4 @@
-import type { ErrorIssue, JsonObject } from "@firedrill-tools/contracts";
+import type { ErrorIssue, JsonObject } from "@firedrill-run/contracts";
 import { Ajv } from "ajv";
 import type { ErrorObject, ValidateFunction } from "ajv";
 import formatsModule from "ajv-formats";

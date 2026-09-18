@@ -17,8 +17,8 @@ import { tmpdir } from "node:os";
 import { basename, delimiter, dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import { gunzipSync } from "node:zlib";
-import { inspectInstalledToolPackage } from "@firedrill-tools/compiler";
-import { NodePackageNameSchema, SemverSchema } from "@firedrill-tools/contracts";
+import { inspectInstalledToolPackage } from "@firedrill-run/compiler";
+import { NodePackageNameSchema, SemverSchema } from "@firedrill-run/contracts";
 import { list } from "tar";
 
 const MAX_ARCHIVE_BYTES = 32 * 1024 * 1024;

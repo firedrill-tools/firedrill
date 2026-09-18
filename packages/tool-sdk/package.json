@@ -1,5 +1,5 @@
 {
-  "name": "@firedrill-tools/tool-sdk",
+  "name": "@firedrill-run/tool-sdk",
   "version": "0.1.0-rc.1",
   "description": "Public SDK for deterministic Firedrill Tool packages",
   "license": "Apache-2.0",
@@ -37,7 +37,7 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "@firedrill-tools/contracts": "workspace:*"
+    "@firedrill-run/contracts": "workspace:*"
   },
   "devDependencies": {
     "typescript": "5.9.3",

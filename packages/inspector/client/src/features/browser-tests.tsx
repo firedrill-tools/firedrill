@@ -354,7 +354,7 @@ export function BrowserTestsView() {
             restart the inspector.
           </EmptyState>
           <CodeDocument
-            content="pnpm add -D @firedrill-tools/browser-tests\npnpm dlx playwright@1.62.1 install chromium"
+            content="pnpm add -D @firedrill-run/browser-tests\npnpm dlx playwright@1.62.1 install chromium"
             language="bash"
             context="Install browser testing"
           />
@@ -462,8 +462,8 @@ export function BrowserTestsView() {
                 !availability.agentAvailable || !availability.apiKeyConfigured ? (
                   <InlineMessage tone="info">
                     Natural-language tasks use the optional Firedrill Agent. Install{" "}
-                    <code>@firedrill-tools/agent</code>, set <code>ANTHROPIC_API_KEY</code> in the terminal,
-                    and restart the inspector. Saved steps need neither.
+                    <code>@firedrill-run/agent</code>, set <code>ANTHROPIC_API_KEY</code> in the terminal, and
+                    restart the inspector. Saved steps need neither.
                   </InlineMessage>
                 ) : (
                   <label className="fd-browser-check">

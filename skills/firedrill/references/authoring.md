@@ -308,4 +308,4 @@ firedrill plan --json
 firedrill run changes-resource --json
 ```
 
-Do not infer a field when validation rejects it. Inspect the emitted schemas from `@firedrill-tools/compiler/schema/*` and `@firedrill-tools/contracts/schema/*` when examples are insufficient.
+Do not infer a field when validation rejects it. Inspect the emitted schemas from `@firedrill-run/compiler/schema/*` and `@firedrill-run/contracts/schema/*` when examples are insufficient.

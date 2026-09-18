@@ -6,10 +6,10 @@ import type {
   OperationInvocation,
   OperationRef,
   ResolvedToolOverride,
-} from "@firedrill-tools/contracts";
-import type { ToolDefinition, ToolOperationHandler } from "@firedrill-tools/tool-sdk";
-import { defineTool } from "@firedrill-tools/tool-sdk";
-import { SqliteWorldStore } from "@firedrill-tools/world-store-sqlite";
+} from "@firedrill-run/contracts";
+import type { ToolDefinition, ToolOperationHandler } from "@firedrill-run/tool-sdk";
+import { defineTool } from "@firedrill-run/tool-sdk";
+import { SqliteWorldStore } from "@firedrill-run/world-store-sqlite";
 import { afterEach, describe, expect, it } from "vitest";
 import { BoundWorldClient, WorldKernel } from "../src/index.js";
 

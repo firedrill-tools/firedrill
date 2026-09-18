@@ -1,6 +1,6 @@
 import { existsSync } from "node:fs";
 import { join } from "node:path";
-import { NodePackageNameSchema, SemverSchema } from "@firedrill-tools/contracts";
+import { NodePackageNameSchema, SemverSchema } from "@firedrill-run/contracts";
 import type { ReadyTool } from "./tool-catalog.js";
 import { installToolSource } from "./tool-installation.js";
 

@@ -1,5 +1,5 @@
 {
-  "name": "@firedrill-tools/world-store",
+  "name": "@firedrill-run/world-store",
   "version": "0.1.0-rc.1",
   "description": "Storage port for a durable Firedrill world",
   "license": "Apache-2.0",
@@ -31,7 +31,7 @@
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
-    "@firedrill-tools/contracts": "workspace:*"
+    "@firedrill-run/contracts": "workspace:*"
   },
   "devDependencies": {
     "typescript": "5.9.3"

@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import { closeSync, constants, fstatSync, lstatSync, openSync, readSync, realpathSync } from "node:fs";
 import { createRequire } from "node:module";
 import { dirname, extname, isAbsolute, join, relative, resolve, sep } from "node:path";
-import type { CompiledBuild } from "@firedrill-tools/compiler";
+import type { CompiledBuild } from "@firedrill-run/compiler";
 import {
   type SimulationToolImplementation,
   SimulationToolImplementationSchema,

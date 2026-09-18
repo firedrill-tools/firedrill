@@ -47,16 +47,16 @@ importers:
       '@anthropic-ai/claude-agent-sdk':
         specifier: 0.3.241
         version: 0.3.241(@anthropic-ai/sdk@0.120.0(zod@4.1.12))(@modelcontextprotocol/sdk@1.30.0(zod@4.1.12))(zod@4.1.12)
-      '@firedrill-tools/browser-tests':
+      '@firedrill-run/browser-tests':
         specifier: workspace:*
         version: link:../browser-tests
-      '@firedrill-tools/compiler':
+      '@firedrill-run/compiler':
         specifier: workspace:*
         version: link:../compiler
-      '@firedrill-tools/contracts':
+      '@firedrill-run/contracts':
         specifier: workspace:*
         version: link:../contracts
-      '@firedrill-tools/sdk':
+      '@firedrill-run/sdk':
         specifier: workspace:*
         version: link:../sdk
       zod:
@@ -72,10 +72,10 @@ importers:
 
   packages/assertions:
     dependencies:
-      '@firedrill-tools/contracts':
+      '@firedrill-run/contracts':
         specifier: workspace:*
         version: link:../contracts
-      '@firedrill-tools/world-store':
+      '@firedrill-run/world-store':
         specifier: workspace:*
         version: link:../world-store
     devDependencies:
@@ -107,22 +107,22 @@ importers:
 
   packages/cli:
     dependencies:
-      '@firedrill-tools/compiler':
+      '@firedrill-run/compiler':
         specifier: workspace:*
         version: link:../compiler
-      '@firedrill-tools/contracts':
+      '@firedrill-run/contracts':
         specifier: workspace:*
         version: link:../contracts
-      '@firedrill-tools/inspector':
+      '@firedrill-run/inspector':
         specifier: workspace:*
         version: link:../inspector
-      '@firedrill-tools/protocol-cli':
+      '@firedrill-run/protocol-cli':
         specifier: workspace:*
         version: link:../protocol-cli
-      '@firedrill-tools/sdk':
+      '@firedrill-run/sdk':
         specifier: workspace:*
         version: link:../sdk
-      '@firedrill-tools/world-build':
+      '@firedrill-run/world-build':
         specifier: workspace:*
         version: link:../world-build
       '@modelcontextprotocol/server':
@@ -135,10 +135,10 @@ importers:
         specifier: 4.4.3
         version: 4.4.3
     devDependencies:
-      '@firedrill-tools/agent':
+      '@firedrill-run/agent':
         specifier: workspace:*
         version: link:../agent
-      '@firedrill-tools/browser-tests':
+      '@firedrill-run/browser-tests':
         specifier: workspace:*
         version: link:../browser-tests
       '@modelcontextprotocol/client':
@@ -153,13 +153,13 @@ importers:
 
   packages/compiler:
     dependencies:
-      '@firedrill-tools/contracts':
+      '@firedrill-run/contracts':
         specifier: workspace:*
         version: link:../contracts
-      '@firedrill-tools/tool-sdk':
+      '@firedrill-run/tool-sdk':
         specifier: workspace:*
         version: link:../tool-sdk
-      '@firedrill-tools/world-ir':
+      '@firedrill-run/world-ir':
         specifier: workspace:*
         version: link:../world-ir
       ajv:
@@ -187,13 +187,13 @@ importers:
         specifier: 4.4.3
         version: 4.4.3
     devDependencies:
-      '@firedrill-tools/world-build':
+      '@firedrill-run/world-build':
         specifier: workspace:*
         version: link:../world-build
-      '@firedrill-tools/world-kernel':
+      '@firedrill-run/world-kernel':
         specifier: workspace:*
         version: link:../world-kernel
-      '@firedrill-tools/world-store-sqlite':
+      '@firedrill-run/world-store-sqlite':
         specifier: workspace:*
         version: link:../world-store-sqlite
       '@types/semver':
@@ -230,34 +230,34 @@ importers:
 
   packages/drills:
     dependencies:
-      '@firedrill-tools/assertions':
+      '@firedrill-run/assertions':
         specifier: workspace:*
         version: link:../assertions
-      '@firedrill-tools/contracts':
+      '@firedrill-run/contracts':
         specifier: workspace:*
         version: link:../contracts
-      '@firedrill-tools/protocol-cli':
+      '@firedrill-run/protocol-cli':
         specifier: workspace:*
         version: link:../protocol-cli
-      '@firedrill-tools/protocol-http':
+      '@firedrill-run/protocol-http':
         specifier: workspace:*
         version: link:../protocol-http
-      '@firedrill-tools/protocol-mcp':
+      '@firedrill-run/protocol-mcp':
         specifier: workspace:*
         version: link:../protocol-mcp
-      '@firedrill-tools/world-build':
+      '@firedrill-run/world-build':
         specifier: workspace:*
         version: link:../world-build
-      '@firedrill-tools/world-ir':
+      '@firedrill-run/world-ir':
         specifier: workspace:*
         version: link:../world-ir
-      '@firedrill-tools/world-kernel':
+      '@firedrill-run/world-kernel':
         specifier: workspace:*
         version: link:../world-kernel
-      '@firedrill-tools/world-store':
+      '@firedrill-run/world-store':
         specifier: workspace:*
         version: link:../world-store
-      '@firedrill-tools/world-store-sqlite':
+      '@firedrill-run/world-store-sqlite':
         specifier: workspace:*
         version: link:../world-store-sqlite
       tsx:
@@ -267,7 +267,7 @@ importers:
         specifier: 4.4.3
         version: 4.4.3
     devDependencies:
-      '@firedrill-tools/tool-sdk':
+      '@firedrill-run/tool-sdk':
         specifier: workspace:*
         version: link:../tool-sdk
       '@modelcontextprotocol/client':
@@ -282,17 +282,17 @@ importers:
 
   packages/inspector:
     dependencies:
-      '@firedrill-tools/sdk':
+      '@firedrill-run/sdk':
         specifier: workspace:*
         version: link:../sdk
-      '@firedrill-tools/simulation':
+      '@firedrill-run/simulation':
         specifier: workspace:*
         version: link:../simulation
     devDependencies:
-      '@firedrill-tools/agent':
+      '@firedrill-run/agent':
         specifier: workspace:*
         version: link:../agent
-      '@firedrill-tools/browser-tests':
+      '@firedrill-run/browser-tests':
         specifier: workspace:*
         version: link:../browser-tests
       '@fontsource-variable/inter':
@@ -343,20 +343,20 @@ importers:
 
   packages/protocol-cli:
     dependencies:
-      '@firedrill-tools/contracts':
+      '@firedrill-run/contracts':
         specifier: workspace:*
         version: link:../contracts
-      '@firedrill-tools/protocol-http':
+      '@firedrill-run/protocol-http':
         specifier: workspace:*
         version: link:../protocol-http
-      '@firedrill-tools/tool-sdk':
+      '@firedrill-run/tool-sdk':
         specifier: workspace:*
         version: link:../tool-sdk
-      '@firedrill-tools/world-kernel':
+      '@firedrill-run/world-kernel':
         specifier: workspace:*
         version: link:../world-kernel
     devDependencies:
-      '@firedrill-tools/world-store-sqlite':
+      '@firedrill-run/world-store-sqlite':
         specifier: workspace:*
         version: link:../world-store-sqlite
       typescript:
@@ -368,20 +368,20 @@ importers:
 
   packages/protocol-http:
     dependencies:
-      '@firedrill-tools/contracts':
+      '@firedrill-run/contracts':
         specifier: workspace:*
         version: link:../contracts
-      '@firedrill-tools/tool-sdk':
+      '@firedrill-run/tool-sdk':
         specifier: workspace:*
         version: link:../tool-sdk
-      '@firedrill-tools/world-kernel':
+      '@firedrill-run/world-kernel':
         specifier: workspace:*
         version: link:../world-kernel
-      '@firedrill-tools/world-store':
+      '@firedrill-run/world-store':
         specifier: workspace:*
         version: link:../world-store
     devDependencies:
-      '@firedrill-tools/world-store-sqlite':
+      '@firedrill-run/world-store-sqlite':
         specifier: workspace:*
         version: link:../world-store-sqlite
       typescript:
@@ -393,10 +393,10 @@ importers:
 
   packages/protocol-mcp:
     dependencies:
-      '@firedrill-tools/contracts':
+      '@firedrill-run/contracts':
         specifier: workspace:*
         version: link:../contracts
-      '@firedrill-tools/world-kernel':
+      '@firedrill-run/world-kernel':
         specifier: workspace:*
         version: link:../world-kernel
       '@modelcontextprotocol/node':
@@ -409,10 +409,10 @@ importers:
         specifier: 4.13.7
         version: 4.13.7
     devDependencies:
-      '@firedrill-tools/tool-sdk':
+      '@firedrill-run/tool-sdk':
         specifier: workspace:*
         version: link:../tool-sdk
-      '@firedrill-tools/world-store-sqlite':
+      '@firedrill-run/world-store-sqlite':
         specifier: workspace:*
         version: link:../world-store-sqlite
       '@modelcontextprotocol/client':
@@ -427,10 +427,10 @@ importers:
 
   packages/reporters:
     dependencies:
-      '@firedrill-tools/contracts':
+      '@firedrill-run/contracts':
         specifier: workspace:*
         version: link:../contracts
-      '@firedrill-tools/world-ir':
+      '@firedrill-run/world-ir':
         specifier: workspace:*
         version: link:../world-ir
     devDependencies:
@@ -443,37 +443,37 @@ importers:
 
   packages/sdk:
     dependencies:
-      '@firedrill-tools/compiler':
+      '@firedrill-run/compiler':
         specifier: workspace:*
         version: link:../compiler
-      '@firedrill-tools/contracts':
+      '@firedrill-run/contracts':
         specifier: workspace:*
         version: link:../contracts
-      '@firedrill-tools/drills':
+      '@firedrill-run/drills':
         specifier: workspace:*
         version: link:../drills
-      '@firedrill-tools/protocol-cli':
+      '@firedrill-run/protocol-cli':
         specifier: workspace:*
         version: link:../protocol-cli
-      '@firedrill-tools/protocol-http':
+      '@firedrill-run/protocol-http':
         specifier: workspace:*
         version: link:../protocol-http
-      '@firedrill-tools/protocol-mcp':
+      '@firedrill-run/protocol-mcp':
         specifier: workspace:*
         version: link:../protocol-mcp
-      '@firedrill-tools/reporters':
+      '@firedrill-run/reporters':
         specifier: workspace:*
         version: link:../reporters
-      '@firedrill-tools/world-build':
+      '@firedrill-run/world-build':
         specifier: workspace:*
         version: link:../world-build
-      '@firedrill-tools/world-kernel':
+      '@firedrill-run/world-kernel':
         specifier: workspace:*
         version: link:../world-kernel
-      '@firedrill-tools/world-store':
+      '@firedrill-run/world-store':
         specifier: workspace:*
         version: link:../world-store
-      '@firedrill-tools/world-store-sqlite':
+      '@firedrill-run/world-store-sqlite':
         specifier: workspace:*
         version: link:../world-store-sqlite
     devDependencies:
@@ -489,22 +489,22 @@ importers:
 
   packages/simulation:
     dependencies:
-      '@firedrill-tools/compiler':
+      '@firedrill-run/compiler':
         specifier: workspace:*
         version: link:../compiler
-      '@firedrill-tools/contracts':
+      '@firedrill-run/contracts':
         specifier: workspace:*
         version: link:../contracts
-      '@firedrill-tools/reporters':
+      '@firedrill-run/reporters':
         specifier: workspace:*
         version: link:../reporters
-      '@firedrill-tools/sdk':
+      '@firedrill-run/sdk':
         specifier: workspace:*
         version: link:../sdk
-      '@firedrill-tools/world-store':
+      '@firedrill-run/world-store':
         specifier: workspace:*
         version: link:../world-store
-      '@firedrill-tools/world-store-sqlite':
+      '@firedrill-run/world-store-sqlite':
         specifier: workspace:*
         version: link:../world-store-sqlite
       zod:
@@ -520,7 +520,7 @@ importers:
 
   packages/tool-sdk:
     dependencies:
-      '@firedrill-tools/contracts':
+      '@firedrill-run/contracts':
         specifier: workspace:*
         version: link:../contracts
     devDependencies:
@@ -533,13 +533,13 @@ importers:
 
   packages/world-build:
     dependencies:
-      '@firedrill-tools/contracts':
+      '@firedrill-run/contracts':
         specifier: workspace:*
         version: link:../contracts
-      '@firedrill-tools/tool-sdk':
+      '@firedrill-run/tool-sdk':
         specifier: workspace:*
         version: link:../tool-sdk
-      '@firedrill-tools/world-ir':
+      '@firedrill-run/world-ir':
         specifier: workspace:*
         version: link:../world-ir
     devDependencies:
@@ -552,7 +552,7 @@ importers:
 
   packages/world-ir:
     dependencies:
-      '@firedrill-tools/contracts':
+      '@firedrill-run/contracts':
         specifier: workspace:*
         version: link:../contracts
       zod:
@@ -574,13 +574,13 @@ importers:
 
   packages/world-kernel:
     dependencies:
-      '@firedrill-tools/contracts':
+      '@firedrill-run/contracts':
         specifier: workspace:*
         version: link:../contracts
-      '@firedrill-tools/tool-sdk':
+      '@firedrill-run/tool-sdk':
         specifier: workspace:*
         version: link:../tool-sdk
-      '@firedrill-tools/world-store':
+      '@firedrill-run/world-store':
         specifier: workspace:*
         version: link:../world-store
       ajv:
@@ -593,7 +593,7 @@ importers:
         specifier: 7.8.5
         version: 7.8.5
     devDependencies:
-      '@firedrill-tools/world-store-sqlite':
+      '@firedrill-run/world-store-sqlite':
         specifier: workspace:*
         version: link:../world-store-sqlite
       '@types/semver':
@@ -608,7 +608,7 @@ importers:
 
   packages/world-store:
     dependencies:
-      '@firedrill-tools/contracts':
+      '@firedrill-run/contracts':
         specifier: workspace:*
         version: link:../contracts
     devDependencies:
@@ -618,10 +618,10 @@ importers:
 
   packages/world-store-sqlite:
     dependencies:
-      '@firedrill-tools/contracts':
+      '@firedrill-run/contracts':
         specifier: workspace:*
         version: link:../contracts
-      '@firedrill-tools/world-store':
+      '@firedrill-run/world-store':
         specifier: workspace:*
         version: link:../world-store
       better-sqlite3:
@@ -640,7 +640,7 @@ importers:
 
   tool-packs/github-issues:
     dependencies:
-      '@firedrill-tools/tool-sdk':
+      '@firedrill-run/tool-sdk':
         specifier: workspace:*
         version: link:../../packages/tool-sdk
     devDependencies:
@@ -653,11 +653,11 @@ importers:
 
   tool-packs/mailbox:
     dependencies:
-      '@firedrill-tools/tool-sdk':
+      '@firedrill-run/tool-sdk':
         specifier: workspace:*
         version: link:../../packages/tool-sdk
     devDependencies:
-      '@firedrill-tools/sdk':
+      '@firedrill-run/sdk':
         specifier: workspace:*
         version: link:../../packages/sdk
       '@modelcontextprotocol/client':
@@ -669,11 +669,11 @@ importers:
 
   tool-packs/object-storage:
     dependencies:
-      '@firedrill-tools/tool-sdk':
+      '@firedrill-run/tool-sdk':
         specifier: workspace:*
         version: link:../../packages/tool-sdk
     devDependencies:
-      '@firedrill-tools/sdk':
+      '@firedrill-run/sdk':
         specifier: workspace:*
         version: link:../../packages/sdk
       '@modelcontextprotocol/client':
@@ -685,7 +685,7 @@ importers:
 
   tool-packs/work-queue:
     dependencies:
-      '@firedrill-tools/tool-sdk':
+      '@firedrill-run/tool-sdk':
         specifier: workspace:*
         version: link:../../packages/tool-sdk
     devDependencies:

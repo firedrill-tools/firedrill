@@ -34,13 +34,14 @@
     "registry:write": "tsx tooling/generate-registry.mts",
     "registry:sync-community": "tsx tooling/generate-registry.mts --source ../firedrill-tools",
     "registry:check": "tsx tooling/generate-registry.mts --check",
-    "registry:test": "pnpm --filter @firedrill-tools/contracts build && vitest run tooling/generate-registry.test.mts tooling/community-release.test.mts tooling/community-sync-artifact.test.mts",
+    "registry:test": "pnpm --filter @firedrill-run/contracts build && vitest run tooling/generate-registry.test.mts tooling/community-release.test.mts tooling/community-sync-artifact.test.mts",
     "skill:check": "tsx tooling/check-skill.mts",
     "quickstart:check": "tsx tooling/check-quickstart.mts",
     "pack:artifacts": "pnpm build && tsx tooling/pack-public.mts",
     "pack:check": "tsx tooling/check-pack.mts",
     "release:portability": "tsx tooling/check-portable-install.mts",
     "release:prepare": "tsx tooling/prepare-release.mts",
+    "release:publish": "tsx tooling/publish-release.mts",
     "check": "pnpm format:check && pnpm lint && pnpm boundaries && pnpm genericity && pnpm determinism && pnpm public:check && pnpm release:check && pnpm build && pnpm docs:cli:check && pnpm schema:check && pnpm registry:check && pnpm registry:test && pnpm skill:check && pnpm typecheck && pnpm test && pnpm quickstart:check && pnpm pack:check"
   },
   "devDependencies": {

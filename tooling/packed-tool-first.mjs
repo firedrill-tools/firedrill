@@ -3,7 +3,7 @@ import { spawn, spawnSync } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync } from "node:fs";
 import { createServer } from "node:net";
 import { join } from "node:path";
-import { mcpToolName } from "@firedrill-tools/protocol-mcp";
+import { mcpToolName } from "@firedrill-run/protocol-mcp";
 import { Client, StreamableHTTPClientTransport } from "@modelcontextprotocol/client";
 
 // This driver is copied into the existing packed consumer. The CLI and worlds

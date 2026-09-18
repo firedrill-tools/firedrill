@@ -1,4 +1,4 @@
-import type { Diagnostic } from "@firedrill-tools/contracts";
+import type { Diagnostic } from "@firedrill-run/contracts";
 import { diagnostic } from "./diagnostics.js";
 import type { SourceDocument } from "./types.js";
 

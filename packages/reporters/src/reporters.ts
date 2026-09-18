@@ -22,7 +22,7 @@ import type {
   RunResult,
   TargetFileAttachment,
   ToolPackageManifest,
-} from "@firedrill-tools/contracts";
+} from "@firedrill-run/contracts";
 import {
   canonicalJson,
   compareStableStrings,
@@ -32,8 +32,8 @@ import {
   RunResultSchema,
   TargetFileAttachmentSchema,
   ToolPackageManifestSchema,
-} from "@firedrill-tools/contracts";
-import { trajectoryHash } from "@firedrill-tools/world-ir";
+} from "@firedrill-run/contracts";
+import { trajectoryHash } from "@firedrill-run/world-ir";
 import { readAttachmentBytes } from "./attachment-bytes.js";
 import { attachmentPreview, type AttachmentPreview } from "./attachment-preview.js";
 import { legacyProjections as initialProjections } from "./compatibility/initial.js";

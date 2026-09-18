@@ -1,7 +1,7 @@
 import { existsSync, readFileSync, renameSync, unlinkSync, writeFileSync } from "node:fs";
 import { extname, join } from "node:path";
 import { isDeepStrictEqual } from "node:util";
-import type { Diagnostic } from "@firedrill-tools/contracts";
+import type { Diagnostic } from "@firedrill-run/contracts";
 import {
   isMap,
   isNode,

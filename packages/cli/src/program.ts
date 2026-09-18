@@ -1,18 +1,18 @@
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import type { Readable, Writable } from "node:stream";
-import type { CompileWorldResult } from "@firedrill-tools/compiler";
-import { compileWorld, formatWorldSources } from "@firedrill-tools/compiler";
-import type { Diagnostic } from "@firedrill-tools/contracts";
-import { SeedSchema, Sha256Schema, StableIdSchema } from "@firedrill-tools/contracts";
-import { startLocalInspector } from "@firedrill-tools/inspector";
+import type { CompileWorldResult } from "@firedrill-run/compiler";
+import { compileWorld, formatWorldSources } from "@firedrill-run/compiler";
+import type { Diagnostic } from "@firedrill-run/contracts";
+import { SeedSchema, Sha256Schema, StableIdSchema } from "@firedrill-run/contracts";
+import { startLocalInspector } from "@firedrill-run/inspector";
 import type {
   CallbackReceiver,
   LocalRunComparison,
   ToolConformanceResult,
   ToolInspection,
   VerifiedLocalReport,
-} from "@firedrill-tools/sdk";
+} from "@firedrill-run/sdk";
 import {
   compareRuns,
   FiredrillProjectError,
@@ -22,8 +22,8 @@ import {
   testTool,
   validateTool,
   verifyReport,
-} from "@firedrill-tools/sdk";
-import { loadWorldBuild } from "@firedrill-tools/world-build";
+} from "@firedrill-run/sdk";
+import { loadWorldBuild } from "@firedrill-run/world-build";
 import { executeAgentCommand } from "./agent-command.js";
 import { executeBrowserCommand } from "./browser-command.js";
 import { executeCloudCommand } from "./cloud-command.js";
@@ -346,7 +346,7 @@ The inspector compiles repository source, then serves a loopback-only, offline
 UI with World, Drills, and Runs. It reads real local SQLite worlds and verified
 report bundles. Repository source stays authoritative and read-only.
 
-External targets remain owned by the caller. Start @firedrill-tools/inspector from the
+External targets remain owned by the caller. Start @firedrill-run/inspector from the
 process that supplies the agent callback when you need to run them from the UI.
 Use --no-open for terminal-only launch. JSON mode never opens a browser.
 `,

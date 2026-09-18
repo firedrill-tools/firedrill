@@ -8,9 +8,9 @@ import {
   ToolUiPathSchema,
   toolUiMediaType,
   type OperationOutcome,
-} from "@firedrill-tools/contracts";
-import type { ToolDefinition } from "@firedrill-tools/tool-sdk";
-import type { BoundWorldClient } from "@firedrill-tools/world-kernel";
+} from "@firedrill-run/contracts";
+import type { ToolDefinition } from "@firedrill-run/tool-sdk";
+import type { BoundWorldClient } from "@firedrill-run/world-kernel";
 import { TOOL_UI_CLIENT_SOURCE } from "./tool-ui-client.js";
 
 export interface ToolUiRevision {
@@ -82,8 +82,8 @@ class RequestError extends Error {
 }
 
 function readBody(request: IncomingMessage): Promise<Buffer> {
-  if (Number(request.headers["content-length"] ?? 0) > MAX_BODY_BYTES)
-    return Promise.reject(new RequestError(413, "request body exceeds 1 MiB"));
+  const declared = Number(request.headers["content-length"] ?? 0);
+  const declaredOversized = Number.isFinite(declared) && declared > MAX_BODY_BYTES;
   return new Promise((resolve, reject) => {
     const chunks: Buffer[] = [];
     let bytes = 0;
@@ -101,11 +101,20 @@ function readBody(request: IncomingMessage): Promise<Buffer> {
     };
     const data = (chunk: Buffer) => {
       bytes += chunk.length;
+      // A normal client with an oversized Content-Length is already sending the body when
+      // the server sees its headers. Drain without buffering so the 413 reaches the client
+      // instead of racing a connection reset. Unknown-length streams still fail at the
+      // bound; they must not hold the listener open indefinitely.
+      if (declaredOversized) return;
       if (bytes > MAX_BODY_BYTES) fail(new RequestError(413, "request body exceeds 1 MiB"));
       else chunks.push(chunk);
     };
     const end = () => {
       cleanup();
+      if (declaredOversized) {
+        reject(new RequestError(413, "request body exceeds 1 MiB"));
+        return;
+      }
       resolve(Buffer.concat(chunks));
     };
     const error = () => fail(new RequestError(400, "request body could not be read"));

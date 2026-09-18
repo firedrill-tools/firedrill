@@ -1,16 +1,16 @@
 import { mkdirSync, mkdtempSync, rmSync, utimesSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { RunResultSchema } from "@firedrill-tools/contracts";
-import { verifyLocalReport, writeLocalReport } from "@firedrill-tools/reporters";
+import { RunResultSchema } from "@firedrill-run/contracts";
+import { verifyLocalReport, writeLocalReport } from "@firedrill-run/reporters";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { SimulationRunListSchema } from "../src/contracts.js";
 import { type LocalSimulationServer, startLocalSimulationServer } from "../src/server.js";
 import { LocalSimulationSupervisor } from "../src/supervisor.js";
 
 // Instrument the real verifier: every selected report still undergoes full verification.
-vi.mock("@firedrill-tools/reporters", async (importOriginal) => {
-  const original = await importOriginal<typeof import("@firedrill-tools/reporters")>();
+vi.mock("@firedrill-run/reporters", async (importOriginal) => {
+  const original = await importOriginal<typeof import("@firedrill-run/reporters")>();
   return { ...original, verifyLocalReport: vi.fn(original.verifyLocalReport) };
 });
 
@@ -68,7 +68,7 @@ function repository(): string {
   });
   writeFileSync(
     join(root, "world/sensor.ts"),
-    `import { defineToolBehavior } from '@firedrill-tools/tool-sdk';
+    `import { defineToolBehavior } from '@firedrill-run/tool-sdk';
 export default defineToolBehavior({ operations: {
   'reading.get': (_input, context) => context.state.get('readings', 'room')?.value ?? 0,
 } });

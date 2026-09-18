@@ -1,5 +1,5 @@
 // Frozen report projection from 74a0bb9. Compatibility-only: do not restyle.
-import type { AssertionResult, EvidenceEntry, RunResult } from "@firedrill-tools/contracts";
+import type { AssertionResult, EvidenceEntry, RunResult } from "@firedrill-run/contracts";
 import type { ReportProjectionInput, ReportProjections } from "./types.js";
 
 function operationName(entry: Extract<EvidenceEntry, { kind: "operation" }>): string {

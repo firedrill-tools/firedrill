@@ -1,9 +1,9 @@
-# `@firedrill-tools/cli`
+# `@firedrill-run/cli`
 
 Account-free local commands for repository-owned synthetic worlds and agent drills.
 
 For programmatic source setup, `addToolPackages({ root, packageNames })` from
-`@firedrill-tools/cli` selects several already installed packages in one operation.
+`@firedrill-run/cli` selects several already installed packages in one operation.
 It inspects declarations without importing behavior or installing dependencies.
 A new project receives the combined exact grants and validated starter data;
 existing world source and actor grants remain unchanged. Duplicate Tool IDs
@@ -80,7 +80,7 @@ A matching consumer-owned conformance suite takes precedence. Otherwise, `tool t
 
 After conformance passes, `tool contribute` can prepare a new, non-overwriting review directory for Tool source owned by the current repository. It contains only the Tool declaration, its exact behavior source closure, checksums, normalized manifest, license, and a payload-free conformance summary. It requires explicit source-rights/customer-data/Apache-2.0 attestation and blocks common credential patterns. Installed dependencies must be contributed from their own source repository. Nothing is uploaded and no pull request is opened.
 
-`firedrill agent` dynamically loads the separately installed `@firedrill-tools/agent` package. It uses the Claude Agent SDK and the developer's `ANTHROPIC_API_KEY`; the rest of the CLI has neither dependency. Running the Agent may send repository content to Anthropic, but never to a hosted Firedrill service. Its file access excludes secrets, Git metadata, dependencies, and `.firedrill/` evidence, and it has no shell or publish capability.
+`firedrill agent` dynamically loads the separately installed `@firedrill-run/agent` package. It uses the Claude Agent SDK and the developer's `ANTHROPIC_API_KEY`; the rest of the CLI has neither dependency. Running the Agent may send repository content to Anthropic, but never to a hosted Firedrill service. Its file access excludes secrets, Git metadata, dependencies, and `.firedrill/` evidence, and it has no shell or publish capability.
 
 Start with the [Firedrill quickstart](https://docs.firedrill.run/quickstart).
 The complete [CLI reference](https://docs.firedrill.run/cli/reference) is generated from the executable release-candidate command surface.

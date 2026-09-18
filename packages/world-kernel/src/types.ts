@@ -10,9 +10,9 @@ import type {
   Sha256,
   StableId,
   VirtualTime,
-} from "@firedrill-tools/contracts";
-import type { ToolDefinition } from "@firedrill-tools/tool-sdk";
-import type { WorldStore } from "@firedrill-tools/world-store";
+} from "@firedrill-run/contracts";
+import type { ToolDefinition } from "@firedrill-run/tool-sdk";
+import type { WorldStore } from "@firedrill-run/world-store";
 
 export interface WorldKernelBudgets {
   readonly maxToolCalls: number;

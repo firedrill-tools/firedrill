@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
-import { Sha256Schema, canonicalJson } from "@firedrill-tools/contracts";
-import type { JsonValue, Sha256 } from "@firedrill-tools/contracts";
+import { Sha256Schema, canonicalJson } from "@firedrill-run/contracts";
+import type { JsonValue, Sha256 } from "@firedrill-run/contracts";
 
 export function sha256Text(value: string | Uint8Array): Sha256 {
   return Sha256Schema.parse(`sha256:${createHash("sha256").update(value).digest("hex")}`);

@@ -4,7 +4,7 @@ Firedrill keeps package releases, the Tool engine contract, authored source, gen
 
 ## Framework packages
 
-All packages under `packages/` ship as one versioned release train. Use one release line across direct Firedrill dependencies; the package manager resolves the exact internal versions from the published manifests. The current candidate is `0.1.0-rc.1`, published under the `@firedrill-tools` npm scope with the `next` dist-tag.
+All packages under `packages/` ship as one versioned release train. Use one release line across direct Firedrill dependencies; the package manager resolves the exact internal versions from the published manifests. The current candidate is `0.1.0-rc.1`, published under the `@firedrill-run` npm scope with the `next` dist-tag.
 
 The exact package names, directories, export paths, CLI binary, and supported toolchain are checked against [`release/public-surface.json`](../release/public-surface.json). Changing that file is an intentional public-contract decision, not an incidental consequence of adding code.
 

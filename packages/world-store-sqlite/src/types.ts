@@ -12,7 +12,7 @@ import type {
   StableId,
   VirtualTime,
   WorldInstanceId,
-} from "@firedrill-tools/contracts";
+} from "@firedrill-run/contracts";
 
 export interface InitialActor {
   readonly bindingId: ActorBindingId;
