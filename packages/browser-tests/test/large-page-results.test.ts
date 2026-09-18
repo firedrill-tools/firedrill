@@ -38,7 +38,9 @@ it("compares full large DOM values and retains verifiable bounded pass and fail 
             { id: "body", kind: "text", selector: { by: "css", value: "body" }, expected, contains: true },
           ],
         },
-        stepTimeoutMs: 100,
+        // This covers result truncation, not navigation latency. Keep enough
+        // headroom for the package suite to run concurrently on shared CI.
+        stepTimeoutMs: 1_000,
         capture: { screenshot: "off" },
       });
       expect(body.length).toBeGreaterThan(30000);
