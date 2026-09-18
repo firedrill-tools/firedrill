@@ -354,7 +354,7 @@ export function BrowserTestsView() {
             restart the inspector.
           </EmptyState>
           <CodeDocument
-            content="pnpm add -D @firedrill-run/browser-tests\npnpm dlx playwright@1.62.1 install chromium"
+            content="pnpm add -D @firedrill-run/browser-tests@next\npnpm dlx playwright@1.62.1 install chromium"
             language="bash"
             context="Install browser testing"
           />

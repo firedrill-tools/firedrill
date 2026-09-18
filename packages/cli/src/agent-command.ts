@@ -25,7 +25,7 @@ export async function executeAgentCommand(parsed: AgentCommandInput, io: CliIo):
     const code = (error as NodeJS.ErrnoException).code;
     const message =
       code === "ERR_MODULE_NOT_FOUND" || code === "MODULE_NOT_FOUND"
-        ? "Install the optional authoring package beside the CLI: pnpm add -D @firedrill-run/agent"
+        ? "Install the optional authoring package beside the CLI: pnpm add -D @firedrill-run/agent@next"
         : "The optional Firedrill Agent package could not be loaded.";
     if (parsed.json) {
       writeJson(io, {

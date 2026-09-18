@@ -644,7 +644,10 @@ describe("local CLI front door", () => {
     expect(JSON.parse(initialized.stdout)).toMatchObject({
       status: "initialized",
       path: "firedrill-agent",
-      next: expect.arrayContaining([expect.stringContaining("ANTHROPIC_API_KEY")]),
+      next: expect.arrayContaining([
+        expect.stringContaining("pnpm add -D @firedrill-run/agent@next"),
+        expect.stringContaining("ANTHROPIC_API_KEY"),
+      ]),
     });
     expect(existsSync(join(root, ".agents", "skills", "firedrill", "SKILL.md"))).toBe(true);
 

@@ -602,7 +602,7 @@ export function initProject(
       repositoryBrief(detection, guidance),
     ];
     next = [
-      "Install the optional package beside the CLI if needed: pnpm add -D @firedrill-run/agent",
+      "Install the optional package beside the CLI if needed: pnpm add -D @firedrill-run/agent@next",
       "Set ANTHROPIC_API_KEY in your shell if it is not already set.",
       "Run firedrill agent. Add --prompt only when you want to narrow the default end-to-end authoring task.",
       "The ordinary Firedrill CLI remains fully usable without the Agent or an Anthropic key.",

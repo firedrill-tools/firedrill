@@ -160,7 +160,7 @@ export function createBrowserTestRequestHandler(repositoryRoot: string, token: s
       throw new RequestError(
         503,
         "browser.PACKAGE_REQUIRED",
-        "Install @firedrill-run/browser-tests in this project, then install its Chromium browser with playwright install chromium.",
+        "Install the optional package with pnpm add -D @firedrill-run/browser-tests@next, then install its Chromium browser with playwright install chromium.",
       );
     }
   };
@@ -284,7 +284,7 @@ export function createBrowserTestRequestHandler(repositoryRoot: string, token: s
                 throw new RequestError(
                   503,
                   "browser.AGENT_PACKAGE_REQUIRED",
-                  "Install @firedrill-run/agent to use the optional browser agent.",
+                  "Install the optional browser agent with pnpm add -D @firedrill-run/agent@next.",
                 );
               }
               if (!process.env.ANTHROPIC_API_KEY)
