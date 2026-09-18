@@ -199,6 +199,28 @@ for (const group of ["packages"] as const) {
   visit(sourceRoot);
 }
 
+const untaggedPrereleaseInstall =
+  /(?:pnpm\s+add|npm\s+(?:install|i)|yarn\s+add|bun\s+add)[^\n]*@firedrill-run\/(?:agent|browser-tests)(?!@next\b)/;
+const inspectInstallGuidance = (path: string) => {
+  const source = readFileSync(path, "utf8");
+  if (untaggedPrereleaseInstall.test(source)) {
+    violations.push(
+      `${relative(root, path).split(sep).join("/")}: prerelease optional-package install commands must use @next`,
+    );
+  }
+};
+const visitInstallGuidance = (directory: string) => {
+  for (const entry of readdirSync(directory, { withFileTypes: true })) {
+    if (["dist", "node_modules"].includes(entry.name)) continue;
+    const path = join(directory, entry.name);
+    if (entry.isDirectory()) visitInstallGuidance(path);
+    else if (/\.(?:md|[cm]?[jt]sx?)$/.test(entry.name)) inspectInstallGuidance(path);
+  }
+};
+inspectInstallGuidance(join(root, "README.md"));
+visitInstallGuidance(join(root, "docs"));
+visitInstallGuidance(join(root, "packages"));
+
 if (violations.length > 0) {
   process.stderr.write(`${violations.sort().join("\n")}\n`);
   process.exit(1);

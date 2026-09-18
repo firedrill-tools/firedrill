@@ -37,7 +37,10 @@ function project() {
 describe("optional browser CLI", () => {
   it("keeps help read-only and rejects model, command, and source ambiguity", async () => {
     const root = project();
-    expect((await invoke(root, ["--help"])).stdout).toContain("Saved steps need no model key");
+    const help = (await invoke(root, ["--help"])).stdout;
+    expect(help).toContain("Saved steps need no model key");
+    expect(help).toContain("pnpm add -D @firedrill-run/browser-tests@next");
+    expect(help).toContain("pnpm add -D @firedrill-run/agent@next");
     for (const args of [
       ["anything"],
       ["run"],

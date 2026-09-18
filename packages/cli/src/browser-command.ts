@@ -10,9 +10,9 @@ Usage:
   firedrill browser run --url <url> --task <task> --agent --allow-model [options]
   firedrill browser verify <report-directory> [--root <path>] [--json]
 
-Install once: pnpm add -D @firedrill-run/browser-tests
+Install once: pnpm add -D @firedrill-run/browser-tests@next
 Browser install: pnpm dlx playwright@1.62.1 install chromium
-For the optional task driver: pnpm add -D @firedrill-run/agent
+For the optional task driver: pnpm add -D @firedrill-run/agent@next
 
 Options:
   --root <path>             Project directory; defaults to the current directory
@@ -118,7 +118,7 @@ export async function executeBrowserCommand(args: readonly string[], io: CliIo):
       library = await import("@firedrill-run/browser-tests");
     } catch {
       throw new BrowserCliError(
-        "Install the optional browser package beside the CLI: pnpm add -D @firedrill-run/browser-tests",
+        "Install the optional browser package beside the CLI: pnpm add -D @firedrill-run/browser-tests@next",
       );
     }
     if (command === "verify") {
@@ -165,7 +165,9 @@ export async function executeBrowserCommand(args: readonly string[], io: CliIo):
       try {
         agent = await import("@firedrill-run/agent/browser");
       } catch {
-        throw new BrowserCliError("Install the optional browser agent: pnpm add -D @firedrill-run/agent");
+        throw new BrowserCliError(
+          "Install the optional browser agent: pnpm add -D @firedrill-run/agent@next",
+        );
       }
       driver = agent.createBrowserAgentDriver({
         environment,

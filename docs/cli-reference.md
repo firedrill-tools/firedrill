@@ -182,9 +182,9 @@ Usage:
   firedrill browser run --url <url> --task <task> --agent --allow-model [options]
   firedrill browser verify <report-directory> [--root <path>] [--json]
 
-Install once: pnpm add -D @firedrill-run/browser-tests
+Install once: pnpm add -D @firedrill-run/browser-tests@next
 Browser install: pnpm dlx playwright@1.62.1 install chromium
-For the optional task driver: pnpm add -D @firedrill-run/agent
+For the optional task driver: pnpm add -D @firedrill-run/agent@next
 
 Options:
   --root <path>             Project directory; defaults to the current directory
@@ -219,9 +219,9 @@ Usage:
   firedrill browser run --url <url> --task <task> --agent --allow-model [options]
   firedrill browser verify <report-directory> [--root <path>] [--json]
 
-Install once: pnpm add -D @firedrill-run/browser-tests
+Install once: pnpm add -D @firedrill-run/browser-tests@next
 Browser install: pnpm dlx playwright@1.62.1 install chromium
-For the optional task driver: pnpm add -D @firedrill-run/agent
+For the optional task driver: pnpm add -D @firedrill-run/agent@next
 
 Options:
   --root <path>             Project directory; defaults to the current directory
@@ -256,9 +256,9 @@ Usage:
   firedrill browser run --url <url> --task <task> --agent --allow-model [options]
   firedrill browser verify <report-directory> [--root <path>] [--json]
 
-Install once: pnpm add -D @firedrill-run/browser-tests
+Install once: pnpm add -D @firedrill-run/browser-tests@next
 Browser install: pnpm dlx playwright@1.62.1 install chromium
-For the optional task driver: pnpm add -D @firedrill-run/agent
+For the optional task driver: pnpm add -D @firedrill-run/agent@next
 
 Options:
   --root <path>             Project directory; defaults to the current directory

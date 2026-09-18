@@ -232,7 +232,7 @@ A coding agent should begin with `.agents/firedrill/BRIEF.md` and `.agents/skill
 The optional local Firedrill Agent follows that same skill rather than a private format:
 
 ```sh
-pnpm add -D @firedrill-run/agent
+pnpm add -D @firedrill-run/agent@next
 export ANTHROPIC_API_KEY=your_key
 firedrill agent
 ```
