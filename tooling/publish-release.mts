@@ -28,8 +28,17 @@ interface ReleasePackage {
 interface ReleaseDocument {
   readonly schemaVersion: number;
   readonly status: "release-candidate" | "rehearsal";
+  readonly source?: {
+    readonly clean?: boolean;
+    readonly revision?: string;
+  };
   readonly packages: readonly ReleasePackage[];
   readonly checksums: string;
+}
+
+interface RegistryPublication {
+  readonly dist: RegistryDist;
+  readonly tags: Readonly<Record<string, string>>;
 }
 
 export interface PublishArtifact extends ReleasePackage {
@@ -54,6 +63,30 @@ export type PublishOutcome = "published" | "reconciled" | "accepted";
 
 const repositoryRoot = resolve(import.meta.dirname, "..");
 const npmScope = "@firedrill-run/";
+const npmRegistry = "https://registry.npmjs.org";
+const coreVersion = "0.1.0-rc.1";
+export const CORE_RELEASE_IDENTITIES = [
+  "agent",
+  "assertions",
+  "browser-tests",
+  "cli",
+  "compiler",
+  "contracts",
+  "drills",
+  "inspector",
+  "protocol-cli",
+  "protocol-http",
+  "protocol-mcp",
+  "reporters",
+  "sdk",
+  "simulation",
+  "tool-sdk",
+  "world-build",
+  "world-ir",
+  "world-kernel",
+  "world-store",
+  "world-store-sqlite",
+].map((name) => `${npmScope}${name}@${coreVersion}`);
 
 function digest(algorithm: "sha1" | "sha256" | "sha512", path: string): string {
   return createHash(algorithm)
@@ -117,8 +150,11 @@ function verifyChecksums(bundle: string, checksumPath: string): ReadonlyMap<stri
 
 export function loadReleaseBundle(
   directory: string,
-  options: { readonly requireReleaseCandidate: boolean },
+  options: { readonly expectedRevision: string; readonly requireReleaseCandidate: boolean },
 ): readonly PublishArtifact[] {
+  if (!/^[0-9a-f]{40}$/.test(options.expectedRevision)) {
+    throw new Error("expected release revision must be an exact 40-character commit SHA");
+  }
   const bundle = realpathSync(resolve(directory));
   const release = JSON.parse(readFileSync(safeFile(bundle, "release.json"), "utf8")) as ReleaseDocument;
   if (release.schemaVersion !== 1 || !Array.isArray(release.packages)) {
@@ -126,6 +162,16 @@ export function loadReleaseBundle(
   }
   if (options.requireReleaseCandidate && release.status !== "release-candidate") {
     throw new Error(`refusing to publish a ${release.status ?? "unknown"} bundle`);
+  }
+  if (release.source?.clean !== true || release.source.revision !== options.expectedRevision) {
+    throw new Error(`release source must be clean and match reviewed revision ${options.expectedRevision}`);
+  }
+  const releaseIdentities = release.packages
+    .map((package_) => `${package_.name}@${package_.version}`)
+    .sort(compareStableStrings);
+  const expectedIdentities = [...CORE_RELEASE_IDENTITIES].sort(compareStableStrings);
+  if (JSON.stringify(releaseIdentities) !== JSON.stringify(expectedIdentities)) {
+    throw new Error("release package set is not the exact reviewed 20-package allowlist");
   }
   const checksums = verifyChecksums(bundle, release.checksums);
   const identities = new Set<string>();
@@ -193,17 +239,24 @@ function npm(arguments_: readonly string[]): NpmCommandResult {
   });
 }
 
-function publishedDist(
+function publishedRelease(
   name: string,
   version: string,
   runNpm: NpmCommandRunner = npm,
-): RegistryDist | undefined {
-  const result = runNpm(["view", `${name}@${version}`, "dist", "--json"]);
-  if (result.status === 0) {
-    const value = JSON.parse(result.stdout || "{}") as RegistryDist;
-    return value;
+): RegistryPublication | undefined {
+  const distResult = runNpm(["view", `${name}@${version}`, "dist", "--json", "--registry", npmRegistry]);
+  if (distResult.status === 0) {
+    const dist = JSON.parse(distResult.stdout || "{}") as RegistryDist;
+    const tagsResult = runNpm(["view", name, "dist-tags", "--json", "--registry", npmRegistry]);
+    if (tagsResult.status !== 0) {
+      throw new Error(
+        `could not inspect dist-tags for ${name}\n${tagsResult.stdout ?? ""}\n${tagsResult.stderr ?? ""}`,
+      );
+    }
+    const tags = JSON.parse(tagsResult.stdout || "{}") as Readonly<Record<string, string>>;
+    return { dist, tags };
   }
-  const output = `${result.stdout ?? ""}\n${result.stderr ?? ""}`;
+  const output = `${distResult.stdout ?? ""}\n${distResult.stderr ?? ""}`;
   if (/E404|404 Not Found|is not in this registry/i.test(output)) return undefined;
   throw new Error(`could not inspect ${name}@${version}\n${output}`);
 }
@@ -222,6 +275,33 @@ function assertPublishedBytes(artifact: PublishArtifact, remote: RegistryDist): 
   }
 }
 
+function assertPublishedTag(
+  artifact: PublishArtifact,
+  tags: Readonly<Record<string, string>>,
+  tag: string,
+): void {
+  if (tags[tag] !== artifact.version) {
+    throw new Error(
+      `${artifact.name}@${artifact.version} has matching bytes, but dist-tag ${JSON.stringify(tag)} ` +
+        `points to ${JSON.stringify(tags[tag] ?? null)}. Refusing to mutate npm tags automatically; ` +
+        `review the registry and explicitly run npm dist-tag add ${artifact.name}@${artifact.version} ${tag} ` +
+        `--registry ${npmRegistry}`,
+    );
+  }
+}
+
+export function verifyExistingPublication(
+  artifact: PublishArtifact,
+  tag: string,
+  runNpm: NpmCommandRunner = npm,
+): boolean {
+  const remote = publishedRelease(artifact.name, artifact.version, runNpm);
+  if (!remote) return false;
+  assertPublishedBytes(artifact, remote.dist);
+  assertPublishedTag(artifact, remote.tags, tag);
+  return true;
+}
+
 function rateLimited(output: string): boolean {
   return /E429|429 Too Many Requests|rate limit/i.test(output);
 }
@@ -238,14 +318,16 @@ export function publishArchive(
     "public",
     "--tag",
     options.tag,
+    "--registry",
+    npmRegistry,
     "--fetch-retries=0",
   ];
   if (options.provenance) arguments_.push("--provenance");
   const result = runNpm(arguments_);
   const output = `${result.stdout ?? ""}\n${result.stderr ?? ""}`;
-  let remote: RegistryDist | undefined;
+  let remote = false;
   try {
-    remote = publishedDist(artifact.name, artifact.version, runNpm);
+    remote = verifyExistingPublication(artifact, options.tag, runNpm);
   } catch (error) {
     if (result.status === 0) throw error;
     const inspectionFailure = error instanceof Error ? error.message : String(error);
@@ -256,7 +338,6 @@ export function publishArchive(
   }
 
   if (remote) {
-    assertPublishedBytes(artifact, remote);
     return result.status === 0 ? "published" : "reconciled";
   }
   if (result.status === 0) {
@@ -282,18 +363,23 @@ function argument(name: string): string | undefined {
 
 async function main(): Promise<void> {
   const release = argument("--release");
+  const expectedRevision = argument("--expected-revision");
   const dryRun = process.argv.includes("--dry-run");
   const provenance = process.argv.includes("--provenance");
   const tag = argument("--tag") ?? "next";
-  if (!release || !/^[a-z][a-z0-9._-]*$/.test(tag)) {
+  if (!release || !expectedRevision || !/^[0-9a-f]{40}$/.test(expectedRevision) || tag !== "next") {
     process.stderr.write(
-      "Usage: pnpm release:publish -- --release <prepared-bundle> [--tag next] [--provenance] [--dry-run]\n",
+      "Usage: pnpm release:publish -- --release <prepared-bundle> --expected-revision <40-char-sha> " +
+        "[--tag next] [--provenance] [--dry-run]\n",
     );
     process.exitCode = 2;
     return;
   }
 
-  const artifacts = loadReleaseBundle(release, { requireReleaseCandidate: !dryRun });
+  const artifacts = loadReleaseBundle(release, {
+    expectedRevision,
+    requireReleaseCandidate: !dryRun,
+  });
   const byName = new Map(artifacts.map((artifact) => [artifact.name, artifact]));
   const layers = topologicalPublishLayers(artifacts);
   process.stdout.write(`${layers.map((layer, index) => `${index + 1}. ${layer.join(", ")}`).join("\n")}\n`);
@@ -306,9 +392,7 @@ async function main(): Promise<void> {
     for (const name of layer) {
       const artifact = byName.get(name);
       if (!artifact) throw new Error(`publish plan lost ${name}`);
-      const remote = publishedDist(artifact.name, artifact.version);
-      if (remote) {
-        assertPublishedBytes(artifact, remote);
+      if (verifyExistingPublication(artifact, tag)) {
         process.stdout.write(
           `already published with identical bytes: ${artifact.name}@${artifact.version}\n`,
         );

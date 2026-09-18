@@ -54,16 +54,18 @@ Download the release-evidence artifact from the reviewed commit. Do not rebuild 
 First inspect the exact plan without contacting or changing the registry:
 
 ```sh
-pnpm release:publish -- --release /path/to/firedrill-release --tag next --dry-run
+pnpm release:publish -- --release /path/to/firedrill-release \
+  --expected-revision <reviewed-40-character-commit-sha> --tag next --dry-run
 ```
 
 Then publish the same bundle. Add `--provenance` only from a supported trusted-publishing CI environment:
 
 ```sh
-pnpm release:publish -- --release /path/to/firedrill-release --tag next
+pnpm release:publish -- --release /path/to/firedrill-release \
+  --expected-revision <reviewed-40-character-commit-sha> --tag next
 ```
 
-The command is resumable. Before each publish it checks the exact name and version. An already-published package is skipped only when the registry integrity and shasum match the reviewed archive; different or unverifiable bytes stop the release. Registry rate limits are retried with bounded backoff, while all other errors fail immediately.
+The command is resumable. Before each publish it checks the exact name and version against the npmjs registry. An already-published package is skipped only when the registry integrity, shasum, and `next` dist-tag match the reviewed archive; different or unverifiable bytes and tag drift stop the release. Each invocation attempts an upload only once. If npm rate-limits an upload, wait for the publication window to reset and rerun the exact same bundle; matching versions are reconciled without a second write.
 
 Before the first release, the release owner must:
 
