@@ -315,7 +315,7 @@ describe("tool-first init", () => {
     if (tool === undefined) throw new Error("catalog fixture missing");
     expect(toolInstallPlan(root, tool)).toMatchObject({
       executable: "npm",
-      arguments: ["install", "--save-dev", "--ignore-scripts", "@firedrill-tools/tool-gmail@0.1.1"],
+      arguments: ["install", "--save-dev", "--ignore-scripts", `${tool.packageName}@${tool.version}`],
     });
     vi.mocked(installReadyTool).mockImplementation(async (target) => {
       installed(target, tool.packageName, tool.id, tool.id, tool.version);
