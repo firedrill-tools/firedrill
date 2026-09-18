@@ -75,6 +75,6 @@ that uses a model still needs its own provider setup. A seeded synthetic world
 does not make live model output deterministic.
 
 Framework packages are published as a release candidate under the
-`@firedrill-tools` npm scope. Start with the
+`@firedrill-run` npm scope. Start with the
 [root README](../README.md#installation), and keep direct Firedrill dependencies
 on the same release line.

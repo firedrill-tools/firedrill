@@ -1,11 +1,11 @@
-import type { Diagnostic, RunWorldSetupInput, SourceSpan, StableId } from "@firedrill-tools/contracts";
+import type { Diagnostic, RunWorldSetupInput, SourceSpan, StableId } from "@firedrill-run/contracts";
 import type {
   BuildManifest,
   CanonicalWorldIr,
   PackageLock,
   ResolvedRunSetup,
   ToolArtifactLock,
-} from "@firedrill-tools/world-ir";
+} from "@firedrill-run/world-ir";
 
 export type ToolSourceOrigin = ToolArtifactLock["source"];
 

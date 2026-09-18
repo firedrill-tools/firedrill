@@ -3,21 +3,21 @@ import { existsSync, mkdtempSync, rmSync } from "node:fs";
 import { createServer } from "node:http";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import type { ResolvedToolOverride, TargetDescriptor } from "@firedrill-tools/contracts";
-import { FIREDRILL_ENGINE_VERSION } from "@firedrill-tools/contracts";
-import { invokeCliWorldOperation } from "@firedrill-tools/protocol-cli";
-import { defineTool } from "@firedrill-tools/tool-sdk";
-import type { LoadedWorldBuild } from "@firedrill-tools/world-build";
+import type { ResolvedToolOverride, TargetDescriptor } from "@firedrill-run/contracts";
+import { FIREDRILL_ENGINE_VERSION } from "@firedrill-run/contracts";
+import { invokeCliWorldOperation } from "@firedrill-run/protocol-cli";
+import { defineTool } from "@firedrill-run/tool-sdk";
+import type { LoadedWorldBuild } from "@firedrill-run/world-build";
 import {
   BuildIdentitySchema,
   BuildManifestSchema,
   CanonicalWorldIrSchema,
   PackageLockSchema,
   semanticHash,
-} from "@firedrill-tools/world-ir";
-import type { BoundWorldClient } from "@firedrill-tools/world-kernel";
-import { WorldKernel } from "@firedrill-tools/world-kernel";
-import { SqliteWorldStore } from "@firedrill-tools/world-store-sqlite";
+} from "@firedrill-run/world-ir";
+import type { BoundWorldClient } from "@firedrill-run/world-kernel";
+import { WorldKernel } from "@firedrill-run/world-kernel";
+import { SqliteWorldStore } from "@firedrill-run/world-store-sqlite";
 import { Client, StreamableHTTPClientTransport } from "@modelcontextprotocol/client";
 import { afterEach, describe, expect, it } from "vitest";
 import {

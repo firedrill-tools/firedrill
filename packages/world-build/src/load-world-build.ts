@@ -1,17 +1,17 @@
 import { readdirSync, readFileSync, realpathSync } from "node:fs";
 import { isAbsolute, join, relative, resolve, sep } from "node:path";
 import { pathToFileURL } from "node:url";
-import type { Diagnostic, ToolPackageManifest } from "@firedrill-tools/contracts";
-import { DiagnosticSchema, FIREDRILL_ENGINE_VERSION } from "@firedrill-tools/contracts";
+import type { Diagnostic, ToolPackageManifest } from "@firedrill-run/contracts";
+import { DiagnosticSchema, FIREDRILL_ENGINE_VERSION } from "@firedrill-run/contracts";
 import type {
   ToolBehaviorDefinition,
   ToolCallbackCodec,
   ToolHttpRouteCodec,
   ToolOperationHandler,
   ToolSubscriptionHandler,
-} from "@firedrill-tools/tool-sdk";
-import { defineTool } from "@firedrill-tools/tool-sdk";
-import type { ToolArtifactLock } from "@firedrill-tools/world-ir";
+} from "@firedrill-run/tool-sdk";
+import { defineTool } from "@firedrill-run/tool-sdk";
+import type { ToolArtifactLock } from "@firedrill-run/world-ir";
 import {
   BUILD_MANIFEST_SCHEMA_VERSION,
   BuildManifestSchema,
@@ -22,7 +22,7 @@ import {
   semanticHash,
   sha256Text,
   WORLD_IR_SCHEMA_VERSION,
-} from "@firedrill-tools/world-ir";
+} from "@firedrill-run/world-ir";
 import { loadToolModule } from "./load-tool-module.js";
 import { loadToolUis } from "./load-tool-uis.js";
 import type { LoadedToolUi, LoadWorldBuildResult } from "./types.js";

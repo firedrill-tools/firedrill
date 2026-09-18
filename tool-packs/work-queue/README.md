@@ -15,7 +15,7 @@ Install it with the package manager already used by the project, then select it 
 }
 ```
 
-That package is the only Tool-specific dependency the consuming repository needs. Firedrill compiles its small behavior runtime into the immutable Tool artifact; consumers do not hoist `@firedrill-tools/tool-sdk` manually.
+That package is the only Tool-specific dependency the consuming repository needs. Firedrill compiles its small behavior runtime into the immutable Tool artifact; consumers do not hoist `@firedrill-run/tool-sdk` manually.
 
 The consumer world owns actors, initial state, scenarios, targets, and drills. Firedrill reads the package declaration without executing behavior during `validate`; behavior executes only when a build is loaded or a drill runs, with the developer's local authority.
 

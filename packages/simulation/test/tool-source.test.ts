@@ -11,7 +11,7 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
-import { type CompiledBuild, compileWorld } from "@firedrill-tools/compiler";
+import { type CompiledBuild, compileWorld } from "@firedrill-run/compiler";
 import { afterEach, describe, expect, it } from "vitest";
 import { SimulationToolSourceDocumentSchema, SimulationToolSourceIdSchema } from "../src/contracts.js";
 import { loadSimulationProject } from "../src/project.js";

@@ -1,4 +1,4 @@
-import type { JsonObject, OperationOutcome, ToolPackageManifest } from "@firedrill-tools/contracts";
+import type { JsonObject, OperationOutcome, ToolPackageManifest } from "@firedrill-run/contracts";
 import {
   CallIdSchema,
   CorrelationIdSchema,
@@ -6,7 +6,7 @@ import {
   OperationIdSchema,
   OperationOutcomeSchema,
   PackageIdSchema,
-} from "@firedrill-tools/contracts";
+} from "@firedrill-run/contracts";
 import { FIREDRILL_CLI_TOKEN, FIREDRILL_CLI_URL } from "./binding.js";
 
 const MAX_RESPONSE_BYTES = 1024 * 1024;

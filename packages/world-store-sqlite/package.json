@@ -1,5 +1,5 @@
 {
-  "name": "@firedrill-tools/world-store-sqlite",
+  "name": "@firedrill-run/world-store-sqlite",
   "version": "0.1.0-rc.1",
   "description": "One-file SQLite world store for Firedrill",
   "license": "Apache-2.0",
@@ -32,8 +32,8 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "@firedrill-tools/contracts": "workspace:*",
-    "@firedrill-tools/world-store": "workspace:*",
+    "@firedrill-run/contracts": "workspace:*",
+    "@firedrill-run/world-store": "workspace:*",
     "better-sqlite3": "12.9.0"
   },
   "devDependencies": {

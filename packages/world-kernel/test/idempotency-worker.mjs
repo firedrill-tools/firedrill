@@ -1,5 +1,5 @@
-import { defineTool } from "@firedrill-tools/tool-sdk";
-import { SqliteWorldStore } from "@firedrill-tools/world-store-sqlite";
+import { defineTool } from "@firedrill-run/tool-sdk";
+import { SqliteWorldStore } from "@firedrill-run/world-store-sqlite";
 import { WorldKernel } from "../dist/index.js";
 
 const [filePath, workerId, mode] = process.argv.slice(2);

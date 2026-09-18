@@ -1,11 +1,11 @@
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import type { JsonObject, OperationInvocation, OperationRef } from "@firedrill-tools/contracts";
-import type { ToolDefinition } from "@firedrill-tools/tool-sdk";
-import { defineTool, ToolFailure } from "@firedrill-tools/tool-sdk";
-import type { SqliteWorldStore as SqliteStore } from "@firedrill-tools/world-store-sqlite";
-import { SqliteWorldStore } from "@firedrill-tools/world-store-sqlite";
+import type { JsonObject, OperationInvocation, OperationRef } from "@firedrill-run/contracts";
+import type { ToolDefinition } from "@firedrill-run/tool-sdk";
+import { defineTool, ToolFailure } from "@firedrill-run/tool-sdk";
+import type { SqliteWorldStore as SqliteStore } from "@firedrill-run/world-store-sqlite";
+import { SqliteWorldStore } from "@firedrill-run/world-store-sqlite";
 import { afterEach, describe, expect, it } from "vitest";
 import { WorldKernel } from "../src/index.js";
 

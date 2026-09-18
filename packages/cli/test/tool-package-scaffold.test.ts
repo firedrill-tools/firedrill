@@ -12,8 +12,8 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
-import { compileWorld, inspectInstalledToolPackage } from "@firedrill-tools/compiler";
-import { testTool } from "@firedrill-tools/sdk";
+import { compileWorld, inspectInstalledToolPackage } from "@firedrill-run/compiler";
+import { testTool } from "@firedrill-run/sdk";
 import { afterEach, describe, expect, it } from "vitest";
 import { installToolSource } from "../src/tool-installation.js";
 import { createToolPackage } from "../src/tool-package-scaffold.js";

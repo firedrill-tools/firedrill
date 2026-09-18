@@ -1,12 +1,12 @@
-import type { CorrelationId } from "@firedrill-tools/contracts";
-import { VirtualTimeSchema } from "@firedrill-tools/contracts";
+import type { CorrelationId } from "@firedrill-run/contracts";
+import { VirtualTimeSchema } from "@firedrill-run/contracts";
 import type {
   AdvanceTimeOptions,
   ClockAdvanceResult,
   ScheduledEventFailure,
   WorldKernel,
-} from "@firedrill-tools/world-kernel";
-import type { WorldStore } from "@firedrill-tools/world-store";
+} from "@firedrill-run/world-kernel";
+import type { WorldStore } from "@firedrill-run/world-store";
 
 export interface DrillCallbackSettlement {
   /** Delivers all callback work due at the world's current virtual time. */

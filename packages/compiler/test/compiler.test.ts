@@ -12,14 +12,14 @@ import {
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { loadWorldBuild } from "@firedrill-tools/world-build";
-import { WorldKernel } from "@firedrill-tools/world-kernel";
-import { SqliteWorldStore } from "@firedrill-tools/world-store-sqlite";
+import { loadWorldBuild } from "@firedrill-run/world-build";
+import { WorldKernel } from "@firedrill-run/world-kernel";
+import { SqliteWorldStore } from "@firedrill-run/world-store-sqlite";
 import {
   ToolPackageManifestSchema,
   type InlineScenarioDefinition,
   type JsonObject,
-} from "@firedrill-tools/contracts";
+} from "@firedrill-run/contracts";
 import { parse as parseYaml, stringify as stringifyYaml } from "yaml";
 import { afterEach, describe, expect, it } from "vitest";
 import { z } from "zod";
@@ -37,12 +37,11 @@ function temporaryFixture(name: string): string {
   return directory;
 }
 
-it("compiles pre-publication Tool SDK imports using the bundled runtime", async () => {
+it("compiles Tool SDK imports using the bundled runtime", async () => {
   const repository = temporaryFixture("appointments");
   const behavior = join(repository, "world", "reservations.ts");
   const source = readFileSync(behavior, "utf8");
-  expect(source).toContain("@firedrill-tools/tool-sdk");
-  writeFileSync(behavior, source.replaceAll("@firedrill-tools/tool-sdk", "@firedrill/tool-sdk"));
+  expect(source).toContain("@firedrill-run/tool-sdk");
   const compiled = await compileWorld({ repositoryRoot: repository });
   expect(compiled.status, JSON.stringify(compiled.status === "failed" ? compiled.diagnostics : [])).toBe(
     "success",

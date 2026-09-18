@@ -1,4 +1,4 @@
-# @firedrill-tools/tool-sdk
+# @firedrill-run/tool-sdk
 
 Public authoring contract for deterministic, trusted-local Tool behavior. It does not provide a security sandbox and does not permit ambient network, clock, or randomness through its host API.
 
@@ -14,4 +14,4 @@ A Tool callback models the reverse direction: an emitted world event becomes an 
 
 An operation's `idempotency` value is part of its caller contract: `none` rejects any supplied key, `optional` accepts but does not require one, and `required` requires a key on direct/HTTP calls. The MCP adapter derives a stable request key for required operations when the caller does not provide one explicitly.
 
-This package is pre-release. Its public handler contract has been exercised by multiple unrelated worlds and a clean packed-package consumer. Filesystem discovery, source compilation, locked artifact creation, and executable module loading are deliberately owned by `@firedrill-tools/compiler` and `@firedrill-tools/world-build`, not this package.
+This package is pre-release. Its public handler contract has been exercised by multiple unrelated worlds and a clean packed-package consumer. Filesystem discovery, source compilation, locked artifact creation, and executable module loading are deliberately owned by `@firedrill-run/compiler` and `@firedrill-run/world-build`, not this package.

@@ -12,9 +12,9 @@ import {
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { MAX_TOOL_UI_ASSET_BYTES, MAX_TOOL_UI_ASSETS, MAX_TOOL_UI_BYTES } from "@firedrill-tools/contracts";
-import { loadWorldBuild } from "@firedrill-tools/world-build";
-import { type PackageLock, PackageLockSchema, sha256Text } from "@firedrill-tools/world-ir";
+import { MAX_TOOL_UI_ASSET_BYTES, MAX_TOOL_UI_ASSETS, MAX_TOOL_UI_BYTES } from "@firedrill-run/contracts";
+import { loadWorldBuild } from "@firedrill-run/world-build";
+import { type PackageLock, PackageLockSchema, sha256Text } from "@firedrill-run/world-ir";
 import { extract, list } from "tar";
 import { afterEach, expect, it } from "vitest";
 import { parse, stringify } from "yaml";

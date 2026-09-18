@@ -2,7 +2,7 @@ import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "nod
 import { createConnection, createServer, type Socket } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { invokeCliWorldOperation } from "@firedrill-tools/protocol-cli";
+import { invokeCliWorldOperation } from "@firedrill-run/protocol-cli";
 import { afterEach, describe, expect, it } from "vitest";
 import { createLocalWorld, type LocalWorldBinding, type LocalWorldListenOptions } from "../src/index.js";
 

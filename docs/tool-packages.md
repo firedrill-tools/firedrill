@@ -82,8 +82,8 @@ behavior, starter, optional app assets, and conformance files must be packaged
 inside the package. They must not depend on a framework source checkout.
 
 The machine-readable metadata contract ships as
-`@firedrill-tools/compiler/schema/installed-tool-package`; the declaration contract is
-`@firedrill-tools/compiler/schema/tool-source`. The installed schemas work without a
+`@firedrill-run/compiler/schema/installed-tool-package`; the declaration contract is
+`@firedrill-run/compiler/schema/tool-source`. The installed schemas work without a
 documentation server. See [compatibility](compatibility.md) for engine/version
 rules and [Tool apps](tool-apps.md) for optional browser interfaces sharing the
 same state.

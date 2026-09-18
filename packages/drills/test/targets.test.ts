@@ -3,8 +3,8 @@ import { createServer } from "node:http";
 import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import type { TargetInvocation } from "@firedrill-tools/contracts";
-import type { BoundWorldClient } from "@firedrill-tools/world-kernel";
+import type { TargetInvocation } from "@firedrill-run/contracts";
+import type { BoundWorldClient } from "@firedrill-run/world-kernel";
 import { afterEach, describe, expect, it } from "vitest";
 import { invokeTarget } from "../src/index.js";
 

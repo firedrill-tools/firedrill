@@ -1,10 +1,10 @@
 import { randomBytes, timingSafeEqual } from "node:crypto";
 import { createServer } from "node:http";
 import type { IncomingMessage, Server, ServerResponse } from "node:http";
-import { JsonObjectSchema } from "@firedrill-tools/contracts";
-import type { JsonObject, OperationOutcome } from "@firedrill-tools/contracts";
-import type { ToolDefinition } from "@firedrill-tools/tool-sdk";
-import type { BoundWorldClient } from "@firedrill-tools/world-kernel";
+import { JsonObjectSchema } from "@firedrill-run/contracts";
+import type { JsonObject, OperationOutcome } from "@firedrill-run/contracts";
+import type { ToolDefinition } from "@firedrill-run/tool-sdk";
+import type { BoundWorldClient } from "@firedrill-run/world-kernel";
 import {
   WireRequestError,
   invokeWireRoute,

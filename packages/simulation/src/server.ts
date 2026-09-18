@@ -1,8 +1,8 @@
 import { randomBytes, timingSafeEqual } from "node:crypto";
 import type { IncomingMessage, Server, ServerResponse } from "node:http";
 import { createServer } from "node:http";
-import type { ErrorEnvelope } from "@firedrill-tools/contracts";
-import { FiredrillProjectError } from "@firedrill-tools/sdk";
+import type { ErrorEnvelope } from "@firedrill-run/contracts";
+import { FiredrillProjectError } from "@firedrill-run/sdk";
 import { ZodError } from "zod";
 import {
   CompareSimulationRunsSchema,

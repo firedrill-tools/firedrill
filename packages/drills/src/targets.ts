@@ -11,15 +11,15 @@ import type {
   TargetFileAttachment,
   TargetInvocation,
   TargetResult,
-} from "@firedrill-tools/contracts";
+} from "@firedrill-run/contracts";
 import {
   JsonValueSchema,
   TargetDescriptorSchema,
   TargetFileAttachmentSchema,
   TargetInvocationSchema,
   TargetResultSchema,
-} from "@firedrill-tools/contracts";
-import type { BoundWorldClient } from "@firedrill-tools/world-kernel";
+} from "@firedrill-run/contracts";
+import type { BoundWorldClient } from "@firedrill-run/world-kernel";
 import { tsImport } from "tsx/esm/api";
 import { boundedDiagnosticMessage } from "./diagnostics.js";
 

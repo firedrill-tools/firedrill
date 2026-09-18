@@ -10,7 +10,7 @@ import type {
   SnapshotId,
   StableId,
   VirtualTime,
-} from "@firedrill-tools/contracts";
+} from "@firedrill-run/contracts";
 import {
   ActorBindingIdSchema,
   ActorIdSchema,
@@ -29,7 +29,7 @@ import {
   StableIdSchema,
   VirtualTimeSchema,
   WorldInstanceIdSchema,
-} from "@firedrill-tools/contracts";
+} from "@firedrill-run/contracts";
 import type {
   ActiveFault,
   CallbackDelivery,
@@ -43,7 +43,7 @@ import type {
   WorldStore,
   WorldTransaction,
   WorldTransactionResult,
-} from "@firedrill-tools/world-store";
+} from "@firedrill-run/world-store";
 import Database from "better-sqlite3";
 import { decodeObject, decodeStoredCount, encodeJson, hashFile, hashJson } from "./codec.js";
 import { assertIntegrity, assertSupportedSchema, configureDatabase, installSchema } from "./schema.js";

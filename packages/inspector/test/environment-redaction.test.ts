@@ -1,4 +1,4 @@
-import type { LocalWorldTool } from "@firedrill-tools/sdk";
+import type { LocalWorldTool } from "@firedrill-run/sdk";
 import { describe, expect, it } from "vitest";
 import { redactEnvironmentValue } from "../src/environment-redaction.js";
 

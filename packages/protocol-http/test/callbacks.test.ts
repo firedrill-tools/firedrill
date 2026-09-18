@@ -4,10 +4,10 @@ import type { IncomingMessage, Server, ServerResponse } from "node:http";
 import { createServer } from "node:http";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import type { ToolCallbackCodec, ToolDefinition } from "@firedrill-tools/tool-sdk";
-import { defineTool } from "@firedrill-tools/tool-sdk";
-import { WorldKernel } from "@firedrill-tools/world-kernel";
-import { SqliteWorldStore } from "@firedrill-tools/world-store-sqlite";
+import type { ToolCallbackCodec, ToolDefinition } from "@firedrill-run/tool-sdk";
+import { defineTool } from "@firedrill-run/tool-sdk";
+import { WorldKernel } from "@firedrill-run/world-kernel";
+import { SqliteWorldStore } from "@firedrill-run/world-store-sqlite";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { CallbackDispatcherOptions, CallbackTransport, CallbackTransportContext } from "../src/index.js";
 import {

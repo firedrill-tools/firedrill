@@ -1,8 +1,8 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { runFiredrillAgent } from "@firedrill-tools/agent";
+import { runFiredrillAgent } from "@firedrill-run/agent";
 import { runCli } from "../src/index.js";
 
-vi.mock("@firedrill-tools/agent", () => ({
+vi.mock("@firedrill-run/agent", () => ({
   runFiredrillAgent: vi.fn(),
   FiredrillAgentError: class FiredrillAgentError extends Error {},
 }));

@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 import { extname } from "node:path";
-import type { SourceSpan } from "@firedrill-tools/contracts";
+import type { SourceSpan } from "@firedrill-run/contracts";
 import {
   findNodeAtLocation,
   getNodeValue,
@@ -12,7 +12,7 @@ import {
 import { LineCounter, isNode, parseDocument } from "yaml";
 import { diagnostic } from "./diagnostics.js";
 import type { SourceDocument } from "./types.js";
-import type { Diagnostic } from "@firedrill-tools/contracts";
+import type { Diagnostic } from "@firedrill-run/contracts";
 
 const MAX_SOURCE_BYTES = 1_048_576;
 

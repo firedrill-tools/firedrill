@@ -1,5 +1,5 @@
 {
-  "name": "@firedrill-tools/example-quickstart",
+  "name": "@firedrill-run/example-quickstart",
   "version": "0.0.0",
   "private": true,
   "type": "module",

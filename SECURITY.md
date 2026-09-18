@@ -58,7 +58,7 @@ HTML, JSON, terminal, and JUnit reports apply a conservative field-based redacti
 
 ## Optional Firedrill Agent
 
-`@firedrill-tools/agent` is an optional networked authoring assistant, not part of deterministic drill execution. Invoking `firedrill agent` starts the Claude Agent SDK with the developer's `ANTHROPIC_API_KEY`; repository content selected by the model can be sent to Anthropic under Anthropic's applicable terms. It does not send source to Firedrill.
+`@firedrill-run/agent` is an optional networked authoring assistant, not part of deterministic drill execution. Invoking `firedrill agent` starts the Claude Agent SDK with the developer's `ANTHROPIC_API_KEY`; repository content selected by the model can be sent to Anthropic under Anthropic's applicable terms. It does not send source to Firedrill.
 
 The wrapper exposes bounded repository read/edit tools, secret-skipping repository discovery and literal search, and in-process Firedrill validation, formatting, planning, Tool-check, and drill tools. It blocks known secret files, generated evidence, dependencies, Git metadata, paths outside the selected repository, generic filesystem search, shell access, generic web access, commits, pushes, and publication. These controls reduce accidental exposure; they are not a sandbox and cannot guarantee that an ordinary source file or executable repository code contains no embedded secret. Running a drill or Tool check executes the resulting repository code with the same local trust boundary as running tests after any coding-agent edit. Review the repository and resulting diff before invoking the Agent, executing newly authored code, or sharing its output. The compiler, runner, assertions, and report verifier remain authoritative.
 

@@ -1,4 +1,4 @@
-# @firedrill-tools/contracts
+# @firedrill-run/contracts
 
 Runtime-safe, framework-only Firedrill contracts. This package contains no hosted identity, tenancy, billing, cloud, UI, or test-runner dependency.
 

@@ -10,8 +10,8 @@ import {
 import { createServer, type RequestListener, type Server } from "node:http";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { compileWorld } from "@firedrill-tools/compiler";
-import type { DataImportPlanInput } from "@firedrill-tools/contracts";
+import { compileWorld } from "@firedrill-run/compiler";
+import type { DataImportPlanInput } from "@firedrill-run/contracts";
 import { afterEach, describe, expect, it } from "vitest";
 import {
   createLocalWorld,

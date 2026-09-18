@@ -1,6 +1,6 @@
 import { join, resolve } from "node:path";
-import type { ToolSourceSet } from "@firedrill-tools/compiler";
-import { compileWorld } from "@firedrill-tools/compiler";
+import type { ToolSourceSet } from "@firedrill-run/compiler";
+import { compileWorld } from "@firedrill-run/compiler";
 import type {
   Diagnostic,
   EvidenceEntry,
@@ -9,11 +9,11 @@ import type {
   Sha256,
   StableId,
   ToolPackageManifest,
-} from "@firedrill-tools/contracts";
-import { compareStableStrings, PackageIdSchema } from "@firedrill-tools/contracts";
-import type { CallbackReceiver } from "@firedrill-tools/drills";
-import type { LoadedWorldBuild } from "@firedrill-tools/world-build";
-import { loadWorldBuild } from "@firedrill-tools/world-build";
+} from "@firedrill-run/contracts";
+import { compareStableStrings, PackageIdSchema } from "@firedrill-run/contracts";
+import type { CallbackReceiver } from "@firedrill-run/drills";
+import type { LoadedWorldBuild } from "@firedrill-run/world-build";
+import { loadWorldBuild } from "@firedrill-run/world-build";
 import { FiredrillProjectError } from "./project-error.js";
 import type { AgentCallback, RunDrillsResult } from "./run-drills.js";
 import { runDrills } from "./run-drills.js";

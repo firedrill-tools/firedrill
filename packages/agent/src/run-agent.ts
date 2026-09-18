@@ -4,7 +4,7 @@ import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { EffortLevel, SDKMessage } from "@anthropic-ai/claude-agent-sdk";
 import { query } from "@anthropic-ai/claude-agent-sdk";
-import { FIREDRILL_FRAMEWORK_VERSION } from "@firedrill-tools/contracts";
+import { FIREDRILL_FRAMEWORK_VERSION } from "@firedrill-run/contracts";
 import { checkFiredrillEnvironment, type FiredrillEnvironmentCheck } from "./environment-check.js";
 import { createFiredrillAuthoringServer, type FiredrillAuthoringPolicy } from "./firedrill-tools.js";
 import { repositoryGuardHook } from "./repository-policy.js";

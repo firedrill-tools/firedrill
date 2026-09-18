@@ -1,4 +1,4 @@
-# `@firedrill-tools/compiler`
+# `@firedrill-run/compiler`
 
 Compiles repository-owned Firedrill source and explicitly selected Tool packages into a versioned canonical IR, exact Tool artifact lock, and immutable local build.
 

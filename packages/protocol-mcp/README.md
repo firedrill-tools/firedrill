@@ -1,4 +1,4 @@
-# `@firedrill-tools/protocol-mcp`
+# `@firedrill-run/protocol-mcp`
 
 Authenticated loopback MCP access to one local synthetic world. Every Tool operation granted to the drill's selected actor becomes an MCP tool backed by the same generic kernel used by direct and HTTP bindings.
 

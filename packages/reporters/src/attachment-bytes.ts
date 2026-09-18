@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { closeSync, constants, fstatSync, openSync, readSync } from "node:fs";
-import type { TargetFileAttachment } from "@firedrill-tools/contracts";
+import type { TargetFileAttachment } from "@firedrill-run/contracts";
 
 const MAX_ATTACHMENT_BYTES = 64 * 1024 * 1024;
 const CHANGED_MESSAGE = "report attachment does not match its recorded bytes";

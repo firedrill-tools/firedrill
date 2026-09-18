@@ -1,8 +1,8 @@
 import { resolve } from "node:path";
-import { compileWorld } from "@firedrill-tools/compiler";
-import type { Diagnostic, Sha256 } from "@firedrill-tools/contracts";
-import { mergeToolOverrides } from "@firedrill-tools/contracts";
-import { FiredrillProjectError } from "@firedrill-tools/sdk";
+import { compileWorld } from "@firedrill-run/compiler";
+import type { Diagnostic, Sha256 } from "@firedrill-run/contracts";
+import { mergeToolOverrides } from "@firedrill-run/contracts";
+import { FiredrillProjectError } from "@firedrill-run/sdk";
 import type { SimulationProject, SimulationToolSourceDocument } from "./contracts.js";
 import { SimulationProjectSchema } from "./contracts.js";
 import { captureToolSources } from "./tool-source.js";

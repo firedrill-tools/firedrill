@@ -49,7 +49,7 @@
     "test": "node ../../packages/cli/dist/bin.js format --check --root . && node ../../packages/cli/dist/bin.js tool test work-queue --root ."
   },
   "dependencies": {
-    "@firedrill-tools/tool-sdk": "workspace:*"
+    "@firedrill-run/tool-sdk": "workspace:*"
   },
   "devDependencies": {
     "typescript": "5.9.3"

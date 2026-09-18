@@ -1,5 +1,5 @@
-import { JsonObjectSchema } from "@firedrill-tools/contracts";
-import { CliWorldError, invokeCliWorldOperation, listCliWorldTools } from "@firedrill-tools/protocol-cli";
+import { JsonObjectSchema } from "@firedrill-run/contracts";
+import { CliWorldError, invokeCliWorldOperation, listCliWorldTools } from "@firedrill-run/protocol-cli";
 import type { CliWriter } from "./program.js";
 
 export interface WorldCommandInput {

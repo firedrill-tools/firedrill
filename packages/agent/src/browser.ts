@@ -8,7 +8,7 @@ import {
   BrowserTestError,
   type RunBrowserTestOptions,
   runBrowserTest,
-} from "@firedrill-tools/browser-tests";
+} from "@firedrill-run/browser-tests";
 
 export interface BrowserAgentOptions {
   readonly environment?: Readonly<Record<string, string | undefined>>;

@@ -7,14 +7,14 @@ import type {
   RunResult,
   TargetFileAttachment,
   ToolPackageManifest,
-} from "@firedrill-tools/contracts";
+} from "@firedrill-run/contracts";
 import {
   AssertionResultSchema,
   canonicalJson,
   JsonValueSchema,
   RunResultSchema,
-} from "@firedrill-tools/contracts";
-import { trajectoryHash } from "@firedrill-tools/world-ir";
+} from "@firedrill-run/contracts";
+import { trajectoryHash } from "@firedrill-run/world-ir";
 import { afterEach, describe, expect, it } from "vitest";
 import {
   compareLocalReports,

@@ -1,4 +1,4 @@
-import { ToolFailure, defineToolBehavior } from "@firedrill-tools/tool-sdk";
+import { ToolFailure, defineToolBehavior } from "@firedrill-run/tool-sdk";
 
 function itemId(input: Readonly<Record<string, unknown>>): string {
   return String(input.id);

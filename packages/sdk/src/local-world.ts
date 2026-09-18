@@ -17,7 +17,7 @@ import type {
   ToolStateContract,
   ToolConnectionRecipe,
   WorldInstanceId,
-} from "@firedrill-tools/contracts";
+} from "@firedrill-run/contracts";
 import {
   CorrelationIdSchema,
   compareStableStrings,
@@ -28,16 +28,16 @@ import {
   StableIdSchema,
   VirtualTimeSchema,
   WorldInstanceIdSchema,
-} from "@firedrill-tools/contracts";
-import type { MaterializedDrillScenario, MaterializedWorldScenario } from "@firedrill-tools/drills";
-import { createDrillWorld, createScenarioWorld, DrillSetupError } from "@firedrill-tools/drills";
-import type { LoadedWorldBuild } from "@firedrill-tools/world-build";
+} from "@firedrill-run/contracts";
+import type { MaterializedDrillScenario, MaterializedWorldScenario } from "@firedrill-run/drills";
+import { createDrillWorld, createScenarioWorld, DrillSetupError } from "@firedrill-run/drills";
+import type { LoadedWorldBuild } from "@firedrill-run/world-build";
 import type {
   ClockAdvanceResult,
   FaultControlResult,
   KernelInvocationResult,
-} from "@firedrill-tools/world-kernel";
-import { BoundWorldClient, WorldKernel } from "@firedrill-tools/world-kernel";
+} from "@firedrill-run/world-kernel";
+import { BoundWorldClient, WorldKernel } from "@firedrill-run/world-kernel";
 import type {
   ActiveFault,
   CallbackDelivery,
@@ -46,8 +46,8 @@ import type {
   StateScanOptions,
   StoredStateRecord,
   WorldMetadata,
-} from "@firedrill-tools/world-store";
-import type { SqliteWorldStore } from "@firedrill-tools/world-store-sqlite";
+} from "@firedrill-run/world-store";
+import type { SqliteWorldStore } from "@firedrill-run/world-store-sqlite";
 import type { LocalWorldBinding, LocalWorldListenOptions } from "./local-world-bindings.js";
 import { LocalWorldBindingSession, validateLocalWorldListenOptions } from "./local-world-bindings.js";
 import type {

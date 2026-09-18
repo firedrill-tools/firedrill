@@ -5,7 +5,7 @@ import type {
   OperationRef,
   ResolvedToolOverride,
   ToolPackageManifest,
-} from "@firedrill-tools/contracts";
+} from "@firedrill-run/contracts";
 import {
   compareStableStrings,
   DrillDefinitionSchema,
@@ -30,7 +30,7 @@ import {
   ToolUiMediaTypeSchema,
   ToolUiPathSchema,
   toolUiMediaType,
-} from "@firedrill-tools/contracts";
+} from "@firedrill-run/contracts";
 import { z } from "zod";
 import { semanticHash } from "./hash.js";
 

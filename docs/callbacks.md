@@ -78,7 +78,7 @@ assertions:
 
 ## Explicit transport composition
 
-The ordinary CLI and SDK path remains credential-free loopback HTTP. An advanced caller composing `CallbackDispatcher` from `@firedrill-tools/protocol-http` may provide a caller-owned `transport` with `authorizeOrigin({ receiverId, origin })` and `fetch`. This is an explicit network edge, not a remote-access flag or a Tool capability. No remote transport or allow-all policy is built in.
+The ordinary CLI and SDK path remains credential-free loopback HTTP. An advanced caller composing `CallbackDispatcher` from `@firedrill-run/protocol-http` may provide a caller-owned `transport` with `authorizeOrigin({ receiverId, origin })` and `fetch`. This is an explicit network edge, not a remote-access flag or a Tool capability. No remote transport or allow-all policy is built in.
 
 On every wire attempt, including retries, the dispatcher calls `transport.fetch(input, init, context)` with a frozen `{ receiverId }` context taken from the durable delivery. It is separate from codec-controlled headers and body, so transports can authorize individual receivers even when they share an origin. The exported `CallbackTransportContext` argument is optional for compatibility with ordinary fetch implementations; a transport that requires receiver identity must reject direct calls without it. Default local delivery and the test-only `fetch` option still use the ordinary two-argument fetch call.
 

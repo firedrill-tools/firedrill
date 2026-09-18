@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
-import { JsonObjectSchema, canonicalJson } from "@firedrill-tools/contracts";
-import type { JsonObject, JsonValue } from "@firedrill-tools/contracts";
+import { JsonObjectSchema, canonicalJson } from "@firedrill-run/contracts";
+import type { JsonObject, JsonValue } from "@firedrill-run/contracts";
 
 export function encodeJson(value: JsonValue): string {
   return canonicalJson(value);

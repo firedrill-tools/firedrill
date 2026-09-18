@@ -18,7 +18,7 @@ import {
   ToolUiSourceSchema,
   TrialPolicySchema,
   VirtualTimeSchema,
-} from "@firedrill-tools/contracts";
+} from "@firedrill-run/contracts";
 import { z } from "zod";
 
 export const ProjectConfigSchema = z

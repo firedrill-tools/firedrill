@@ -5,8 +5,9 @@ Publication is a separate release-owner action: download the exact CI bundle,
 verify its checksums and source revision, then publish those archives. Never
 rebuild an archive on a workstation and substitute it for the reviewed CI output.
 
-The npm organization is `firedrill-tools`. All framework packages publish under
-`@firedrill-tools/`; the executable remains `firedrill`. Release candidates use
+The npm organization for the framework is `firedrill-run`. All framework packages publish under
+`@firedrill-run/`; the executable remains `firedrill`. Community Tool packages use the separate
+`@firedrill-tools/` scope. Release candidates use
 the `next` dist-tag, not `latest`. Publish dependencies before their consumers,
 and verify a clean registry installation before announcing the release.
 
@@ -46,10 +47,29 @@ portability claim; a workspace-source test is not a substitute.
 
 Npm provenance is a separate registry operation. It requires a public repository URL in each package manifest and a supported hosted publisher or npm trusted publishing. Those values and actual publication require explicit release-owner authorization; this repository contains no publish token and the evidence workflow never invokes `npm publish`.
 
+## Publish the reviewed bundle
+
+Download the release-evidence artifact from the reviewed commit. Do not rebuild it. The publish helper verifies every checksum and packed manifest, derives the dependency graph from the archives, and publishes one package at a time in dependency order. It never reads or writes credentials itself; npm authentication comes from the release operator's standard npm configuration or trusted publisher environment.
+
+First inspect the exact plan without contacting or changing the registry:
+
+```sh
+pnpm release:publish -- --release /path/to/firedrill-release --tag next --dry-run
+```
+
+Then publish the same bundle. Add `--provenance` only from a supported trusted-publishing CI environment:
+
+```sh
+pnpm release:publish -- --release /path/to/firedrill-release --tag next
+```
+
+The command is resumable. Before each publish it checks the exact name and version. An already-published package is skipped only when the registry integrity and shasum match the reviewed archive; different or unverifiable bytes stop the release. Registry rate limits are retried with bounded backoff, while all other errors fail immediately.
+
 Before the first release, the release owner must:
 
 1. choose real package versions and the public repository URL;
 2. configure npm trusted publishing for the selected release environment;
 3. run and inspect the release-evidence job from the intended commit;
 4. verify package contents, checksums, and SBOM coverage; and
-5. authorize the distinct publication command.
+5. authorize the distinct publication command; and
+6. install `@firedrill-run/cli` and `@firedrill-run/sdk` into a clean project from the registry and run the quickstart before moving the dist-tag.

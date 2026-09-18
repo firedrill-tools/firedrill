@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import { mkdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
-import { createLocalWorld } from "@firedrill-tools/sdk";
+import { createLocalWorld } from "@firedrill-run/sdk";
 import { Client, StreamableHTTPClientTransport } from "@modelcontextprotocol/client";
 
 // Copied to the packed consumer; declarations, behavior and starters resolve

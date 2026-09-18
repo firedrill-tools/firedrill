@@ -1,8 +1,8 @@
 import { existsSync, lstatSync, readFileSync, realpathSync } from "node:fs";
 import { isAbsolute, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { compileWorld, inspectInstalledToolPackage } from "@firedrill-tools/compiler";
-import { NodePackageNameSchema } from "@firedrill-tools/contracts";
+import { compileWorld, inspectInstalledToolPackage } from "@firedrill-run/compiler";
+import { NodePackageNameSchema } from "@firedrill-run/contracts";
 import { executeAgentCommand } from "./agent-command.js";
 import { FiredrillInitError, type InitializedProject, type InitPath, initProject } from "./init-project.js";
 import { installReadyTool, toolInstallPlan } from "./install-tool.js";

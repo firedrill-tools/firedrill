@@ -13,7 +13,7 @@ import type {
   ScheduledEventId,
   StableId,
   VirtualTime,
-} from "@firedrill-tools/contracts";
+} from "@firedrill-run/contracts";
 import {
   ActorBindingIdSchema,
   ActorIdSchema,
@@ -33,7 +33,7 @@ import {
   ScheduledEventIdSchema,
   StableIdSchema,
   VirtualTimeSchema,
-} from "@firedrill-tools/contracts";
+} from "@firedrill-run/contracts";
 import type {
   CallbackAttemptSettlement,
   CallbackDelivery,
@@ -45,7 +45,7 @@ import type {
   StoredActor,
   StoredStateRecord,
   WorldTransaction,
-} from "@firedrill-tools/world-store";
+} from "@firedrill-run/world-store";
 import type Database from "better-sqlite3";
 import { decodeObject, decodeStoredCount, encodeJson, hashJson } from "./codec.js";
 import { toolOverrideUsageKey } from "./tool-override-usage.js";

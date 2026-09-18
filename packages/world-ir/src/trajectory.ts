@@ -7,7 +7,7 @@ import type {
   OperationOutcome,
   Sha256,
   TargetResult,
-} from "@firedrill-tools/contracts";
+} from "@firedrill-run/contracts";
 import { semanticHash } from "./hash.js";
 
 export interface TrajectoryHashInput {

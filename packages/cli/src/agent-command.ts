@@ -10,7 +10,7 @@ export interface AgentCommandInput {
   readonly agentMaxTurns?: number;
   readonly agentMaxBudgetUsd?: number;
   readonly agentTimeoutMs?: number;
-  readonly onResult?: (result: import("@firedrill-tools/agent").FiredrillAgentResult) => void;
+  readonly onResult?: (result: import("@firedrill-run/agent").FiredrillAgentResult) => void;
 }
 
 function writeJson(io: CliIo, value: unknown): void {
@@ -18,14 +18,14 @@ function writeJson(io: CliIo, value: unknown): void {
 }
 
 export async function executeAgentCommand(parsed: AgentCommandInput, io: CliIo): Promise<number> {
-  let agentPackage: typeof import("@firedrill-tools/agent");
+  let agentPackage: typeof import("@firedrill-run/agent");
   try {
-    agentPackage = await import("@firedrill-tools/agent");
+    agentPackage = await import("@firedrill-run/agent");
   } catch (error) {
     const code = (error as NodeJS.ErrnoException).code;
     const message =
       code === "ERR_MODULE_NOT_FOUND" || code === "MODULE_NOT_FOUND"
-        ? "Install the optional authoring package beside the CLI: pnpm add -D @firedrill-tools/agent"
+        ? "Install the optional authoring package beside the CLI: pnpm add -D @firedrill-run/agent"
         : "The optional Firedrill Agent package could not be loaded.";
     if (parsed.json) {
       writeJson(io, {
@@ -55,7 +55,7 @@ export async function executeAgentCommand(parsed: AgentCommandInput, io: CliIo):
       ...(parsed.json
         ? {}
         : {
-            onEvent: (event: import("@firedrill-tools/agent").FiredrillAgentEvent) => {
+            onEvent: (event: import("@firedrill-run/agent").FiredrillAgentEvent) => {
               if (event.type === "session") {
                 io.stdout.write(`Firedrill Agent · ${event.model}\n\n`);
               } else if (event.type === "text") {

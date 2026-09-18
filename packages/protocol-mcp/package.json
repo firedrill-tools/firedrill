@@ -1,5 +1,5 @@
 {
-  "name": "@firedrill-tools/protocol-mcp",
+  "name": "@firedrill-run/protocol-mcp",
   "version": "0.1.0-rc.1",
   "description": "Loopback MCP binding for local Firedrill worlds",
   "license": "Apache-2.0",
@@ -32,15 +32,15 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "@firedrill-tools/contracts": "workspace:*",
-    "@firedrill-tools/world-kernel": "workspace:*",
+    "@firedrill-run/contracts": "workspace:*",
+    "@firedrill-run/world-kernel": "workspace:*",
     "@modelcontextprotocol/node": "2.0.0",
     "@modelcontextprotocol/server": "2.0.0",
     "hono": "4.13.7"
   },
   "devDependencies": {
-    "@firedrill-tools/tool-sdk": "workspace:*",
-    "@firedrill-tools/world-store-sqlite": "workspace:*",
+    "@firedrill-run/tool-sdk": "workspace:*",
+    "@firedrill-run/world-store-sqlite": "workspace:*",
     "@modelcontextprotocol/client": "2.0.0",
     "typescript": "5.9.3",
     "vitest": "4.1.11"

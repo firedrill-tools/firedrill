@@ -6,7 +6,7 @@ import {
   ToolPackageManifestSchema,
   compareStableStrings,
   mergeToolOverrides,
-} from "@firedrill-tools/contracts";
+} from "@firedrill-run/contracts";
 import type {
   ActorDefinitionSchema,
   DrillDefinition,
@@ -15,7 +15,7 @@ import type {
   ScenarioDefinition,
   ToolPackageManifest,
   ToolOverrideScope,
-} from "@firedrill-tools/contracts";
+} from "@firedrill-run/contracts";
 import type { z } from "zod";
 import type { DrillSource, ScenarioSource, SuiteSource, WorldSource } from "./source-schemas.js";
 

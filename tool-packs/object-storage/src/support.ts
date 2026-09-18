@@ -4,7 +4,7 @@ import {
   type ToolHttpOperationInput,
   type ToolHttpRouteCodec,
   type ToolOperationHandler,
-} from "@firedrill-tools/tool-sdk";
+} from "@firedrill-run/tool-sdk";
 
 type Input = Parameters<ToolOperationHandler>[0];
 type RecordValue = ToolHttpOperationInput["arguments"];

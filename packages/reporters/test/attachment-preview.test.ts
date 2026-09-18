@@ -1,4 +1,4 @@
-import type { TargetFileAttachment } from "@firedrill-tools/contracts";
+import type { TargetFileAttachment } from "@firedrill-run/contracts";
 import { describe, expect, it } from "vitest";
 import { attachmentPreview, readableCaptureLog } from "../src/attachment-preview.js";
 

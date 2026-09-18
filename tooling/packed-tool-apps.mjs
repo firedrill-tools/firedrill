@@ -4,7 +4,7 @@ import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { join, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
-import { createLocalWorld, runDrills, verifyReport } from "@firedrill-tools/sdk";
+import { createLocalWorld, runDrills, verifyReport } from "@firedrill-run/sdk";
 import { Client, StreamableHTTPClientTransport } from "@modelcontextprotocol/client";
 
 // Copied into the archive-only consumer. The world resolves Tool declarations,
@@ -13,11 +13,9 @@ const consumer = resolve(process.cwd());
 const installedProject = resolve(process.argv[2] ?? "");
 assert.ok(process.argv[2], "Pass the separate installed Tool-pack consumer");
 assert.ok(
-  fileURLToPath(import.meta.resolve("@firedrill-tools/sdk")).startsWith(
-    `${consumer}${sep}node_modules${sep}`,
-  ),
+  fileURLToPath(import.meta.resolve("@firedrill-run/sdk")).startsWith(`${consumer}${sep}node_modules${sep}`),
 );
-const browserRequire = createRequire(import.meta.resolve("@firedrill-tools/browser-tests"));
+const browserRequire = createRequire(import.meta.resolve("@firedrill-run/browser-tests"));
 const { chromium } = browserRequire("playwright");
 const evidenceDirectory = resolve(process.argv[3] ?? join(consumer, "tool-app-browser-evidence"));
 mkdirSync(evidenceDirectory, { recursive: true });

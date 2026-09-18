@@ -12,7 +12,7 @@ import type {
   SimulationStatePage,
   SimulationToolSourceDocument,
   StartSimulationRun,
-} from "@firedrill-tools/simulation";
+} from "@firedrill-run/simulation";
 
 export type {
   SimulationEvidencePage,

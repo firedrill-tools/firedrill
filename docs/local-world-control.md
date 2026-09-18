@@ -5,7 +5,7 @@
 ## Start from baseline data
 
 ```ts
-import { createLocalWorld } from "@firedrill-tools/sdk";
+import { createLocalWorld } from "@firedrill-run/sdk";
 
 const world = await createLocalWorld({ root: process.cwd() });
 const binding = await world.listen(); // Exactly one source-defined actor is required when actorId is omitted.
@@ -29,7 +29,7 @@ The world supplies initial state, actors and explicit grants, faults, scheduled 
 ## Operator controls
 
 ```ts
-import { createLocalWorld } from "@firedrill-tools/sdk";
+import { createLocalWorld } from "@firedrill-run/sdk";
 
 const world = await createLocalWorld({
   root: process.cwd(),
@@ -106,4 +106,4 @@ Reset authority is held by the developer's harness; it is never included in an a
 
 By default, each controlled world is retained beneath `<project>/.firedrill/worlds/` as `world.sqlite` plus `baseline.sqlite`. Both files may contain complete synthetic state and unredacted evidence. Keep `.firedrill/` ignored by Git. `world.close()` immediately revokes world access, starts listener shutdown, and releases the database; await `binding.close()` for completed socket cleanup. Closing one binding alone leaves its world and other bindings available. A failed multi-protocol startup closes any listeners it already opened. Neither close method deletes retained world files.
 
-The inspector can borrow a running world with `startLocalInspector({ root, environment: { world, binding } })` from `@firedrill-tools/inspector`. Its `close()` stops only the inspector and its drill supervisor; the caller continues to own the supplied world and binding. Keep the supplied binding open while advertising its connection values. See the [inspector guide](../packages/inspector/README.md).
+The inspector can borrow a running world with `startLocalInspector({ root, environment: { world, binding } })` from `@firedrill-run/inspector`. Its `close()` stops only the inspector and its drill supervisor; the caller continues to own the supplied world and binding. Keep the supplied binding open while advertising its connection values. See the [inspector guide](../packages/inspector/README.md).

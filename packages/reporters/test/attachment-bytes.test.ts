@@ -12,7 +12,7 @@ import fs, {
 import { syncBuiltinESMExports } from "node:module";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import type { TargetFileAttachment } from "@firedrill-tools/contracts";
+import type { TargetFileAttachment } from "@firedrill-run/contracts";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { readAttachmentBytes } from "../src/attachment-bytes.js";
 

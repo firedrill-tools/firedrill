@@ -4,7 +4,7 @@ import type {
   EvidenceEntry,
   ReportToolDescriptor,
   RunResult,
-} from "@firedrill-tools/contracts";
+} from "@firedrill-run/contracts";
 
 export function escapeHtml(value: unknown): string {
   return String(value)

@@ -2,9 +2,9 @@ import { request as httpRequest } from "node:http";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { defineTool } from "@firedrill-tools/tool-sdk";
-import { BoundWorldClient, WorldKernel } from "@firedrill-tools/world-kernel";
-import { SqliteWorldStore } from "@firedrill-tools/world-store-sqlite";
+import { defineTool } from "@firedrill-run/tool-sdk";
+import { BoundWorldClient, WorldKernel } from "@firedrill-run/world-kernel";
+import { SqliteWorldStore } from "@firedrill-run/world-store-sqlite";
 import { afterEach, describe, expect, it } from "vitest";
 import { startHttpWorldBinding } from "../src/index.js";
 

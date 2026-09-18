@@ -15,17 +15,13 @@ import {
 } from "node:fs";
 import { createRequire } from "node:module";
 import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
-import {
-  inspectInstalledToolPackage,
-  ProjectConfigSchema,
-  ToolSourceSchema,
-} from "@firedrill-tools/compiler";
+import { inspectInstalledToolPackage, ProjectConfigSchema, ToolSourceSchema } from "@firedrill-run/compiler";
 import {
   NodePackageNameSchema,
   type OperationRef,
   PackageIdSchema,
   type ToolPackageManifest,
-} from "@firedrill-tools/contracts";
+} from "@firedrill-run/contracts";
 
 export interface ToolSetupResult {
   readonly schemaVersion: 1;
@@ -433,7 +429,7 @@ function declaration(id: string, template: "stateful" | "stateless") {
   return { source, manifest: ToolSourceSchema.parse(source).manifest };
 }
 
-const STATEFUL_BEHAVIOR = `import { ToolFailure } from "@firedrill-tools/tool-sdk";
+const STATEFUL_BEHAVIOR = `import { ToolFailure } from "@firedrill-run/tool-sdk";
 
 function encode({ outcome }) {
   return { body: { kind: "json", value: outcome.status === "ok" ? outcome.value : { error: outcome.error } } };

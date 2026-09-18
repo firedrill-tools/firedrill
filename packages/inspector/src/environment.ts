@@ -5,8 +5,8 @@ import type {
   LocalWorldBinding,
   LocalWorldCall,
   LocalWorldDescription,
-} from "@firedrill-tools/sdk";
-import { FiredrillProjectError } from "@firedrill-tools/sdk";
+} from "@firedrill-run/sdk";
+import { FiredrillProjectError } from "@firedrill-run/sdk";
 import { redactEnvironmentValue } from "./environment-redaction.js";
 
 /** The caller owns this runtime and its listeners; closing the inspector does not stop them. */

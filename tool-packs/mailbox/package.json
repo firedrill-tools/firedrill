@@ -49,10 +49,10 @@
     "test": "node ../../packages/cli/dist/bin.js format --check --root . && node ../../packages/cli/dist/bin.js tool test mailbox --root . && node --test test/public-world.test.mjs"
   },
   "dependencies": {
-    "@firedrill-tools/tool-sdk": "workspace:*"
+    "@firedrill-run/tool-sdk": "workspace:*"
   },
   "devDependencies": {
-    "@firedrill-tools/sdk": "workspace:*",
+    "@firedrill-run/sdk": "workspace:*",
     "@modelcontextprotocol/client": "2.0.0",
     "typescript": "5.9.3"
   },

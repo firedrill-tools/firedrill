@@ -1,13 +1,9 @@
-import type { ActorId, WorldInstanceId } from "@firedrill-tools/contracts";
-import { startCliWorldBinding } from "@firedrill-tools/protocol-cli";
-import {
-  startHttpWorldBinding,
-  startToolUiBinding,
-  type ToolUiRevision,
-} from "@firedrill-tools/protocol-http";
-import { startMcpWorldBinding } from "@firedrill-tools/protocol-mcp";
-import type { LoadedWorldBuild } from "@firedrill-tools/world-build";
-import type { BoundWorldClient } from "@firedrill-tools/world-kernel";
+import type { ActorId, WorldInstanceId } from "@firedrill-run/contracts";
+import { startCliWorldBinding } from "@firedrill-run/protocol-cli";
+import { startHttpWorldBinding, startToolUiBinding, type ToolUiRevision } from "@firedrill-run/protocol-http";
+import { startMcpWorldBinding } from "@firedrill-run/protocol-mcp";
+import type { LoadedWorldBuild } from "@firedrill-run/world-build";
+import type { BoundWorldClient } from "@firedrill-run/world-kernel";
 import { FiredrillProjectError } from "./project-error.js";
 
 export type LocalWorldProtocol = "http" | "mcp" | "cli";
