@@ -73,9 +73,9 @@ Browser actions and API calls use the same state.
 The server listens on loopback using available ports. Keep the terminal open;
 Ctrl+C stops it. Use `--no-open` to skip opening the inspector automatically.
 
-Run `firedrill init` in an existing project for guided setup, or select a package
-from the [Tool catalog](registry/README.md). Catalog packages currently require
-a local installation until they are published.
+Run `firedrill init` in an existing project for guided setup, or select one of
+the published packages in the [Tool catalog](registry/README.md). The CLI shows
+the exact package and version before it asks for installation consent.
 
 Tools can run independently of tests. To check an agent's behavior, add a drill.
 
