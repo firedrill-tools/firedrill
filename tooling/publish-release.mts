@@ -1,5 +1,5 @@
-import { createHash } from "node:crypto";
 import { spawnSync } from "node:child_process";
+import { createHash } from "node:crypto";
 import { existsSync, lstatSync, mkdtempSync, readFileSync, realpathSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve, sep } from "node:path";
@@ -41,6 +41,16 @@ interface RegistryDist {
   readonly integrity?: string;
   readonly shasum?: string;
 }
+
+interface NpmCommandResult {
+  readonly status: number | null;
+  readonly stdout: string | null;
+  readonly stderr: string | null;
+}
+
+export type NpmCommandRunner = (arguments_: readonly string[]) => NpmCommandResult;
+
+export type PublishOutcome = "published" | "reconciled";
 
 const repositoryRoot = resolve(import.meta.dirname, "..");
 const npmScope = "@firedrill-run/";
@@ -174,7 +184,7 @@ export function topologicalPublishLayers(
   return layers;
 }
 
-function npm(arguments_: readonly string[]) {
+function npm(arguments_: readonly string[]): NpmCommandResult {
   return spawnSync("npm", [...arguments_], {
     cwd: repositoryRoot,
     encoding: "utf8",
@@ -183,8 +193,12 @@ function npm(arguments_: readonly string[]) {
   });
 }
 
-function publishedDist(name: string, version: string): RegistryDist | undefined {
-  const result = npm(["view", `${name}@${version}`, "dist", "--json"]);
+function publishedDist(
+  name: string,
+  version: string,
+  runNpm: NpmCommandRunner = npm,
+): RegistryDist | undefined {
+  const result = runNpm(["view", `${name}@${version}`, "dist", "--json"]);
   if (result.status === 0) {
     const value = JSON.parse(result.stdout || "{}") as RegistryDist;
     return value;
@@ -212,25 +226,49 @@ function rateLimited(output: string): boolean {
   return /E429|429 Too Many Requests|rate limit/i.test(output);
 }
 
-async function publishArchive(
+export function publishArchive(
   artifact: PublishArtifact,
   options: { readonly provenance: boolean; readonly tag: string },
-): Promise<void> {
-  const arguments_ = ["publish", artifact.absolutePath, "--access", "public", "--tag", options.tag];
+  runNpm: NpmCommandRunner = npm,
+): PublishOutcome {
+  const arguments_ = [
+    "publish",
+    artifact.absolutePath,
+    "--access",
+    "public",
+    "--tag",
+    options.tag,
+    "--fetch-retries=0",
+  ];
   if (options.provenance) arguments_.push("--provenance");
-  for (let attempt = 1; attempt <= 5; attempt += 1) {
-    const result = npm(arguments_);
-    if (result.status === 0) return;
-    const output = `${result.stdout ?? ""}\n${result.stderr ?? ""}`;
-    if (!rateLimited(output) || attempt === 5) {
-      throw new Error(`npm publish failed for ${artifact.name}@${artifact.version}\n${output}`);
-    }
-    const delay = Math.min(45_000, 5_000 * 2 ** (attempt - 1)) + Math.floor(Math.random() * 1_000);
-    process.stderr.write(
-      `npm rate-limited ${artifact.name}; retrying attempt ${attempt + 1}/5 in ${delay}ms\n`,
+  const result = runNpm(arguments_);
+  const output = `${result.stdout ?? ""}\n${result.stderr ?? ""}`;
+  let remote: RegistryDist | undefined;
+  try {
+    remote = publishedDist(artifact.name, artifact.version, runNpm);
+  } catch (error) {
+    if (result.status === 0) throw error;
+    const inspectionFailure = error instanceof Error ? error.message : String(error);
+    throw new Error(
+      `npm publish failed for ${artifact.name}@${artifact.version}\n${output}\n` +
+        `registry reconciliation also failed:\n${inspectionFailure}`,
     );
-    await new Promise((resolveDelay) => setTimeout(resolveDelay, delay));
   }
+
+  if (remote) {
+    assertPublishedBytes(artifact, remote);
+    return result.status === 0 ? "published" : "reconciled";
+  }
+  if (result.status === 0) {
+    throw new Error(`npm did not expose ${artifact.name}@${artifact.version} after publish`);
+  }
+  if (rateLimited(output)) {
+    throw new Error(
+      `npm rate-limited ${artifact.name}@${artifact.version}; stopped after one registry write attempt. ` +
+        `Rerun the same release bundle after the npm publication window resets.\n${output}`,
+    );
+  }
+  throw new Error(`npm publish failed for ${artifact.name}@${artifact.version}\n${output}`);
 }
 
 function argument(name: string): string | undefined {
@@ -272,12 +310,11 @@ async function main(): Promise<void> {
         );
         continue;
       }
-      await publishArchive(artifact, { provenance, tag });
-      const published = publishedDist(artifact.name, artifact.version);
-      if (!published)
-        throw new Error(`npm did not expose ${artifact.name}@${artifact.version} after publish`);
-      assertPublishedBytes(artifact, published);
-      process.stdout.write(`published and verified: ${artifact.name}@${artifact.version}\n`);
+      const outcome = publishArchive(artifact, { provenance, tag });
+      process.stdout.write(
+        `${outcome === "reconciled" ? "reconciled" : "published"} and verified: ` +
+          `${artifact.name}@${artifact.version}\n`,
+      );
     }
   }
 }

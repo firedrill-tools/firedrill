@@ -25,6 +25,7 @@
     "determinism": "tsx tooling/check-determinism.mts",
     "public:check": "tsx tooling/check-public-tree.mts",
     "release:check": "tsx tooling/check-release-policy.mts && tsx tooling/check-release-source.mts",
+    "release:test": "vitest run tooling/publish-release.test.mts",
     "docs:cli:write": "tsx tooling/generate-cli-reference.mts --write",
     "docs:cli:check": "tsx tooling/generate-cli-reference.mts --check",
     "typecheck": "pnpm -r --if-present typecheck",
@@ -42,7 +43,7 @@
     "release:portability": "tsx tooling/check-portable-install.mts",
     "release:prepare": "tsx tooling/prepare-release.mts",
     "release:publish": "tsx tooling/publish-release.mts",
-    "check": "pnpm format:check && pnpm lint && pnpm boundaries && pnpm genericity && pnpm determinism && pnpm public:check && pnpm release:check && pnpm build && pnpm docs:cli:check && pnpm schema:check && pnpm registry:check && pnpm registry:test && pnpm skill:check && pnpm typecheck && pnpm test && pnpm quickstart:check && pnpm pack:check"
+    "check": "pnpm format:check && pnpm lint && pnpm boundaries && pnpm genericity && pnpm determinism && pnpm public:check && pnpm release:check && pnpm release:test && pnpm build && pnpm docs:cli:check && pnpm schema:check && pnpm registry:check && pnpm registry:test && pnpm skill:check && pnpm typecheck && pnpm test && pnpm quickstart:check && pnpm pack:check"
   },
   "devDependencies": {
     "esbuild": "0.28.2",
