@@ -33,9 +33,9 @@ assert.equal(existsSync(join(root, "firedrill.json")), false);
 const initialized = command([
   "init",
   "--tool",
-  "@firedrill-tools/tool-work-queue",
+  "@firedrill-tools/work-queue",
   "--tool",
-  "@firedrill-tools/tool-github-issues",
+  "@firedrill-tools/github-issues",
 ]);
 assert.equal(initialized.status, "initialized");
 assert.equal(initialized.sourceValidated, true);

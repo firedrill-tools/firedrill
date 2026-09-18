@@ -1,5 +1,5 @@
 {
-  "name": "@firedrill-tools/tool-object-storage",
+  "name": "@firedrill-tools/object-storage",
   "version": "0.1.0-rc.1",
   "private": true,
   "description": "Stateful synthetic text object storage Tool pack for Firedrill",

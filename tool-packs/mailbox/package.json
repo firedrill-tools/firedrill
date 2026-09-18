@@ -1,5 +1,5 @@
 {
-  "name": "@firedrill-tools/tool-mailbox",
+  "name": "@firedrill-tools/mailbox",
   "version": "0.1.0-rc.1",
   "private": true,
   "description": "Stateful synthetic mailbox Tool pack for Firedrill",

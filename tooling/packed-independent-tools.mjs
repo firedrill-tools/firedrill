@@ -215,7 +215,7 @@ await assert.rejects(
 const maintained = join(root, "maintained");
 mkdirSync(maintained);
 for (const id of ["work-queue", "github-issues", "mailbox", "object-storage"]) {
-  firedrill(["tool", "add", `@firedrill-tools/tool-${id}`], maintained);
+  firedrill(["tool", "add", `@firedrill-tools/${id}`], maintained);
   const result = firedrill(["tool", "test", id], maintained);
   assert.equal(result.status, "passed");
   assert.equal(result.suiteSource, "package");
