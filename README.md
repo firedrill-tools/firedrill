@@ -18,6 +18,12 @@ changes, and events.
 
 ### Python
 
+The local Python release candidate is currently available as platform wheels
+from the [Python wheels workflow](https://github.com/firedrill-tools/firedrill/actions/workflows/python.yml).
+Download the wheel for your platform from a successful run and install that file
+with `python -m pip install /path/to/firedrill_run-<version>-<platform>.whl pytest`.
+PyPI publication is pending; once published, use the registry command below.
+
 Install into your virtual environment with Python 3.10 or later:
 
 ```sh

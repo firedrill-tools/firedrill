@@ -1,5 +1,11 @@
 # Python
 
+The local release candidate is available as platform wheels from the
+[Python wheels workflow](https://github.com/firedrill-tools/firedrill/actions/workflows/python.yml).
+Install the matching downloaded file with
+`python -m pip install /path/to/firedrill_run-<version>-<platform>.whl pytest`.
+The PyPI release is pending; the registry command below applies after publication.
+
 Install Firedrill in your Python environment:
 
 ```sh
