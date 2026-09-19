@@ -18,13 +18,8 @@ changes, and events.
 
 ### Python
 
-The local Python release candidate is currently available as platform wheels
-from the [Python wheels workflow](https://github.com/firedrill-tools/firedrill/actions/workflows/python.yml).
-Download the wheel for your platform from a successful run and install that file
-with `python -m pip install /path/to/firedrill_run-<version>-<platform>.whl pytest`.
-PyPI publication is pending; once published, use the registry command below.
-
-Install into your virtual environment with Python 3.10 or later:
+Install the release candidate from [PyPI](https://pypi.org/project/firedrill-run/)
+into your virtual environment with Python 3.10 or later:
 
 ```sh
 python -m pip install --pre "firedrill-run[pytest]"
@@ -32,7 +27,9 @@ firedrill --help
 ```
 
 Import the local SDK with `from firedrill import World, run_drills`. The wheel
-includes the runtime, CLI, inspector, and report engine. See the
+includes the runtime, CLI, inspector, and report engine. No separate Node.js or
+npm installation is required. Choose Tools with `firedrill init`; they install
+on demand and use the same packages as TypeScript. See the
 [Python guide](python/README.md) for pytest, async agents, mocks, and browser tests.
 
 ### TypeScript and JavaScript
@@ -320,7 +317,8 @@ The default workflow creates or edits a synthetic environment. Use
 and a repository brief; the agent then authors the definitions.
 
 Firedrill Agent requires `@firedrill-run/agent` and `ANTHROPIC_API_KEY` in the process
-environment. The source checkout includes the package. The CLI does not load
+environment. For Python, install `python -m pip install --pre "firedrill-run[agent]"`.
+The source checkout includes the package. The CLI does not load
 `.env` automatically. Selected repository content is sent to Anthropic.
 
 Default limits are 40 turns, $2 of model spend, and 15 minutes per invocation.
