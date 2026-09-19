@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "packages": [
     {
-      "packageName": "@firedrill-tools/tool-attio",
+      "packageName": "@firedrill-tools/attio",
       "packageVersion": "0.1.1",
       "title": "Attio",
       "description": "Synthetic Attio workspace (REST API v2 subset: people, companies, deals, attributes, lists and entries, notes, tasks, workspace members) Tool package for Firedrill",
@@ -21,7 +21,7 @@
       "source": {
         "kind": "git",
         "url": "https://github.com/firedrill-tools/firedrill-tools.git",
-        "commit": "d5d09d04cd71498ae22aeeeca159954d5e681359",
+        "commit": "945f45467788b7bb98cf0b855c0fcd7600e5bceb",
         "subdirectory": "packages/attio"
       },
       "tool": {
@@ -1450,7 +1450,7 @@
       "conformanceSuite": "conformance"
     },
     {
-      "packageName": "@firedrill-tools/tool-box",
+      "packageName": "@firedrill-tools/box",
       "packageVersion": "0.1.1",
       "title": "Box",
       "description": "Synthetic Box Content API 2.0 subset (folders, files, versions, trash, search, collaborations, comments, events) as a Firedrill Tool",
@@ -1459,7 +1459,7 @@
       "source": {
         "kind": "git",
         "url": "https://github.com/firedrill-tools/firedrill-tools.git",
-        "commit": "d5d09d04cd71498ae22aeeeca159954d5e681359",
+        "commit": "945f45467788b7bb98cf0b855c0fcd7600e5bceb",
         "subdirectory": "packages/box"
       },
       "tool": {
@@ -2649,7 +2649,7 @@
       "conformanceSuite": "conformance"
     },
     {
-      "packageName": "@firedrill-tools/tool-check",
+      "packageName": "@firedrill-tools/check",
       "packageVersion": "0.1.2",
       "title": "Check",
       "description": "Synthetic Check payroll sandbox partner account (companies, workplaces, employees, earning rates, pay schedules, payrolls with preview/approve/reopen, payroll items; Check-shaped REST routes) Tool package for Firedrill",
@@ -2668,7 +2668,7 @@
       "source": {
         "kind": "git",
         "url": "https://github.com/firedrill-tools/firedrill-tools.git",
-        "commit": "d5d09d04cd71498ae22aeeeca159954d5e681359",
+        "commit": "945f45467788b7bb98cf0b855c0fcd7600e5bceb",
         "subdirectory": "packages/check"
       },
       "tool": {
@@ -3633,7 +3633,7 @@
       "conformanceSuite": "conformance"
     },
     {
-      "packageName": "@firedrill-tools/tool-datadog",
+      "packageName": "@firedrill-tools/datadog",
       "packageVersion": "0.1.1",
       "title": "Datadog",
       "description": "Synthetic Datadog organization (monitors with deterministic evaluation, events, metric intake and queries, dashboards, incidents; Datadog-shaped REST routes) Tool package for Firedrill",
@@ -3651,7 +3651,7 @@
       "source": {
         "kind": "git",
         "url": "https://github.com/firedrill-tools/firedrill-tools.git",
-        "commit": "d5d09d04cd71498ae22aeeeca159954d5e681359",
+        "commit": "945f45467788b7bb98cf0b855c0fcd7600e5bceb",
         "subdirectory": "packages/datadog"
       },
       "tool": {
@@ -4437,7 +4437,7 @@
       "conformanceSuite": "conformance"
     },
     {
-      "packageName": "@firedrill-tools/tool-discord",
+      "packageName": "@firedrill-tools/discord",
       "packageVersion": "0.1.1",
       "title": "Discord",
       "description": "Synthetic Discord Tool package for Firedrill: a stateful Discord HTTP API v10 subset (guilds, channels, threads, messages, reactions, members, roles, DMs) at /api/v10",
@@ -4455,7 +4455,7 @@
       "source": {
         "kind": "git",
         "url": "https://github.com/firedrill-tools/firedrill-tools.git",
-        "commit": "d5d09d04cd71498ae22aeeeca159954d5e681359",
+        "commit": "945f45467788b7bb98cf0b855c0fcd7600e5bceb",
         "subdirectory": "packages/discord"
       },
       "tool": {
@@ -5479,7 +5479,7 @@
       "conformanceSuite": "conformance"
     },
     {
-      "packageName": "@firedrill-tools/tool-documenso",
+      "packageName": "@firedrill-tools/documenso",
       "packageVersion": "0.1.1",
       "title": "Documenso",
       "description": "Synthetic Documenso public API v2 subset (documents, recipients, fields, templates, signing lifecycle, audit log) as a Firedrill Tool",
@@ -5488,7 +5488,7 @@
       "source": {
         "kind": "git",
         "url": "https://github.com/firedrill-tools/firedrill-tools.git",
-        "commit": "d5d09d04cd71498ae22aeeeca159954d5e681359",
+        "commit": "945f45467788b7bb98cf0b855c0fcd7600e5bceb",
         "subdirectory": "packages/documenso"
       },
       "tool": {
@@ -6400,7 +6400,7 @@
       "conformanceSuite": "conformance"
     },
     {
-      "packageName": "@firedrill-tools/tool-dropbox",
+      "packageName": "@firedrill-tools/dropbox",
       "packageVersion": "0.1.1",
       "title": "Dropbox",
       "description": "Synthetic Dropbox account (API v2 subset: files, folders, revisions, search, change feed, shared links) Tool package for Firedrill",
@@ -6409,7 +6409,7 @@
       "source": {
         "kind": "git",
         "url": "https://github.com/firedrill-tools/firedrill-tools.git",
-        "commit": "d5d09d04cd71498ae22aeeeca159954d5e681359",
+        "commit": "945f45467788b7bb98cf0b855c0fcd7600e5bceb",
         "subdirectory": "packages/dropbox"
       },
       "tool": {
@@ -7342,7 +7342,7 @@
       "conformanceSuite": "conformance"
     },
     {
-      "packageName": "@firedrill-tools/tool-github",
+      "packageName": "@firedrill-tools/github",
       "packageVersion": "0.1.1",
       "title": "GitHub",
       "description": "Synthetic GitHub instance (REST API 2022-11-28 subset, GitHub MCP server tool names, browser app) Tool package for Firedrill",
@@ -7361,7 +7361,7 @@
       "source": {
         "kind": "git",
         "url": "https://github.com/firedrill-tools/firedrill-tools.git",
-        "commit": "d5d09d04cd71498ae22aeeeca159954d5e681359",
+        "commit": "945f45467788b7bb98cf0b855c0fcd7600e5bceb",
         "subdirectory": "packages/github"
       },
       "tool": {
@@ -8783,7 +8783,7 @@
       "conformanceSuite": "conformance"
     },
     {
-      "packageName": "@firedrill-tools/tool-gitlab",
+      "packageName": "@firedrill-tools/gitlab",
       "packageVersion": "0.1.1",
       "title": "Gitlab",
       "description": "Synthetic GitLab instance (REST API v4 subset, GitLab MCP server tool-name aliases, browser app) Tool package for Firedrill",
@@ -8802,7 +8802,7 @@
       "source": {
         "kind": "git",
         "url": "https://github.com/firedrill-tools/firedrill-tools.git",
-        "commit": "d5d09d04cd71498ae22aeeeca159954d5e681359",
+        "commit": "945f45467788b7bb98cf0b855c0fcd7600e5bceb",
         "subdirectory": "packages/gitlab"
       },
       "tool": {
@@ -10075,7 +10075,7 @@
       "conformanceSuite": "conformance"
     },
     {
-      "packageName": "@firedrill-tools/tool-gmail",
+      "packageName": "@firedrill-tools/gmail",
       "packageVersion": "0.1.2",
       "title": "Gmail",
       "description": "Synthetic Gmail (Gmail API v1 subset + Google Gmail MCP tool names) Tool package for Firedrill, with a browser mail client",
@@ -10084,7 +10084,7 @@
       "source": {
         "kind": "git",
         "url": "https://github.com/firedrill-tools/firedrill-tools.git",
-        "commit": "d5d09d04cd71498ae22aeeeca159954d5e681359",
+        "commit": "945f45467788b7bb98cf0b855c0fcd7600e5bceb",
         "subdirectory": "packages/gmail"
       },
       "tool": {
@@ -10954,7 +10954,7 @@
       "conformanceSuite": "conformance"
     },
     {
-      "packageName": "@firedrill-tools/tool-google-calendar",
+      "packageName": "@firedrill-tools/google-calendar",
       "packageVersion": "0.1.1",
       "title": "Google Calendar",
       "description": "Synthetic Google Calendar (Calendar API v3 subset + Google Calendar MCP tool names) Tool package for Firedrill",
@@ -10971,7 +10971,7 @@
       "source": {
         "kind": "git",
         "url": "https://github.com/firedrill-tools/firedrill-tools.git",
-        "commit": "d5d09d04cd71498ae22aeeeca159954d5e681359",
+        "commit": "945f45467788b7bb98cf0b855c0fcd7600e5bceb",
         "subdirectory": "packages/google-calendar"
       },
       "tool": {
@@ -11756,7 +11756,7 @@
       "conformanceSuite": "conformance"
     },
     {
-      "packageName": "@firedrill-tools/tool-google-docs",
+      "packageName": "@firedrill-tools/google-docs",
       "packageVersion": "0.1.1",
       "title": "Google Docs",
       "description": "Synthetic Google Docs (Docs API v1 subset + the Drive API v3 endpoints a Docs agent needs) Tool package for Firedrill",
@@ -11774,7 +11774,7 @@
       "source": {
         "kind": "git",
         "url": "https://github.com/firedrill-tools/firedrill-tools.git",
-        "commit": "d5d09d04cd71498ae22aeeeca159954d5e681359",
+        "commit": "945f45467788b7bb98cf0b855c0fcd7600e5bceb",
         "subdirectory": "packages/google-docs"
       },
       "tool": {
@@ -12561,7 +12561,7 @@
       "conformanceSuite": "conformance"
     },
     {
-      "packageName": "@firedrill-tools/tool-google-drive",
+      "packageName": "@firedrill-tools/google-drive",
       "packageVersion": "0.1.1",
       "title": "Google Drive",
       "description": "Synthetic Google Drive (Drive API v3 subset + Google Drive MCP tool names) Tool package for Firedrill",
@@ -12579,7 +12579,7 @@
       "source": {
         "kind": "git",
         "url": "https://github.com/firedrill-tools/firedrill-tools.git",
-        "commit": "d5d09d04cd71498ae22aeeeca159954d5e681359",
+        "commit": "945f45467788b7bb98cf0b855c0fcd7600e5bceb",
         "subdirectory": "packages/google-drive"
       },
       "tool": {
@@ -13288,7 +13288,7 @@
       "conformanceSuite": "conformance"
     },
     {
-      "packageName": "@firedrill-tools/tool-google-sheets",
+      "packageName": "@firedrill-tools/google-sheets",
       "packageVersion": "0.1.1",
       "title": "Google Sheets",
       "description": "Synthetic Google Sheets (Sheets API v4 subset + the Drive API v3 file and sharing endpoints a Sheets agent needs) Tool package for Firedrill",
@@ -13305,7 +13305,7 @@
       "source": {
         "kind": "git",
         "url": "https://github.com/firedrill-tools/firedrill-tools.git",
-        "commit": "d5d09d04cd71498ae22aeeeca159954d5e681359",
+        "commit": "945f45467788b7bb98cf0b855c0fcd7600e5bceb",
         "subdirectory": "packages/google-sheets"
       },
       "tool": {
@@ -13991,7 +13991,7 @@
       "conformanceSuite": "conformance"
     },
     {
-      "packageName": "@firedrill-tools/tool-google-workspace",
+      "packageName": "@firedrill-tools/google-workspace",
       "packageVersion": "0.1.3",
       "title": "Google Workspace",
       "description": "Synthetic Google Workspace developer APIs (People v1, Workspace Events v1, Apps Script v1) as a Firedrill Tool",
@@ -14000,7 +14000,7 @@
       "source": {
         "kind": "git",
         "url": "https://github.com/firedrill-tools/firedrill-tools.git",
-        "commit": "d5d09d04cd71498ae22aeeeca159954d5e681359",
+        "commit": "945f45467788b7bb98cf0b855c0fcd7600e5bceb",
         "subdirectory": "packages/google-workspace"
       },
       "tool": {
@@ -15110,7 +15110,7 @@
       "conformanceSuite": "conformance"
     },
     {
-      "packageName": "@firedrill-tools/tool-hubspot",
+      "packageName": "@firedrill-tools/hubspot",
       "packageVersion": "0.1.1",
       "title": "HubSpot",
       "description": "Synthetic HubSpot CRM portal (CRM v3 objects, search, associations v4, owners, pipelines, properties; HubSpot MCP server tool names) Tool package for Firedrill",
@@ -15130,7 +15130,7 @@
       "source": {
         "kind": "git",
         "url": "https://github.com/firedrill-tools/firedrill-tools.git",
-        "commit": "d5d09d04cd71498ae22aeeeca159954d5e681359",
+        "commit": "945f45467788b7bb98cf0b855c0fcd7600e5bceb",
         "subdirectory": "packages/hubspot"
       },
       "tool": {
@@ -16164,7 +16164,7 @@
       "conformanceSuite": "conformance"
     },
     {
-      "packageName": "@firedrill-tools/tool-jira",
+      "packageName": "@firedrill-tools/jira",
       "packageVersion": "0.1.1",
       "title": "Jira",
       "description": "Synthetic Jira Cloud site (REST API v3 issues, JQL search, comments, transitions, users, projects; agile 1.0 boards and sprints; Atlassian Remote MCP Server Jira tool names) Tool package for Firedrill",
@@ -16184,7 +16184,7 @@
       "source": {
         "kind": "git",
         "url": "https://github.com/firedrill-tools/firedrill-tools.git",
-        "commit": "d5d09d04cd71498ae22aeeeca159954d5e681359",
+        "commit": "945f45467788b7bb98cf0b855c0fcd7600e5bceb",
         "subdirectory": "packages/jira"
       },
       "tool": {
@@ -17356,7 +17356,7 @@
       "conformanceSuite": "conformance"
     },
     {
-      "packageName": "@firedrill-tools/tool-linear",
+      "packageName": "@firedrill-tools/linear",
       "packageVersion": "0.1.1",
       "title": "Linear",
       "description": "Synthetic Linear workspace (GraphQL API subset on POST /graphql: viewer, teams, workflow states, labels, projects, cycles, issues, comments; official Linear MCP server tool names) Tool package for Firedrill",
@@ -17375,7 +17375,7 @@
       "source": {
         "kind": "git",
         "url": "https://github.com/firedrill-tools/firedrill-tools.git",
-        "commit": "d5d09d04cd71498ae22aeeeca159954d5e681359",
+        "commit": "945f45467788b7bb98cf0b855c0fcd7600e5bceb",
         "subdirectory": "packages/linear"
       },
       "tool": {
@@ -17577,7 +17577,7 @@
       "conformanceSuite": "conformance"
     },
     {
-      "packageName": "@firedrill-tools/tool-linkedin",
+      "packageName": "@firedrill-tools/linkedin",
       "packageVersion": "0.1.1",
       "title": "Linkedin",
       "description": "Synthetic LinkedIn member network (versioned /rest Community Management subset plus /v2 consumer endpoints: posts, comments, reactions, social metadata, organizations, connections) as a Firedrill Tool",
@@ -17586,7 +17586,7 @@
       "source": {
         "kind": "git",
         "url": "https://github.com/firedrill-tools/firedrill-tools.git",
-        "commit": "d5d09d04cd71498ae22aeeeca159954d5e681359",
+        "commit": "945f45467788b7bb98cf0b855c0fcd7600e5bceb",
         "subdirectory": "packages/linkedin"
       },
       "tool": {
@@ -19077,7 +19077,7 @@
       "conformanceSuite": "conformance"
     },
     {
-      "packageName": "@firedrill-tools/tool-netsuite",
+      "packageName": "@firedrill-tools/netsuite",
       "packageVersion": "0.1.2",
       "title": "Netsuite",
       "description": "Synthetic NetSuite Tool for Firedrill: SuiteTalk REST record API subset (customer, salesOrder, invoice, customerPayment, inventoryItem, subsidiary) plus SuiteQL over deterministic local state.",
@@ -19086,7 +19086,7 @@
       "source": {
         "kind": "git",
         "url": "https://github.com/firedrill-tools/firedrill-tools.git",
-        "commit": "d5d09d04cd71498ae22aeeeca159954d5e681359",
+        "commit": "945f45467788b7bb98cf0b855c0fcd7600e5bceb",
         "subdirectory": "packages/netsuite"
       },
       "tool": {
@@ -20378,7 +20378,7 @@
       "conformanceSuite": "conformance"
     },
     {
-      "packageName": "@firedrill-tools/tool-notion",
+      "packageName": "@firedrill-tools/notion",
       "packageVersion": "0.1.1",
       "title": "Notion",
       "description": "Synthetic Notion workspace (REST API 2025-09-03 pages, data sources, blocks, comments, search, users; page-markdown endpoints; Notion MCP server tool names) Tool package for Firedrill",
@@ -20397,7 +20397,7 @@
       "source": {
         "kind": "git",
         "url": "https://github.com/firedrill-tools/firedrill-tools.git",
-        "commit": "d5d09d04cd71498ae22aeeeca159954d5e681359",
+        "commit": "945f45467788b7bb98cf0b855c0fcd7600e5bceb",
         "subdirectory": "packages/notion"
       },
       "tool": {
@@ -21356,7 +21356,7 @@
       "conformanceSuite": "conformance"
     },
     {
-      "packageName": "@firedrill-tools/tool-quickbooks",
+      "packageName": "@firedrill-tools/quickbooks",
       "packageVersion": "0.1.2",
       "title": "Quickbooks",
       "description": "Synthetic QuickBooks Online (Accounting API v3 subset) Tool for Firedrill: customers, items, invoices, payments, accounts and the query language over deterministic local state.",
@@ -21365,7 +21365,7 @@
       "source": {
         "kind": "git",
         "url": "https://github.com/firedrill-tools/firedrill-tools.git",
-        "commit": "d5d09d04cd71498ae22aeeeca159954d5e681359",
+        "commit": "945f45467788b7bb98cf0b855c0fcd7600e5bceb",
         "subdirectory": "packages/quickbooks"
       },
       "tool": {
@@ -22111,7 +22111,7 @@
       "conformanceSuite": "conformance"
     },
     {
-      "packageName": "@firedrill-tools/tool-resend",
+      "packageName": "@firedrill-tools/resend",
       "packageVersion": "0.1.1",
       "title": "Resend",
       "description": "Synthetic Resend team (emails with synthetic delivery, domains, API keys, segments, contacts; Resend-shaped REST routes and MCP tool names) Tool package for Firedrill",
@@ -22129,7 +22129,7 @@
       "source": {
         "kind": "git",
         "url": "https://github.com/firedrill-tools/firedrill-tools.git",
-        "commit": "d5d09d04cd71498ae22aeeeca159954d5e681359",
+        "commit": "945f45467788b7bb98cf0b855c0fcd7600e5bceb",
         "subdirectory": "packages/resend"
       },
       "tool": {
@@ -23232,7 +23232,7 @@
       "conformanceSuite": "conformance"
     },
     {
-      "packageName": "@firedrill-tools/tool-salesforce",
+      "packageName": "@firedrill-tools/salesforce",
       "packageVersion": "0.1.1",
       "title": "Salesforce",
       "description": "Synthetic Salesforce org (Platform REST API subset: sObject rows and upsert by external id, SOQL query/queryAll, parameterized search, sObject Collections, Composite, limits, describe, OpenID userinfo; @salesforce/mcp data tool names) Tool package for Firedrill",
@@ -23252,7 +23252,7 @@
       "source": {
         "kind": "git",
         "url": "https://github.com/firedrill-tools/firedrill-tools.git",
-        "commit": "d5d09d04cd71498ae22aeeeca159954d5e681359",
+        "commit": "945f45467788b7bb98cf0b855c0fcd7600e5bceb",
         "subdirectory": "packages/salesforce"
       },
       "tool": {
@@ -24523,7 +24523,7 @@
       "conformanceSuite": "conformance"
     },
     {
-      "packageName": "@firedrill-tools/tool-slack",
+      "packageName": "@firedrill-tools/slack",
       "packageVersion": "0.1.1",
       "title": "Slack",
       "description": "Synthetic Slack workspace (Slack Web API subset at /api/<method>, the reference Slack MCP tool names and a Slack-client browser app) Tool package for Firedrill",
@@ -24541,7 +24541,7 @@
       "source": {
         "kind": "git",
         "url": "https://github.com/firedrill-tools/firedrill-tools.git",
-        "commit": "d5d09d04cd71498ae22aeeeca159954d5e681359",
+        "commit": "945f45467788b7bb98cf0b855c0fcd7600e5bceb",
         "subdirectory": "packages/slack"
       },
       "tool": {
@@ -26055,7 +26055,7 @@
       "conformanceSuite": "conformance"
     },
     {
-      "packageName": "@firedrill-tools/tool-stripe",
+      "packageName": "@firedrill-tools/stripe",
       "packageVersion": "0.1.1",
       "title": "Stripe",
       "description": "Synthetic Stripe test-mode account (customers, cards, PaymentIntents, charges, refunds, products, prices, invoices, subscriptions, balance; Stripe REST v1 routes and agent-toolkit MCP tool names) Tool package for Firedrill",
@@ -26075,7 +26075,7 @@
       "source": {
         "kind": "git",
         "url": "https://github.com/firedrill-tools/firedrill-tools.git",
-        "commit": "d5d09d04cd71498ae22aeeeca159954d5e681359",
+        "commit": "945f45467788b7bb98cf0b855c0fcd7600e5bceb",
         "subdirectory": "packages/stripe"
       },
       "tool": {
@@ -27659,7 +27659,7 @@
       "conformanceSuite": "conformance"
     },
     {
-      "packageName": "@firedrill-tools/tool-trolley",
+      "packageName": "@firedrill-tools/trolley",
       "packageVersion": "0.1.1",
       "title": "Trolley",
       "description": "Synthetic Trolley sandbox merchant (recipients, payout accounts, batches with quotes and processing, payments, balances; Trolley REST API v1 routes) Tool package for Firedrill",
@@ -27679,7 +27679,7 @@
       "source": {
         "kind": "git",
         "url": "https://github.com/firedrill-tools/firedrill-tools.git",
-        "commit": "d5d09d04cd71498ae22aeeeca159954d5e681359",
+        "commit": "945f45467788b7bb98cf0b855c0fcd7600e5bceb",
         "subdirectory": "packages/trolley"
       },
       "tool": {
@@ -28731,7 +28731,7 @@
       "conformanceSuite": "conformance"
     },
     {
-      "packageName": "@firedrill-tools/tool-unified",
+      "packageName": "@firedrill-tools/unified",
       "packageVersion": "0.1.1",
       "title": "Unified",
       "description": "Synthetic Unified.to workspace (connections, unified CRM and Messaging REST API) as a Firedrill Tool",
@@ -28740,7 +28740,7 @@
       "source": {
         "kind": "git",
         "url": "https://github.com/firedrill-tools/firedrill-tools.git",
-        "commit": "d5d09d04cd71498ae22aeeeca159954d5e681359",
+        "commit": "945f45467788b7bb98cf0b855c0fcd7600e5bceb",
         "subdirectory": "packages/unified"
       },
       "tool": {
@@ -30456,7 +30456,7 @@
       "conformanceSuite": "conformance"
     },
     {
-      "packageName": "@firedrill-tools/tool-unstructured",
+      "packageName": "@firedrill-tools/unstructured",
       "packageVersion": "0.1.4",
       "title": "Unstructured",
       "description": "Synthetic Unstructured account (Partition Endpoint and Workflow Endpoint subset) as a Firedrill Tool",
@@ -30465,7 +30465,7 @@
       "source": {
         "kind": "git",
         "url": "https://github.com/firedrill-tools/firedrill-tools.git",
-        "commit": "d5d09d04cd71498ae22aeeeca159954d5e681359",
+        "commit": "945f45467788b7bb98cf0b855c0fcd7600e5bceb",
         "subdirectory": "packages/unstructured"
       },
       "tool": {
@@ -31336,7 +31336,7 @@
       "conformanceSuite": "conformance"
     },
     {
-      "packageName": "@firedrill-tools/tool-waterfall",
+      "packageName": "@firedrill-tools/waterfall",
       "packageVersion": "0.1.1",
       "title": "Waterfall",
       "description": "Synthetic Waterfall account (contact, phone and company enrichment jobs, contact and company search, job change, e-mail verification, account reporter, API keys; Waterfall-shaped REST routes) Tool package for Firedrill",
@@ -31354,7 +31354,7 @@
       "source": {
         "kind": "git",
         "url": "https://github.com/firedrill-tools/firedrill-tools.git",
-        "commit": "d5d09d04cd71498ae22aeeeca159954d5e681359",
+        "commit": "945f45467788b7bb98cf0b855c0fcd7600e5bceb",
         "subdirectory": "packages/waterfall"
       },
       "tool": {
@@ -32195,7 +32195,7 @@
       "conformanceSuite": "conformance"
     },
     {
-      "packageName": "@firedrill-tools/tool-xero",
+      "packageName": "@firedrill-tools/xero",
       "packageVersion": "0.1.1",
       "title": "Xero",
       "description": "Synthetic Xero Accounting API 2.0 (subset) Tool for Firedrill: organisation, chart of accounts, tax rates, contacts, sales invoices and bills, and payments over deterministic local state.",
@@ -32204,7 +32204,7 @@
       "source": {
         "kind": "git",
         "url": "https://github.com/firedrill-tools/firedrill-tools.git",
-        "commit": "d5d09d04cd71498ae22aeeeca159954d5e681359",
+        "commit": "945f45467788b7bb98cf0b855c0fcd7600e5bceb",
         "subdirectory": "packages/xero"
       },
       "tool": {
@@ -33164,5 +33164,5 @@
     }
   ],
   "sourceRepository": "https://github.com/firedrill-tools/firedrill-tools.git",
-  "sourceRevision": "d5d09d04cd71498ae22aeeeca159954d5e681359"
+  "sourceRevision": "945f45467788b7bb98cf0b855c0fcd7600e5bceb"
 }
