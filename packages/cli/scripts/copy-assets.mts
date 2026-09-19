@@ -15,6 +15,10 @@ const assets = [
     source: resolve(repositoryRoot, "templates/minimal"),
     destination: resolve(packageRoot, "dist/templates/minimal"),
   },
+  {
+    source: resolve(repositoryRoot, "templates/python"),
+    destination: resolve(packageRoot, "dist/templates/python"),
+  },
 ] as const;
 
 for (const item of assets) {

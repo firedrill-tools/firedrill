@@ -8,6 +8,7 @@ import { FIREDRILL_FRAMEWORK_VERSION } from "@firedrill-run/contracts";
 import { checkFiredrillEnvironment, type FiredrillEnvironmentCheck } from "./environment-check.js";
 import { createFiredrillAuthoringServer, type FiredrillAuthoringPolicy } from "./firedrill-tools.js";
 import { repositoryGuardHook } from "./repository-policy.js";
+import { agentExecutable } from "./runtime-executable.js";
 
 export type FiredrillAgentEffort = Extract<EffortLevel, "low" | "medium" | "high" | "xhigh" | "max">;
 
@@ -257,6 +258,12 @@ export async function runFiredrillAgent(
   if (options.signal?.aborted) {
     throw new FiredrillAgentError("agent.CANCELLED", "Firedrill Agent was cancelled before it started");
   }
+  let executable: string | undefined;
+  try {
+    executable = agentExecutable(environment);
+  } catch (error) {
+    throw new FiredrillAgentError("agent.INVALID_OPTIONS", (error as Error).message);
+  }
   const controller = new AbortController();
   const abort = () => controller.abort(options.signal?.reason);
   options.signal?.addEventListener("abort", abort, { once: true });
@@ -280,6 +287,7 @@ export async function runFiredrillAgent(
     const stream = query({
       prompt: options.prompt?.trim() || defaultPrompt(allowRepositoryExecution, workflow),
       options: {
+        ...(executable === undefined ? {} : { pathToClaudeCodeExecutable: executable }),
         abortController: controller,
         cwd: validated.root,
         env: agentEnvironment(environment, runtimeHome),

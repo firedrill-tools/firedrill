@@ -19,6 +19,12 @@ export function toolInstallPlan(root: string, tool: InstallableTool) {
       arguments: ["tool", "add", tool.installSource, "--install"],
     };
   }
+  if (process.env.FIREDRILL_BUNDLED_NPM_CLI) {
+    return {
+      executable: "firedrill",
+      arguments: ["tool", "add", `${tool.packageName}@${tool.version}`, "--install"],
+    };
+  }
   const manager = existsSync(join(root, "pnpm-lock.yaml")) ? "pnpm" : "npm";
   return {
     executable: manager,

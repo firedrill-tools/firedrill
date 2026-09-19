@@ -12,6 +12,18 @@ coverage/
 .DS_Store
 *.log
 *.tgz
+*.whl
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.venv/
+*.egg-info/
+python/src/firedrill/_runtime/
+python/src/firedrill_agent_runtime/
+python/agent-runtime/src/firedrill_agent_runtime/node_modules/
+python/build/
 
 .firedrill/
 *.sqlite

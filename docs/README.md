@@ -56,6 +56,7 @@ human or another LLM. [See the distinction](world-authoring.md#people-and-permis
 | Give a coding agent local Firedrill controls | [Control MCP](control-mcp.md) |
 | Keep existing provider tool names and environment variables | [Tool connections](tool-connections.md) |
 | Use Jest, Vitest, Mocha, or my own script | [TypeScript SDK](../packages/sdk/README.md) |
+| Use Python, pytest, or an async Python agent | [Python SDK and pytest](../python/README.md) |
 | Replace an imported function or SDK method only in a test | [Test-side mocks and overrides](test-mocking.md) |
 | Change fake data or a tool response for one test | [Per-test setup](../packages/sdk/README.md#per-test-synthetic-data-and-tools) |
 | Call tools, inspect state, advance time, or reset | [Local world control](local-world-control.md) |

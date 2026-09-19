@@ -1,0 +1,9 @@
+schemaVersion: 1
+target:
+  id: starter-agent
+  kind: command
+  bindings: [http]
+  executable: python
+  arguments: [firedrill-example/agent.py]
+  workingDirectory: .
+  timeoutMs: 5000

@@ -1,4 +1,6 @@
-import { resolve } from "node:path";
+import { spawn } from "node:child_process";
+import { createRequire } from "node:module";
+import { dirname, join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import type { BrowserTestDefinitionInput } from "@firedrill-run/browser-tests";
 import type { CliIo } from "./program.js";
@@ -6,12 +8,13 @@ import type { CliIo } from "./program.js";
 const HELP = `Optional browser tests for an existing application
 
 Usage:
+  firedrill browser install [--with-deps] [--json]
   firedrill browser run <test.browser.json> [options]
   firedrill browser run --url <url> --task <task> --agent --allow-model [options]
   firedrill browser verify <report-directory> [--root <path>] [--json]
 
 Install once: pnpm add -D @firedrill-run/browser-tests@next
-Browser install: pnpm dlx playwright@1.62.1 install chromium
+Browser install: firedrill browser install
 For the optional task driver: pnpm add -D @firedrill-run/agent@next
 
 Options:
@@ -43,8 +46,60 @@ class BrowserCliError extends Error {}
 export async function executeBrowserCommand(args: readonly string[], io: CliIo): Promise<number> {
   const json = args.includes("--json");
   if (args.length === 0 || args.includes("--help") || args.includes("-h")) {
-    io.stdout.write(HELP);
+    io.stdout.write(
+      process.env.FIREDRILL_BUNDLED_NPM_CLI
+        ? HELP.replace(
+            "Install once: pnpm add -D @firedrill-run/browser-tests@next",
+            "Browser support is included in the Python package.",
+          ).replace(
+            "For the optional task driver: pnpm add -D @firedrill-run/agent@next",
+            'For the optional task driver: pip install "firedrill-run[agent]"',
+          )
+        : HELP,
+    );
     return 0;
+  }
+  if (args[0] === "install") {
+    if (args.slice(1).some((value) => !["--with-deps", "--json"].includes(value))) {
+      io.stderr.write("Use firedrill browser install [--with-deps] [--json].\n");
+      return 2;
+    }
+    try {
+      const browserRequire = createRequire(import.meta.resolve("@firedrill-run/browser-tests"));
+      const cli = join(dirname(browserRequire.resolve("playwright/package.json")), "cli.js");
+      const exitCode = await new Promise<number>((resolveExit, reject) => {
+        const child = spawn(
+          process.execPath,
+          [cli, "install", ...(args.includes("--with-deps") ? ["--with-deps"] : []), "chromium"],
+          {
+            cwd: io.cwd,
+            env: { ...process.env, ...io.environment },
+            stdio: ["ignore", "pipe", "pipe"],
+            signal: io.signal,
+            shell: false,
+          },
+        );
+        child.stdout.on("data", (chunk: Buffer) => (json ? io.stderr : io.stdout).write(chunk.toString()));
+        child.stderr.on("data", (chunk: Buffer) => io.stderr.write(chunk.toString()));
+        child.once("error", reject);
+        child.once("close", (code) => resolveExit(code ?? 1));
+      });
+      if (json)
+        io.stdout.write(
+          `${JSON.stringify({ command: "browser install", status: exitCode === 0 ? "ready" : "failed", browser: "chromium" })}\n`,
+        );
+      return exitCode === 0 ? 0 : 1;
+    } catch {
+      const message = io.signal?.aborted
+        ? "Browser installation cancelled."
+        : "Browser installation failed. Check network access and the browser package installation.";
+      if (json)
+        io.stdout.write(
+          `${JSON.stringify({ command: "browser install", status: "failed", code: "browser.INSTALL_FAILED", message })}\n`,
+        );
+      else io.stderr.write(`${message}\n`);
+      return 1;
+    }
   }
   const flags = new Set([
     "--json",

@@ -1,4 +1,4 @@
-import { readFileSync, readdirSync, statSync } from "node:fs";
+import { readdirSync, readFileSync, statSync } from "node:fs";
 import { basename, join, relative, resolve } from "node:path";
 
 const root = resolve(import.meta.dirname, "..");
@@ -35,6 +35,17 @@ function visit(directory: string): void {
     if (entry.isDirectory() && excludedDirectories.has(entry.name)) continue;
     if (ignoredFiles.has(entry.name)) continue;
     const path = join(directory, entry.name);
+    // Wheel assembly is generated release output, not checked-in source.
+    const generated = relative(root, path).replaceAll("\\", "/");
+    if (
+      generated === ".cache/python-runtime" ||
+      generated === "python/src/firedrill/_runtime" ||
+      generated === "python/src/firedrill_agent_runtime" ||
+      generated === "python/agent-runtime/src/firedrill_agent_runtime/node_modules" ||
+      generated === "python/build" ||
+      ["__pycache__", ".pytest_cache", ".venv", ".mypy_cache", ".ruff_cache"].includes(entry.name)
+    )
+      continue;
     if (entry.isDirectory()) {
       visit(path);
       continue;

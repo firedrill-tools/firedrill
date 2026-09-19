@@ -2,8 +2,8 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { runCli } from "../src/index.js";
 import { executeAgentCommand } from "../src/agent-command.js";
+import { runCli } from "../src/index.js";
 import { installReadyTool, toolInstallPlan } from "../src/install-tool.js";
 import { readyTools } from "../src/tool-catalog.js";
 
@@ -124,6 +124,21 @@ async function invoke(
 }
 
 describe("tool-first init", () => {
+  it("creates a portable Python starter when invoked by the Python distribution", async () => {
+    const root = repository();
+    const result = await invoke(root, ["init", "--path", "template", "--json"], undefined, {
+      FIREDRILL_PYTHON_EXECUTABLE: "/a/private/venv/bin/python",
+    });
+    expect(result.code, result.stderr).toBe(0);
+    expect(existsSync(join(root, "firedrill-example/agent.py"))).toBe(true);
+    expect(existsSync(join(root, "firedrill-example/agent.mjs"))).toBe(false);
+    const target = readFileSync(join(root, "firedrill/targets/starter-agent.target.yaml"), "utf8");
+    expect(target).toContain("executable: python");
+    expect(target).not.toContain("/a/private/");
+    expect(readFileSync(join(root, "firedrill/README.md"), "utf8")).toContain("agent.py");
+    expect((await invoke(root, ["validate", "--json"])).code).toBe(0);
+  });
+
   it("keeps bare non-TTY init and catalog search read-only and key-free", async () => {
     const root = repository();
     const search = await invoke(root, ["init", "--search", "gmail", "--json"]);

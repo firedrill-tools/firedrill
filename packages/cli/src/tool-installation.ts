@@ -234,7 +234,21 @@ async function command(
   signal?.throwIfAborted();
   // Do not interpolate selectors into a shell, including on Windows.
   let launch = { executable, args };
-  if (process.platform === "win32" && ["npm", "pnpm"].includes(executable)) {
+  const bundledInstaller =
+    executable === "npm"
+      ? process.env.FIREDRILL_BUNDLED_NPM_CLI
+      : executable === "pnpm"
+        ? process.env.FIREDRILL_BUNDLED_PNPM_CLI
+        : undefined;
+  if (bundledInstaller) {
+    if (
+      !isAbsolute(bundledInstaller) ||
+      !existsSync(bundledInstaller) ||
+      !lstatSync(bundledInstaller).isFile()
+    )
+      fail("The bundled Tool installer is unavailable.", "Reinstall your Firedrill Python package.");
+    launch = { executable: process.execPath, args: [bundledInstaller, ...args] };
+  } else if (process.platform === "win32" && ["npm", "pnpm"].includes(executable)) {
     const candidates = [dirname(process.execPath), ...(process.env.PATH ?? "").split(delimiter)];
     const scripts =
       executable === "npm"

@@ -9,6 +9,7 @@ import {
   type RunBrowserTestOptions,
   runBrowserTest,
 } from "@firedrill-run/browser-tests";
+import { agentExecutable } from "./runtime-executable.js";
 
 export interface BrowserAgentOptions {
   readonly environment?: Readonly<Record<string, string | undefined>>;
@@ -29,6 +30,12 @@ export function createBrowserAgentDriver(options: BrowserAgentOptions = {}): Bro
       "Set ANTHROPIC_API_KEY before using the optional browser agent.",
     );
   const maxTurns = options.maxTurns ?? 40;
+  let executable: string | undefined;
+  try {
+    executable = agentExecutable(environment);
+  } catch (error) {
+    throw new BrowserTestError("agent.INVALID_OPTIONS", (error as Error).message);
+  }
   const maxBudgetUsd = options.maxBudgetUsd ?? 2;
   if (
     !Number.isSafeInteger(maxTurns) ||
@@ -125,6 +132,7 @@ export function createBrowserAgentDriver(options: BrowserAgentOptions = {}): Bro
       const stream = query({
         prompt: options.messages ? interactive() : context.task,
         options: {
+          ...(executable === undefined ? {} : { pathToClaudeCodeExecutable: executable }),
           cwd: home,
           env: {
             PATH: environment.PATH,

@@ -10,13 +10,28 @@ changes, and events.
 - HTML, JSON, and JUnit reports with timelines and optional browser captures.
 - Repository-defined tools, including independently distributed packages.
 
-[Quickstart](#quickstart) · [SDK](#using-the-sdk) ·
+[Quickstart](#quickstart) · [Python](python/README.md) · [TypeScript](#using-the-sdk) ·
 [Documentation](https://docs.firedrill.run) · [Neutral example](examples/quickstart/README.md) ·
 [Gmail Agent example](https://github.com/firedrill-tools/firedrill-example-gmail-agent)
 
 ## Installation
 
-Requirements: Node.js 20.19 or later.
+### Python
+
+Install into your virtual environment with Python 3.10 or later:
+
+```sh
+python -m pip install --pre "firedrill-run[pytest]"
+firedrill --help
+```
+
+Import the local SDK with `from firedrill import World, run_drills`. The wheel
+includes the runtime, CLI, inspector, and report engine. See the
+[Python guide](python/README.md) for pytest, async agents, mocks, and browser tests.
+
+### TypeScript and JavaScript
+
+Requires Node.js 20.19 or later.
 
 Install the release candidate in your project:
 
@@ -42,8 +57,8 @@ export FIREDRILL_CLI="$PWD/packages/cli/dist/bin.js"
 firedrill() { node "$FIREDRILL_CLI" "$@"; }
 ```
 
-The examples below use `firedrill`; with a project installation, prefix commands
-with `npx`. From source, use the shell function above or invoke the CLI directly
+The examples below use `firedrill`; with an npm project installation, prefix commands
+with `npx`. Python installations expose `firedrill` directly. From source, use the shell function above or invoke the CLI directly
 with `node /path/to/firedrill/packages/cli/dist/bin.js`.
 
 The programmatic API is `@firedrill-run/sdk`. To prepare installable archives of the
@@ -142,7 +157,7 @@ Configure the agent's dependencies in test setup:
 | HTTP client | Point its base URL and authentication at the Tool's declared HTTP routes |
 | MCP server | Use the world's MCP endpoint and actor token |
 | CLI tool | Use a test-side command adapter or the Firedrill world CLI |
-| Function or SDK method | Use runner mocks/spies with `mockTool` from `@firedrill-run/sdk/testing` |
+| Function or SDK method | Use `mock_tool` with Python's `unittest.mock` / pytest, or `mockTool` with JavaScript runner mocks |
 | Web interface | Use a Playwright harness or the optional browser-test package |
 
 Bindings use existing configuration or test-side adapters, leaving production
@@ -346,6 +361,7 @@ See [installation](docs/tool-installation.md), [package authoring](docs/tool-pac
 - [Developer guides](docs/README.md)
 - [CLI reference](docs/cli-reference.md)
 - [TypeScript SDK](packages/sdk/README.md)
+- [Python SDK and pytest](python/README.md)
 - [Troubleshooting](docs/running-and-results.md#ci-and-common-first-use-problems)
 - [Compatibility policy](docs/compatibility.md)
 - [Security](SECURITY.md)
