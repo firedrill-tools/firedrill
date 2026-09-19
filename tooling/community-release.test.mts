@@ -20,11 +20,11 @@ function digest(algorithm: "sha256" | "sha512", bytes: Buffer): string {
 }
 
 function activeRecord(root: string) {
-  const archive = "firedrill-tools-tool-records-0.1.0.tgz";
+  const archive = "firedrill-tools-records-0.1.0.tgz";
   const bytes = Buffer.from("deterministic package bytes\n");
   writeFileSync(join(root, archive), bytes);
   return {
-    name: "@firedrill-tools/tool-records",
+    name: "@firedrill-tools/records",
     version: "0.1.0",
     tool: "records",
     lifecycle: "active",
@@ -40,7 +40,7 @@ function activeRecord(root: string) {
 
 function revokedRecord() {
   return {
-    name: "@firedrill-tools/tool-retired",
+    name: "@firedrill-tools/retired",
     version: "0.1.0",
     tool: "retired",
     lifecycle: "revoked",
@@ -108,6 +108,17 @@ describe("community release verification", () => {
 
     expect(result.status).toBe(1);
     expect(result.stderr).toContain("duplicate package name");
+  });
+
+  it("rejects the redundant tool prefix in the community package scope", () => {
+    const root = temporaryRoot();
+    const record = activeRecord(root);
+    writeCatalog(root, [{ ...record, name: "@firedrill-tools/tool-records" }]);
+
+    const result = verify(root);
+
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain("package name is invalid");
   });
 
   it("rejects package bytes that do not match the release catalog", () => {

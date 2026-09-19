@@ -1,5 +1,5 @@
 {
-  "name": "@firedrill-tools/tool-github-issues",
+  "name": "@firedrill-tools/github-issues",
   "version": "0.1.0-rc.1",
   "private": true,
   "description": "A bounded, stateful GitHub Issues-compatible Tool pack for Firedrill",

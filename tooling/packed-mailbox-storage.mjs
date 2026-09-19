@@ -14,14 +14,7 @@ mkdirSync(root);
 const cli = join(installedProject, "node_modules", ".bin", "firedrill");
 const initialized = spawnSync(
   cli,
-  [
-    "init",
-    "--tool",
-    "@firedrill-tools/tool-mailbox",
-    "--tool",
-    "@firedrill-tools/tool-object-storage",
-    "--json",
-  ],
+  ["init", "--tool", "@firedrill-tools/mailbox", "--tool", "@firedrill-tools/object-storage", "--json"],
   { cwd: root, encoding: "utf8", timeout: 30000 },
 );
 assert.equal(initialized.status, 0, initialized.stderr);

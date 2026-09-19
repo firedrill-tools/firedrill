@@ -1,5 +1,5 @@
 {
-  "name": "@firedrill-tools/tool-work-queue",
+  "name": "@firedrill-tools/work-queue",
   "version": "0.1.0-rc.1",
   "private": true,
   "description": "Reference stateful work-queue Tool pack for Firedrill",

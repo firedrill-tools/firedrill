@@ -18,7 +18,7 @@ Install the package with the package manager used by the agent project, then sel
 ```json
 {
   "schemaVersion": 1,
-  "toolPackages": ["@firedrill-tools/tool-github-issues"]
+  "toolPackages": ["@firedrill-tools/github-issues"]
 }
 ```
 

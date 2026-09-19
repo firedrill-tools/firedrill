@@ -336,9 +336,9 @@ try {
       '  const { records } = await import(join(repository, "test-support", "client.mjs")); const { run: nativeAgent } = await import(join(repository, "test-support", "agent.mjs")); const realSave = records.save;',
       '  const nativeResult = await runDrills({ root: repository, drill: "native-record", agent: async ({ binding }) => { records.save = mockTool(binding, { mode: "async", operation: { packageId: "packed-tool", operationId: "records.put" }, input: (count) => ({ count }), output: (value) => value.count, idempotencyKey: (count) => "native-" + count }); try { const reply = await nativeAgent(); if (reply !== "Saved 9") throw new Error("native result mapping failed"); return reply; } finally { records.save = realSave; } } });',
       '  if (nativeResult.verdict !== "passed" || records.save !== realSave) throw new Error("packed native mock did not preserve state or restore the original dependency"); verifyReport({ report: nativeResult.drills[0].trials[0].report.directory });',
-      '  const selectedPackage = await runDrills({ root: repository, drill: "package-setup", setup: { scenario: { actors: [{ id: "operator", grants: [{ packageId: "work-queue", operationId: "items.claim" }, { packageId: "work-queue", operationId: "items.complete" }] }], state: [{ action: "upsert", packageId: "work-queue", namespace: "items", rowId: "item-1", value: { title: "Prove run-local package selection", status: "available" } }] }, tools: { packages: ["@firedrill-tools/tool-work-queue"] } }, agent: async ({ binding }) => { const runnerMcp = new Client({ name: "packed-package-runner", version: "1.0.0" }, { versionNegotiation: { mode: "auto" } }); await runnerMcp.connect(new StreamableHTTPClientTransport(new URL(binding.environment.FIREDRILL_MCP_URL), { authProvider: { token: async () => binding.environment.FIREDRILL_MCP_TOKEN } })); try { const claimed = await runnerMcp.callTool({ name: mcpToolName("work-queue", "items.claim"), arguments: { id: "item-1" }, _meta: { "dev.firedrill/idempotency-key": "runner-claim-item-1" } }); const completed = await runnerMcp.callTool({ name: mcpToolName("work-queue", "items.complete"), arguments: { id: "item-1", result: "done" }, _meta: { "dev.firedrill/idempotency-key": "runner-complete-item-1" } }); return { claimed: !claimed.isError, completed: !completed.isError }; } finally { await runnerMcp.close(); } } });',
+      '  const selectedPackage = await runDrills({ root: repository, drill: "package-setup", setup: { scenario: { actors: [{ id: "operator", grants: [{ packageId: "work-queue", operationId: "items.claim" }, { packageId: "work-queue", operationId: "items.complete" }] }], state: [{ action: "upsert", packageId: "work-queue", namespace: "items", rowId: "item-1", value: { title: "Prove run-local package selection", status: "available" } }] }, tools: { packages: ["@firedrill-tools/work-queue"] } }, agent: async ({ binding }) => { const runnerMcp = new Client({ name: "packed-package-runner", version: "1.0.0" }, { versionNegotiation: { mode: "auto" } }); await runnerMcp.connect(new StreamableHTTPClientTransport(new URL(binding.environment.FIREDRILL_MCP_URL), { authProvider: { token: async () => binding.environment.FIREDRILL_MCP_TOKEN } })); try { const claimed = await runnerMcp.callTool({ name: mcpToolName("work-queue", "items.claim"), arguments: { id: "item-1" }, _meta: { "dev.firedrill/idempotency-key": "runner-claim-item-1" } }); const completed = await runnerMcp.callTool({ name: mcpToolName("work-queue", "items.complete"), arguments: { id: "item-1", result: "done" }, _meta: { "dev.firedrill/idempotency-key": "runner-complete-item-1" } }); return { claimed: !claimed.isError, completed: !completed.isError }; } finally { await runnerMcp.close(); } } });',
       '  const selectedPackageTrial = selectedPackage.drills[0]?.trials[0]; const selectedPackageCalls = selectedPackageTrial?.evidence.filter((entry) => entry.kind === "operation" && entry.invocation.operation.packageId === "work-queue") ?? []; if (selectedPackage.verdict !== "passed" || selectedPackageCalls.length !== 2 || selectedPackageCalls.some((entry) => entry.outcome.status !== "ok")) throw new Error("packed run-local Tool package selection failed");',
-      '  const selectedPackageLock = JSON.parse(readFileSync(join(repository, ".firedrill", "builds", selectedPackage.buildHash.slice("sha256:".length), "packages.lock.json"), "utf8")); const selectedPackageEntry = selectedPackageLock.packages.find((item) => item.packageId === "work-queue"); if (selectedPackageEntry?.source?.kind !== "npm" || selectedPackageEntry.source.packageName !== "@firedrill-tools/tool-work-queue") throw new Error("packed selected Tool package provenance missing");',
+      '  const selectedPackageLock = JSON.parse(readFileSync(join(repository, ".firedrill", "builds", selectedPackage.buildHash.slice("sha256:".length), "packages.lock.json"), "utf8")); const selectedPackageEntry = selectedPackageLock.packages.find((item) => item.packageId === "work-queue"); if (selectedPackageEntry?.source?.kind !== "npm" || selectedPackageEntry.source.packageName !== "@firedrill-tools/work-queue") throw new Error("packed selected Tool package provenance missing");',
       '  const runWorkload = () => runDrills({ root: repository, drill: "timed-workload", runDirectory: "workload-runs", reportDirectory: "workload-reports", seed: "55", agent: async ({ interactionId, task, binding }) => { const count = Number(task.input?.count); const runnerMcp = new Client({ name: "packed-workload-" + interactionId, version: "1.0.0" }, { versionNegotiation: { mode: "auto" } }); await runnerMcp.connect(new StreamableHTTPClientTransport(new URL(binding.environment.FIREDRILL_MCP_URL), { authProvider: { token: async () => binding.environment.FIREDRILL_MCP_TOKEN } })); try { const result = await runnerMcp.callTool({ name: mcpToolName("packed-tool", "records.put"), arguments: { count }, _meta: { "dev.firedrill/idempotency-key": "workload-" + interactionId } }); return { isError: result.isError ?? false, output: result.structuredContent ?? null }; } finally { await runnerMcp.close(); } } });',
       "  const workloadFirst = await runWorkload(); const workloadSecond = await runWorkload();",
       '  const firstWorkloadTrial = workloadFirst.drills[0]?.trials[0]; const secondWorkloadTrial = workloadSecond.drills[0]?.trials[0]; if (!firstWorkloadTrial || !secondWorkloadTrial) throw new Error("packed workload returned no trial");',
@@ -444,10 +444,10 @@ try {
         type: "module",
         dependencies: {
           "@firedrill-run/cli": `file:${archives.get("@firedrill-run/cli")}`,
-          "@firedrill-tools/tool-github-issues": `file:${archives.get("@firedrill-tools/tool-github-issues")}`,
-          "@firedrill-tools/tool-mailbox": `file:${archives.get("@firedrill-tools/tool-mailbox")}`,
-          "@firedrill-tools/tool-object-storage": `file:${archives.get("@firedrill-tools/tool-object-storage")}`,
-          "@firedrill-tools/tool-work-queue": `file:${archives.get("@firedrill-tools/tool-work-queue")}`,
+          "@firedrill-tools/github-issues": `file:${archives.get("@firedrill-tools/github-issues")}`,
+          "@firedrill-tools/mailbox": `file:${archives.get("@firedrill-tools/mailbox")}`,
+          "@firedrill-tools/object-storage": `file:${archives.get("@firedrill-tools/object-storage")}`,
+          "@firedrill-tools/work-queue": `file:${archives.get("@firedrill-tools/work-queue")}`,
           "@octokit/rest": "21.1.1",
         },
         pnpm: {
@@ -485,7 +485,7 @@ try {
   mkdirSync(join(installedPackProject, "world"), { recursive: true });
   writeFileSync(
     join(installedPackProject, "firedrill.json"),
-    `${JSON.stringify({ schemaVersion: 1, sourceRoot: "world", world: "world.json", toolPackages: ["@firedrill-tools/tool-github-issues", "@firedrill-tools/tool-work-queue"] })}\n`,
+    `${JSON.stringify({ schemaVersion: 1, sourceRoot: "world", world: "world.json", toolPackages: ["@firedrill-tools/github-issues", "@firedrill-tools/work-queue"] })}\n`,
   );
   writeFileSync(
     join(installedPackProject, "world", "world.json"),
@@ -635,7 +635,7 @@ try {
   if (
     packInspect.status !== 0 ||
     packInspection?.tool?.origin?.kind !== "npm" ||
-    packInspection?.tool?.origin?.packageName !== "@firedrill-tools/tool-work-queue"
+    packInspection?.tool?.origin?.packageName !== "@firedrill-tools/work-queue"
   ) {
     throw new Error(`installed Tool pack inspection failed\n${packInspect.stdout}\n${packInspect.stderr}`);
   }
@@ -650,7 +650,7 @@ try {
   const compatibleInspection = compatibleInspect.stdout ? JSON.parse(compatibleInspect.stdout) : null;
   if (
     compatibleInspect.status !== 0 ||
-    compatibleInspection?.tool?.origin?.packageName !== "@firedrill-tools/tool-github-issues" ||
+    compatibleInspection?.tool?.origin?.packageName !== "@firedrill-tools/github-issues" ||
     compatibleInspection?.tool?.manifest?.compatibility?.[0]?.client?.name !== "@octokit/rest" ||
     compatibleInspection?.tool?.manifest?.compatibility?.[0]?.client?.version !== "21.1.1" ||
     compatibleInspection?.tool?.manifest?.compatibility?.[0]?.routes?.length !== 4

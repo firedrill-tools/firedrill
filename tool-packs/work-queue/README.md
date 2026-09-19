@@ -11,7 +11,7 @@ Install it with the package manager already used by the project, then select it 
 ```json
 {
   "schemaVersion": 1,
-  "toolPackages": ["@firedrill-tools/tool-work-queue"]
+  "toolPackages": ["@firedrill-tools/work-queue"]
 }
 ```
 

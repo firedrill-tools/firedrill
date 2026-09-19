@@ -91,6 +91,15 @@ for (const group of packageGroups) {
     const path = join(groupRoot, entry.name, "package.json");
     if (!existsSync(path)) continue;
     const manifest = manifestAt(path);
+    if (
+      group === "tool-packs" &&
+      manifest.firedrill?.layer === "tool-pack" &&
+      !/^@firedrill-tools\/(?!tool-)[a-z0-9][a-z0-9-]*$/.test(manifest.name ?? "")
+    ) {
+      violations.push(
+        `${relative(root, path).split(sep).join("/")}: maintained Tool package name must use @firedrill-tools/<slug> without a redundant tool- prefix`,
+      );
+    }
     if (manifest.private !== true && manifest.publishConfig?.access === "public") {
       publicPackages.push({ path, manifest });
     }

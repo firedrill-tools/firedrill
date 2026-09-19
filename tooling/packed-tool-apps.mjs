@@ -22,14 +22,7 @@ mkdirSync(evidenceDirectory, { recursive: true });
 const root = mkdtempSync(join(installedProject, "tool-apps-environment-"));
 const initialized = spawnSync(
   join(installedProject, "node_modules", ".bin", "firedrill"),
-  [
-    "init",
-    "--tool",
-    "@firedrill-tools/tool-mailbox",
-    "--tool",
-    "@firedrill-tools/tool-object-storage",
-    "--json",
-  ],
+  ["init", "--tool", "@firedrill-tools/mailbox", "--tool", "@firedrill-tools/object-storage", "--json"],
   { cwd: root, encoding: "utf8", timeout: 30_000 },
 );
 assert.equal(initialized.status, 0, initialized.stderr);

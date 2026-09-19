@@ -277,12 +277,12 @@ describe("tool-first init", () => {
 
   it("uses explicit pinned installation permission and resumes safely on failure", async () => {
     const root = repository();
-    const pack = join(root, "node_modules/@firedrill-tools/tool-gmail");
+    const pack = join(root, "node_modules/@firedrill-tools/gmail");
     mkdirSync(pack, { recursive: true });
     writeFileSync(
       join(pack, "package.json"),
       JSON.stringify({
-        name: "@firedrill-tools/tool-gmail",
+        name: "@firedrill-tools/gmail",
         exports: { "./package.json": "./package.json" },
       }),
     );

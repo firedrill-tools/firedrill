@@ -32,7 +32,7 @@ function sourceRepository(lifecycle: "active" | "deprecated" | "revoked" = "acti
     join(root, "packages", "records", "package.json"),
     `${JSON.stringify(
       {
-        name: "@firedrill-tools/tool-records",
+        name: "@firedrill-tools/records",
         version: "0.1.0",
         description: "A stateful records Tool.",
         license: "Apache-2.0",
@@ -136,7 +136,7 @@ describe("community registry generation", () => {
           sourceRevision: source.revision,
           packages: [
             {
-              name: "@firedrill-tools/tool-records",
+              name: "@firedrill-tools/records",
               version: "0.1.0",
               tool: "records",
               lifecycle: "active",
@@ -193,7 +193,7 @@ describe("community registry generation", () => {
           sourceRevision: source.revision,
           packages: [
             {
-              name: "@firedrill-tools/tool-records",
+              name: "@firedrill-tools/records",
               version: "0.1.0",
               tool: "records",
               lifecycle: "revoked",
@@ -229,7 +229,7 @@ describe("community registry generation", () => {
     const releaseRoot = temporaryRoot("firedrill-registry-release-");
     const catalog = join(releaseRoot, "catalog.json");
     const record = {
-      name: "@firedrill-tools/tool-records",
+      name: "@firedrill-tools/records",
       version: "0.1.0",
       tool: "records",
       lifecycle: "active",
