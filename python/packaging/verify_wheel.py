@@ -17,7 +17,15 @@ import zipfile
 
 
 def run(command, *, environment, cwd, expected=0, timeout=120):
-    result = subprocess.run(command, cwd=cwd, env=environment, capture_output=True, text=True, timeout=timeout)
+    try:
+        result = subprocess.run(command, cwd=cwd, env=environment, capture_output=True, text=True, timeout=timeout)
+    except subprocess.TimeoutExpired as error:
+        def output(value):
+            return value.decode(errors="replace") if isinstance(value, bytes) else value or ""
+        raise RuntimeError(
+            f"{command!r} timed out after {timeout} seconds\n"
+            f"{output(error.stdout)}\n{output(error.stderr)}"
+        ) from error
     if result.returncode != expected:
         raise RuntimeError(f"{command!r} failed ({result.returncode})\n{result.stdout}\n{result.stderr}")
     return result.stdout
@@ -44,8 +52,6 @@ def main():
         for name in required:
             if name not in archive.namelist():
                 raise RuntimeError(f"Wheel is missing {name}")
-        metadata = archive.read(next(name for name in archive.namelist() if name.endswith(".dist-info/METADATA"))).decode()
-        agent_requirement = next(line.removeprefix("Requires-Dist: ").split(";")[0].strip() for line in metadata.splitlines() if line.startswith("Requires-Dist: claude-agent-sdk"))
     with tempfile.TemporaryDirectory(prefix="firedrill-python-consumer-") as temporary:
         root = Path(temporary)
         environment_root = root / "venv"
@@ -55,7 +61,7 @@ def main():
         command = scripts / ("firedrill.exe" if os.name == "nt" else "firedrill")
         run([str(interpreter), "-m", "pip", "install", "--no-index", "--no-deps", str(wheel)], environment=os.environ, cwd=root)
         if arguments.agent:
-            run([str(interpreter), "-m", "pip", "install", agent_requirement], environment=os.environ, cwd=root)
+            run([str(interpreter), "-m", "pip", "install", "--only-binary=:all:", f"{wheel}[agent]"], environment=os.environ, cwd=root)
         if arguments.sdk_tests:
             run([str(interpreter), "-m", "pip", "install", "pytest>=7.4"], environment=os.environ, cwd=root)
         environment = dict(os.environ)

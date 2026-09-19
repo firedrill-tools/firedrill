@@ -1,10 +1,11 @@
 import asyncio
 import concurrent.futures
 import sys
+import threading
 import time
 
 import pytest
-from firedrill import AbortSignal, FiredrillError
+from firedrill import AbortSignal, FiredrillError, sdk
 from firedrill._process import Runtime, resolve_callback
 
 SERVER = """
@@ -112,3 +113,46 @@ def test_blocked_runtime_stdin_cannot_defeat_request_timeout_or_cleanup():
     runtime.close()
     assert time.monotonic() - started < 8
     assert runtime._process.poll() is not None
+
+
+def test_async_cancellation_keeps_cancelled_error_when_drain_times_out(monkeypatch):
+    # Python 3.10 has distinct asyncio and concurrent.futures timeout classes.
+    # Emulate that distinction even when this test runs on newer interpreters.
+    class AsyncTimeout(Exception):
+        pass
+
+    started = threading.Event()
+    released = threading.Event()
+    calls = []
+
+    class RuntimeStub:
+        def request(self, method, params, *, timeout):
+            calls.append(method)
+
+        def close(self):
+            calls.append("close")
+            released.set()
+
+    def uncooperative_request(*args, **kwargs):
+        started.set()
+        assert released.wait(5)
+
+    async def timeout_drain(awaitable, timeout):
+        assert timeout == 10
+        awaitable.cancel()
+        raise AsyncTimeout("cancellation drain expired")
+
+    monkeypatch.setattr(sdk, "Runtime", RuntimeStub)
+    monkeypatch.setattr(sdk, "_run_request", uncooperative_request)
+    monkeypatch.setattr(asyncio, "TimeoutError", AsyncTimeout)
+    monkeypatch.setattr(asyncio, "wait_for", timeout_drain)
+
+    async def run():
+        task = asyncio.create_task(sdk._execute_async("runDrills", {}, {}))
+        assert await asyncio.to_thread(started.wait, 2)
+        task.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await task
+
+    asyncio.run(run())
+    assert calls == ["run.cancel", "close"]

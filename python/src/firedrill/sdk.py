@@ -171,6 +171,7 @@ async def _execute_async(
             await asyncio.wait_for(asyncio.shield(task), timeout=10)
         except (
             FiredrillError,
+            asyncio.TimeoutError,
             concurrent.futures.TimeoutError,
             asyncio.CancelledError,
         ):

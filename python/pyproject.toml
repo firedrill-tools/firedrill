@@ -24,7 +24,11 @@ classifiers = [
 
 [project.optional-dependencies]
 pytest = ["pytest>=7.4"]
-agent = ["claude-agent-sdk==0.2.145"]
+agent = [
+  "claude-agent-sdk==0.2.145",
+  # Newer cryptography releases no longer publish Intel macOS wheels.
+  "cryptography>=48.0.1,<49; sys_platform == 'darwin' and platform_machine == 'x86_64'",
+]
 
 [project.scripts]
 firedrill = "firedrill.cli:main"

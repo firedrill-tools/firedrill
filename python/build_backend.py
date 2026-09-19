@@ -83,6 +83,8 @@ def _metadata(config_settings=None):
         'Requires-Dist: pytest>=7.4; extra == "pytest"',
         "Provides-Extra: agent",
         'Requires-Dist: claude-agent-sdk==0.2.145; extra == "agent"',
+        # Keep Intel macOS installs binary-only; newer releases require Rust.
+        'Requires-Dist: cryptography>=48.0.1,<49; sys_platform == "darwin" and platform_machine == "x86_64" and extra == "agent"',
     ])
     readme = ROOT / "README.md"
     description = readme.read_text(encoding="utf-8") if readme.exists() else summary

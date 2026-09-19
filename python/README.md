@@ -18,6 +18,12 @@ The wheel includes the local runtime, CLI, tool protocols, reports, and browser
 inspector. You do not need to install Node.js or npm. Tool packages are shared
 with the TypeScript version and use the same source definitions and behavior.
 
+Wheels support macOS 13+ (Apple Silicon and Intel), Linux with glibc 2.35+
+(x86-64 and ARM64), and Windows x86-64. Alpine Linux/musl and Windows ARM64
+are not supported by this release. Optional browser tests also need a browser
+installed with `firedrill browser install`; Linux may need the browser's system
+libraries (`firedrill browser install --with-deps`).
+
 For a release wheel supplied as a file, install its exact path instead:
 
 ```sh
