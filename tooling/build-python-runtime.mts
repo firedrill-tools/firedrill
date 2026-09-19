@@ -7,8 +7,8 @@ import {
   lstatSync,
   mkdirSync,
   mkdtempSync,
-  readFileSync,
   readdirSync,
+  readFileSync,
   realpathSync,
   renameSync,
   rmSync,
@@ -293,12 +293,17 @@ function replaceGeneratedDirectory(from: string, to: string): void {
 
 try {
   process.stdout.write(`Assembling Python runtime for ${target}\n`);
+  const publicPackages = discoverPublicPackages(root).filter((package_) =>
+    package_.directory.replaceAll("\\", "/").startsWith("packages/"),
+  );
+  for (const required of ["@firedrill-run/cli", "@firedrill-run/sdk"]) {
+    if (!publicPackages.some((package_) => package_.name === required)) {
+      throw new Error(`The Python runtime package inventory is missing ${required}.`);
+    }
+  }
   mkdirSync(modules, { recursive: true });
   const nodeRoot = await installNode();
   await installPnpm();
-  const publicPackages = discoverPublicPackages(root).filter((package_) =>
-    package_.directory.startsWith("packages/"),
-  );
   const artifacts = packPublicPackages({
     repositoryRoot: root,
     outputDirectory: join(temporary, "packages"),

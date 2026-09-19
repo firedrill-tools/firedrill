@@ -60,6 +60,23 @@ def plain(value: Any) -> Any:
 _ENVELOPES = {"capture", "redaction", "shard"}
 
 
+def _callback_receiver_options(receivers: Mapping[str, Any]) -> dict[str, Any]:
+    result = {}
+    for receiver_id, receiver in receivers.items():
+        if not isinstance(receiver, Mapping):
+            result[receiver_id] = plain(receiver)
+            continue
+        if "base_url" in receiver and "baseUrl" in receiver:
+            raise TypeError(
+                f"Duplicate Firedrill callback receiver option: {receiver_id}.baseUrl"
+            )
+        result[receiver_id] = {
+            "baseUrl" if key == "base_url" else key: plain(value)
+            for key, value in receiver.items()
+        }
+    return result
+
+
 def options(value: Mapping[str, Any] | None = None, **kwargs: Any) -> dict[str, Any]:
     combined = dict(value or {})
     combined.update({key: value for key, value in kwargs.items() if value is not None})
@@ -70,11 +87,12 @@ def options(value: Mapping[str, Any] | None = None, **kwargs: Any) -> dict[str, 
         translated = camel(key)
         if translated in result:
             raise TypeError(f"Duplicate Firedrill option: {translated}")
-        result[translated] = (
-            options(item)
-            if key in _ENVELOPES and isinstance(item, Mapping)
-            else plain(item)
-        )
+        if translated == "callbackReceivers" and isinstance(item, Mapping):
+            result[translated] = _callback_receiver_options(item)
+        elif translated in _ENVELOPES and isinstance(item, Mapping):
+            result[translated] = options(item)
+        else:
+            result[translated] = plain(item)
     return result
 
 

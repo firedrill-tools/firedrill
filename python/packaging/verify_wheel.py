@@ -9,7 +9,6 @@ from pathlib import Path
 import queue
 import shutil
 import subprocess
-import sys
 import tempfile
 import threading
 import urllib.request
@@ -64,8 +63,9 @@ def main():
         environment.pop("FIREDRILL_RUNTIME_DIR", None)
         environment.pop("PYTHONPATH", None)
         environment["PATH"] = str(scripts)
+        windows_system = Path(environment.get("SYSTEMROOT", environment.get("SystemRoot", "C:/Windows"))) / "System32"
         if os.name == "nt":
-            environment["PATH"] += os.pathsep + str(Path(environment["SystemRoot"]) / "System32")
+            environment["PATH"] += os.pathsep + str(windows_system)
         for executable in ("node", "npm", "pnpm"):
             if shutil.which(executable, path=environment["PATH"]):
                 raise RuntimeError(f"Acceptance PATH unexpectedly contains {executable}")
@@ -75,7 +75,7 @@ def main():
             agent_home.mkdir()
             # Only operating-system essentials cross this boundary. Never pick
             # up a developer's provider key, login session, or project settings.
-            agent_environment = {key: value for key, value in environment.items() if key in {"PATH", "SystemRoot", "WINDIR", "COMSPEC", "TEMP", "TMP", "TMPDIR", "LANG", "LC_ALL"}}
+            agent_environment = {key: value for key, value in environment.items() if key.upper() in {"PATH", "SYSTEMROOT", "WINDIR", "COMSPEC", "TEMP", "TMP", "TMPDIR", "LANG", "LC_ALL"}}
             agent_environment.update({
                 "HOME": str(agent_home), "USERPROFILE": str(agent_home),
                 "CLAUDE_CONFIG_DIR": str(agent_home / ".claude"),
@@ -144,7 +144,7 @@ def main():
             if os.name == "nt":
                 # The Windows console entry point has an owned Node child.
                 # Kill this exact process tree before its parent PID exits.
-                subprocess.run([str(Path(environment["SystemRoot"]) / "System32/taskkill.exe"), "/PID", str(inspector.pid), "/T", "/F"], capture_output=True, check=False)
+                subprocess.run([str(windows_system / "taskkill.exe"), "/PID", str(inspector.pid), "/T", "/F"], capture_output=True, check=False)
             else:
                 inspector.terminate()
             try:

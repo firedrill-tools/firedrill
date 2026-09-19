@@ -10,6 +10,7 @@ import threading
 import time
 import urllib.request
 from concurrent.futures import ThreadPoolExecutor
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
 import pytest
@@ -423,3 +424,98 @@ def test_invalid_python_options_fail_before_using_unintended_defaults(project):
         World.from_project(project, scnerio="misspelled")
     with pytest.raises(FiredrillError, match="trails"):
         run_drills(project, trails=3, agent=agent)
+
+
+def test_python_callback_receiver_delivers_to_loopback_application(project):
+    tool_path = project / "firedrill/tools/workspace/workspace.tool.yaml"
+    record_schema = {
+        "type": "object",
+        "required": ["value"],
+        "properties": {"value": {"type": "integer"}},
+        "additionalProperties": False,
+    }
+    tool_path.with_suffix(".json").write_text(
+        json.dumps(
+            {
+                "schemaVersion": 1,
+                "module": "./behavior.js",
+                "manifest": {
+                    "schemaVersion": 1,
+                    "id": "workspace",
+                    "version": "1.0.0",
+                    "engine": ">=0.1.0 <0.2.0",
+                    "capabilities": ["state.read", "state.write", "event.emit"],
+                    "state": [{"namespace": "records", "schema": record_schema}],
+                    "operations": [
+                        {
+                            "id": "records.set",
+                            "inputSchema": record_schema,
+                            "outputSchema": record_schema,
+                            "idempotency": "required",
+                            "fidelity": "stateful",
+                        }
+                    ],
+                    "events": [{"id": "record.set", "payloadSchema": record_schema}],
+                    "callbacks": [
+                        {
+                            "id": "notify-application",
+                            "eventId": "record.set",
+                            "receiverId": "my_receiver",
+                            "method": "POST",
+                            "path": "/callbacks/records",
+                            "idempotencyHeader": "Idempotency-Key",
+                        }
+                    ],
+                },
+            }
+        )
+    )
+    tool_path.unlink()
+    tool_path.with_name("behavior.js").write_text("""export default {
+  operations: { "records.set": (input, context) => {
+    const value = { value: Number(input.value) };
+    context.state.put("records", "primary", value);
+    context.events.emit("record.set", value);
+    return value;
+  } },
+  callbacks: { "notify-application": {
+    encode: ({ deliveryId, payload }) => ({
+      body: { kind: "json", value: { deliveryId, ...payload } },
+    }),
+  } },
+};
+""")
+    received = []
+
+    class Receiver(BaseHTTPRequestHandler):
+        def do_POST(self):
+            received.append(
+                json.loads(self.rfile.read(int(self.headers["Content-Length"])))
+            )
+            self.send_response(204)
+            self.end_headers()
+
+        def log_message(self, *args):
+            pass
+
+    server = ThreadingHTTPServer(("127.0.0.1", 0), Receiver)
+    server_thread = threading.Thread(target=server.serve_forever, daemon=True)
+    server_thread.start()
+    try:
+        result = run_drills(
+            project,
+            agent=agent,
+            callback_receivers={
+                "my_receiver": {"base_url": f"http://127.0.0.1:{server.server_port}"}
+            },
+        )
+        result.assert_passed()
+        assert [item["value"] for item in received] == [7]
+        evidence = result.drills[0].trials[0].evidence
+        assert any(
+            item.kind == "callback" and item.phase == "delivered" for item in evidence
+        )
+    finally:
+        server.shutdown()
+        server.server_close()
+        server_thread.join(timeout=2)

@@ -32,6 +32,35 @@ def test_record_preserves_keys_and_nested_types():
         _ = value.nonexistent
 
 
+@pytest.mark.parametrize("option_name", ["callback_receivers", "callbackReceivers"])
+def test_callback_receiver_options_only_translate_receiver_envelope(option_name):
+    source = {
+        "my_receiver": {
+            "base_url": "http://127.0.0.1:8101",
+            "secret": "local-test-value",
+            "unknown_field": {"base_url": "keep authored fields", "data_key": 4},
+        },
+        "another_receiver": {"baseUrl": "http://127.0.0.1:8102"},
+    }
+    result = options({option_name: source})["callbackReceivers"]
+    assert set(result) == {"my_receiver", "another_receiver"}
+    assert result["my_receiver"] == {
+        "baseUrl": "http://127.0.0.1:8101",
+        "secret": "local-test-value",
+        "unknown_field": {"base_url": "keep authored fields", "data_key": 4},
+    }
+    assert result["another_receiver"] == {"baseUrl": "http://127.0.0.1:8102"}
+    assert "base_url" in source["my_receiver"]
+    assert options(result={"callback_receivers": source})["result"] == {
+        "callback_receivers": source
+    }
+
+
+def test_duplicate_callback_receiver_alias_is_rejected():
+    with pytest.raises(TypeError, match="Duplicate.*my_receiver.baseUrl"):
+        options(callback_receivers={"my_receiver": {"base_url": "a", "baseUrl": "b"}})
+
+
 def test_failure_assertion_retains_evidence_pointer():
     result = RunResult(
         verdict="failed",

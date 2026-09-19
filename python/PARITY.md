@@ -87,7 +87,7 @@ source API against the staged bundled runtime:
   promptly instead of hanging the caller.
 
 The final macOS arm64 wheel also passed
-`python/packaging/verify_wheel.py --agent --sdk-tests python/tests` in a clean
+`python/packaging/verify_wheel.py <wheel> --agent --sdk-tests python/tests` in a clean
 Python environment with external Node.js, npm, and pnpm absent from `PATH`.
 That check installed the wheel, ran CLI initialization and passing/failing
 drills, verified reports and tamper detection, installed and tested an

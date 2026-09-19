@@ -215,8 +215,10 @@ keep their schema keys such as `packageId` and `rowId`.
 Pass lifecycle callbacks in `hooks`: `before_all`, `after_all`, `before_drill`,
 `after_drill`, `before_trial`, `after_trial`, `attempt_started`, and
 `attempt_finished`. Use `callback_receivers` to connect declared synthetic
-webhooks to a local application. See [callbacks](https://github.com/firedrill-tools/firedrill/blob/main/docs/callbacks.md) for the
-receiver format and delivery behavior.
+webhooks to a local application, for example
+`callback_receivers={"notifications": {"base_url": "http://127.0.0.1:8080"}}`.
+See [callbacks](https://github.com/firedrill-tools/firedrill/blob/main/docs/callbacks.md)
+for receiver headers and delivery behavior.
 
 ### Mock Python functions and SDK methods
 
@@ -251,6 +253,12 @@ The external target must declare `bindings: [direct]` for
 different module's already-imported symbol cannot affect it. `mock_tool`
 recognizes async functions and returns an awaitable replacement; use
 `asynchronous=True` to choose it explicitly.
+
+Mocks are scoped to the current thread and async context. An agent-created
+thread without inherited context calls the original dependency, not the fake.
+Use `contextvars.copy_context().run` in test-owned thread entry points, or use
+protocol bindings for agents that manage their own threads. `asyncio.to_thread`
+copies the context automatically. Function mocking is not a network sandbox.
 
 For provider-specific response or error types, supply `transform`, which
 receives the complete operation result. Its default returns the successful

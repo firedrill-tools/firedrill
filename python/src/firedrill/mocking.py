@@ -100,8 +100,10 @@ def mock_tool(
     lookup site (``agent_module.send_email``), as with ``unittest.mock.patch``.
     ``transform`` receives the complete operation result for provider-specific
     response and error mapping. Default behavior returns the outcome value.
-    Overrides are scoped to the current thread/async context. Use a copied
-    context or protocol bindings when the agent starts its own worker threads.
+    Overrides are scoped to the current thread/async context. A new thread that
+    does not inherit that context calls the original function, not the fake.
+    Use ``contextvars.copy_context().run`` or protocol bindings when the agent
+    starts its own worker threads. This helper does not block real network I/O.
     """
 
     def invoke(*args: Any, **kwargs: Any) -> Any:

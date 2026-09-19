@@ -343,17 +343,40 @@ class AsyncInspector:
 
 async def _owned_async(factory: Any, *args: Any, **kwargs: Any) -> Any:
     """Cancellation during creation still disposes the resource created by the worker."""
-    task = asyncio.create_task(asyncio.to_thread(factory, *args, **kwargs))
+    ownership = threading.Lock()
+    cancelled = threading.Event()
+    unclaimed: list[Any] = []
+
+    def create() -> Any:
+        resource = factory(*args, **kwargs)
+        with ownership:
+            dispose = cancelled.is_set()
+            if not dispose:
+                unclaimed.append(resource)
+        if dispose:
+            resource.close()
+        return resource
+
+    task = asyncio.create_task(asyncio.to_thread(create))
     try:
-        return await asyncio.shield(task)
+        resource = await asyncio.shield(task)
+        with ownership:
+            unclaimed.clear()
+        return resource
     except asyncio.CancelledError:
+        with ownership:
+            cancelled.set()
+            resource = unclaimed.pop() if unclaimed else None
 
-        def dispose(done: asyncio.Task[Any]) -> None:
-            if not done.cancelled() and done.exception() is None:
-                resource = done.result()
-                threading.Thread(target=resource.close, daemon=True).start()
+        def observe(done: asyncio.Task[Any]) -> None:
+            if not done.cancelled():
+                done.exception()
 
-        task.add_done_callback(dispose)
+        task.add_done_callback(observe)
+        if resource is not None:
+            # Creation finished before cancellation was delivered. Schedule the
+            # finalizer in the executor, which outlives asyncio task shutdown.
+            await asyncio.to_thread(resource.close)
         raise
 
 
