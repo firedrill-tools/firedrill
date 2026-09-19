@@ -41,6 +41,7 @@ const onSigterm = () => {
 };
 process.once("SIGINT", onSigint);
 process.once("SIGTERM", onSigterm);
+if (process.platform === "win32") process.once("SIGBREAK", onSigint);
 
 const interactive =
   !arguments_.includes("--json") &&
@@ -84,4 +85,5 @@ try {
   terminal?.close();
   process.removeListener("SIGINT", onSigint);
   process.removeListener("SIGTERM", onSigterm);
+  if (process.platform === "win32") process.removeListener("SIGBREAK", onSigint);
 }

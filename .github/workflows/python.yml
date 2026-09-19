@@ -1,0 +1,153 @@
+name: Python wheels
+
+on:
+  workflow_dispatch:
+    inputs:
+      publish:
+        description: Publish verified wheels to PyPI (main only)
+        type: boolean
+        required: true
+        default: false
+  pull_request:
+    paths:
+      - "python/**"
+      - "packages/**"
+      - "templates/**"
+      - "skills/**"
+      - "registry/**"
+      - "release/public-surface.json"
+      - "package.json"
+      - "pnpm-workspace.yaml"
+      - "LICENSE"
+      - "NOTICE"
+      - "tooling/build-python-runtime.mts"
+      - "tooling/public-packages.mts"
+      - "tooling/package-files.mts"
+      - "tooling/stable-order.mts"
+      - "pnpm-lock.yaml"
+      - ".github/workflows/python.yml"
+  push:
+    branches: [main]
+    paths:
+      - "python/**"
+      - "packages/**"
+      - "templates/**"
+      - "skills/**"
+      - "registry/**"
+      - "release/public-surface.json"
+      - "package.json"
+      - "pnpm-workspace.yaml"
+      - "LICENSE"
+      - "NOTICE"
+      - "tooling/build-python-runtime.mts"
+      - "tooling/public-packages.mts"
+      - "tooling/package-files.mts"
+      - "tooling/stable-order.mts"
+      - "pnpm-lock.yaml"
+      - ".github/workflows/python.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: python-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  wheel:
+    name: Python · ${{ matrix.target }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 40
+    env:
+      MACOSX_DEPLOYMENT_TARGET: "13.0"
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-15
+            target: darwin-arm64
+          - os: macos-15-intel
+            target: darwin-x64
+          - os: ubuntu-22.04
+            target: linux-x64
+          - os: ubuntu-22.04-arm
+            target: linux-arm64
+          - os: windows-2022
+            target: win32-x64
+    steps:
+      - name: Check out source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10
+        with:
+          version: 9.15.4
+
+      - name: Install the pinned build runtime
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22.23.2
+          cache: pnpm
+
+      - name: Install Python
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: "3.10"
+
+      - name: Build the framework
+        run: |
+          pnpm install --frozen-lockfile
+          pnpm build
+
+      - name: Assemble the complete local runtime
+        run: pnpm exec tsx tooling/build-python-runtime.mts
+
+      - name: Install the optional test browser
+        run: pnpm --filter @firedrill-run/browser-tests exec playwright install --with-deps chromium
+
+      - name: Build the platform wheel
+        working-directory: python
+        run: |
+          python -m pip install build==1.4.0
+          python -m unittest discover -s packaging -p "test_*.py"
+          python -m build --wheel --no-isolation
+
+      - name: Exercise the installed product without system Node
+        shell: bash
+        run: python python/packaging/verify_wheel.py python/dist/*.whl --agent --sdk-tests python/tests
+
+      - name: Upload verified platform wheel
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: firedrill-python-${{ matrix.target }}
+          path: python/dist/*.whl
+          if-no-files-found: error
+          retention-days: 14
+
+  publish:
+    name: Publish verified Python wheels
+    needs: wheel
+    if: github.event_name == 'workflow_dispatch' && inputs.publish && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    environment: pypi
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - name: Check out the verified revision
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Download this run's verified wheels
+        uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0 # v5
+        with:
+          pattern: firedrill-python-*
+          path: python/dist
+          merge-multiple: true
+
+      - name: Require a complete, consistent release
+        run: python python/packaging/check_release.py python/dist
+
+      - name: Publish using the PyPI trusted publisher
+        uses: pypa/gh-action-pypi-publish@dc37677b2e1c63e2034f94d8a5b11f265b73ba33 # release/v1
+        with:
+          packages-dir: python/dist

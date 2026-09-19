@@ -272,7 +272,9 @@ export async function executeInitCommand(input: InitCommandInput, io: CliIo): Pr
         "Firedrill runs stateful fake tools locally so your agent can act without touching production.\n",
       );
     if (input.initPath !== undefined) {
-      const result = initProject(input.root, input.initPath);
+      const result = initProject(input.root, input.initPath, {
+        runtime: (io.environment ?? process.env).FIREDRILL_PYTHON_EXECUTABLE ? "python" : "node",
+      });
       if (input.json) emit(io, { command: "init", ...result });
       else if (result.status === "initialized") initialized(io, result);
       if (input.initPath === "firedrill-agent") {
@@ -535,7 +537,9 @@ export async function executeInitCommand(input: InitCommandInput, io: CliIo): Pr
     }
     let readyActorId: string | undefined;
     if (authoring !== undefined && authoring !== "manual") {
-      const result = initProject(input.root, authoring);
+      const result = initProject(input.root, authoring, {
+        runtime: (io.environment ?? process.env).FIREDRILL_PYTHON_EXECUTABLE ? "python" : "node",
+      });
       if (!input.json && result.status === "initialized") initialized(io, result);
       if (authoring === "firedrill-agent") {
         const code = await authorEnvironment(input, io, (id) => {

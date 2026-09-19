@@ -178,12 +178,51 @@ Guide: docs/data-import.md in the Firedrill source or installed SDK documentatio
 Optional browser tests for an existing application
 
 Usage:
+  firedrill browser install [--with-deps] [--json]
   firedrill browser run <test.browser.json> [options]
   firedrill browser run --url <url> --task <task> --agent --allow-model [options]
   firedrill browser verify <report-directory> [--root <path>] [--json]
 
 Install once: pnpm add -D @firedrill-run/browser-tests@next
-Browser install: pnpm dlx playwright@1.62.1 install chromium
+Browser install: firedrill browser install
+For the optional task driver: pnpm add -D @firedrill-run/agent@next
+
+Options:
+  --root <path>             Project directory; defaults to the current directory
+  --headed                  Show the controlled browser instead of running headless
+  --agent --allow-model     Use Claude Agent SDK with your ANTHROPIC_API_KEY
+  --model <model>           Optional browser agent model
+  --max-budget-usd <amount> Explicit model budget; defaults to $2
+  --timeout-ms <ms>         Entire test deadline; defaults to 120000
+  --step-timeout-ms <ms>    Wait per action/assertion; defaults to 5000, maximum 60000
+  --allow-remote            Permit a remote application you are authorized to test
+  --allow-origin <origin>   Additional application origin; repeat as needed
+  --param-env <name>=<var>  Read a test parameter from a host environment variable
+  --video                   Retain a recording, which may contain sensitive page data
+  --trace                   Retain a Playwright trace, which may contain sensitive data
+  --save <id>               Save observed steps as a new reusable local test
+  --open                    Open the generated local HTML report
+  --json                    Print one machine-readable result
+
+Saved steps need no model key. Independent assertions decide pass or fail.
+Without assertions the outcome is completed, NOT passed; browser results alone
+do not prove synthetic world state. Your app and agent remain caller-owned.
+Local reports stay under .firedrill/browser/ and must not be committed.
+```
+
+## `firedrill browser install`
+
+```text
+Optional browser tests for an existing application
+
+Usage:
+  firedrill browser install [--with-deps] [--json]
+  firedrill browser run <test.browser.json> [options]
+  firedrill browser run --url <url> --task <task> --agent --allow-model [options]
+  firedrill browser verify <report-directory> [--root <path>] [--json]
+
+Install once: pnpm add -D @firedrill-run/browser-tests@next
+Browser install: firedrill browser install
 For the optional task driver: pnpm add -D @firedrill-run/agent@next
 
 Options:
@@ -215,12 +254,13 @@ Local reports stay under .firedrill/browser/ and must not be committed.
 Optional browser tests for an existing application
 
 Usage:
+  firedrill browser install [--with-deps] [--json]
   firedrill browser run <test.browser.json> [options]
   firedrill browser run --url <url> --task <task> --agent --allow-model [options]
   firedrill browser verify <report-directory> [--root <path>] [--json]
 
 Install once: pnpm add -D @firedrill-run/browser-tests@next
-Browser install: pnpm dlx playwright@1.62.1 install chromium
+Browser install: firedrill browser install
 For the optional task driver: pnpm add -D @firedrill-run/agent@next
 
 Options:
@@ -252,12 +292,13 @@ Local reports stay under .firedrill/browser/ and must not be committed.
 Optional browser tests for an existing application
 
 Usage:
+  firedrill browser install [--with-deps] [--json]
   firedrill browser run <test.browser.json> [options]
   firedrill browser run --url <url> --task <task> --agent --allow-model [options]
   firedrill browser verify <report-directory> [--root <path>] [--json]
 
 Install once: pnpm add -D @firedrill-run/browser-tests@next
-Browser install: pnpm dlx playwright@1.62.1 install chromium
+Browser install: firedrill browser install
 For the optional task driver: pnpm add -D @firedrill-run/agent@next
 
 Options:

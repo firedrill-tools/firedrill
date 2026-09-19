@@ -54,6 +54,8 @@ export interface InitializedProject {
 }
 
 export interface InitGuidance {
+  /** Select a starter matching the CLI distribution, not the synthetic Tool engine. */
+  readonly runtime?: "python" | "node";
   /** Untrusted human context copied into the generated brief, not a runtime setting. */
   readonly contextNote?: string;
   /** The first observable agent outcome the author wants a drill to prove. */
@@ -82,6 +84,7 @@ const TEXT_ASSET_EXTENSIONS = new Set([
   ".json",
   ".md",
   ".mjs",
+  ".py",
   ".ts",
   ".yaml",
   ".yml",
@@ -100,14 +103,13 @@ function contained(root: string, path: string): boolean {
   );
 }
 
-function assetDirectory(name: "skill" | "template"): string {
+function assetDirectory(name: "skill" | "template" | "python-template"): string {
   const moduleDirectory = dirname(fileURLToPath(import.meta.url));
-  const bundled =
-    name === "skill" ? resolve(moduleDirectory, "skill") : resolve(moduleDirectory, "templates/minimal");
+  const template = name === "python-template" ? "templates/python" : "templates/minimal";
+  const bundled = name === "skill" ? resolve(moduleDirectory, "skill") : resolve(moduleDirectory, template);
   if (existsSync(bundled)) return bundled;
   const repository = resolve(moduleDirectory, "../../..");
-  const source =
-    name === "skill" ? resolve(repository, "skills/firedrill") : resolve(repository, "templates/minimal");
+  const source = name === "skill" ? resolve(repository, "skills/firedrill") : resolve(repository, template);
   if (existsSync(source)) return source;
   throw new Error(`Firedrill ${name} asset is missing from this CLI installation`);
 }
@@ -602,7 +604,9 @@ export function initProject(
       repositoryBrief(detection, guidance),
     ];
     next = [
-      "Install the optional package beside the CLI if needed: pnpm add -D @firedrill-run/agent@next",
+      guidance.runtime === "python"
+        ? 'Install the optional Agent if needed: python -m pip install "firedrill-run[agent]"'
+        : "Install the optional package beside the CLI if needed: pnpm add -D @firedrill-run/agent@next",
       "Set ANTHROPIC_API_KEY in your shell if it is not already set.",
       "Run firedrill agent. Add --prompt only when you want to narrow the default end-to-end authoring task.",
       "The ordinary Firedrill CLI remains fully usable without the Agent or an Anthropic key.",
@@ -618,6 +622,20 @@ export function initProject(
     ];
   } else if (path === "template") {
     files = treeFiles(assetDirectory("template"), ".");
+    if (guidance.runtime === "python") {
+      const overlay = treeFiles(assetDirectory("python-template"), ".");
+      const replaced = new Set(overlay.map((file) => file.path));
+      files = [
+        ...files
+          .filter((file) => !replaced.has(file.path) && file.path !== "firedrill-example/agent.mjs")
+          .map((file) =>
+            file.path === "firedrill/README.md"
+              ? { ...file, body: Buffer.from(file.body.toString("utf8").replaceAll("agent.mjs", "agent.py")) }
+              : file,
+          ),
+        ...overlay,
+      ];
+    }
     next = [
       "Run firedrill validate.",
       "Run firedrill run changes-resource and open the printed HTML report.",

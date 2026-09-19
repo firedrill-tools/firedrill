@@ -1,0 +1,43 @@
+[build-system]
+requires = []
+build-backend = "build_backend"
+backend-path = ["."]
+
+[project]
+name = "firedrill-run"
+version = "0.1.0rc1"
+description = "Stateful simulation and testing for AI agents"
+readme = "README.md"
+requires-python = ">=3.10"
+license = "Apache-2.0"
+authors = [{ name = "Reload Tech Inc." }]
+classifiers = [
+  "Development Status :: 4 - Beta",
+  "Intended Audience :: Developers",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.10",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.13",
+  "Topic :: Software Development :: Testing",
+]
+
+[project.optional-dependencies]
+pytest = ["pytest>=7.4"]
+agent = [
+  "claude-agent-sdk==0.2.145",
+  # Newer cryptography releases no longer publish Intel macOS wheels.
+  "cryptography>=48.0.1,<49; sys_platform == 'darwin' and platform_machine == 'x86_64'",
+]
+
+[project.scripts]
+firedrill = "firedrill.cli:main"
+
+[project.entry-points.pytest11]
+firedrill = "firedrill.pytest_plugin"
+
+[project.urls]
+Homepage = "https://firedrill.run"
+Documentation = "https://docs.firedrill.run"
+Repository = "https://github.com/firedrill-tools/firedrill"
+Issues = "https://github.com/firedrill-tools/firedrill/issues"
